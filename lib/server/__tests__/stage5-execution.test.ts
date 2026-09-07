@@ -68,9 +68,10 @@ export async function runStage5ExecutionTests(): Promise<{
 
     const resDup = await CTraderOMS.submitOrder(reqDuplicate);
     // باید بدون ساخت سفارش جدید، نتیجه همان قبلی را بازگرداند
-    const passed =
+    const passed = Boolean(
       resDup.record.intentId === 'INT-TEST-001' &&
-      resDup.record.brokerOrderId?.startsWith('CT-ORD-');
+      resDup.record.brokerOrderId?.startsWith('CT-ORD-')
+    );
 
     results.push({
       name: 'Double-Click & Idempotency Protection',
@@ -131,10 +132,11 @@ export async function runStage5ExecutionTests(): Promise<{
     };
 
     const resBlind = await CTraderOMS.submitOrder(reqBlindRetry);
-    const passed =
+    const passed = Boolean(
       !resBlind.success &&
       resBlind.error?.includes('UNKNOWN_RECONCILE_REQUIRED') &&
-      resBlind.requiresReconciliation === true;
+      resBlind.requiresReconciliation === true
+    );
 
     results.push({
       name: 'Blind Retry Blocking (Fail-Closed Safety)',

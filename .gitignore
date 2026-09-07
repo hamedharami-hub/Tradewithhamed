@@ -12,6 +12,7 @@ coverage/
 out/
 build/
 dist/
+*.tsbuildinfo
 
 # Operating system files
 .DS_Store

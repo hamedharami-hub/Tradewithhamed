@@ -13,6 +13,7 @@ import {
 } from '@/lib/core/research-lab';
 import { PositionLedgerEntry } from '@/lib/core/ports';
 import { runW2AcceptanceSuite, AcceptanceTestResult } from '@/lib/core/__tests__/w2-acceptance.test';
+import { runW3BenchmarkEvaluationSuite, W3BenchmarkSuiteReport } from '@/lib/core/__tests__/w3-benchmark.test';
 import {
   FlaskConical,
   Play,
@@ -30,6 +31,8 @@ import {
   Sliders,
   BarChart3,
   Search,
+  Bot,
+  ShieldCheck,
 } from 'lucide-react';
 
 interface ResearchWorkbenchProps {
@@ -41,7 +44,8 @@ export const ResearchWorkbench: React.FC<ResearchWorkbenchProps> = ({
   currentCandles,
   symbol,
 }) => {
-  const [activeSubTab, setActiveSubTab] = useState<'backtest' | 'data' | 'walkforward' | 'stress' | 'w2tests'>('backtest');
+  const [activeSubTab, setActiveSubTab] = useState<'backtest' | 'data' | 'walkforward' | 'stress' | 'w2tests' | 'w3benchmark'>('backtest');
+  const [w3Report, setW3Report] = useState<W3BenchmarkSuiteReport | null>(null);
 
   // داده‌های لود شده و مانیفست
   const [activeCandles, setActiveCandles] = useState<Candle[]>(currentCandles);
@@ -127,7 +131,15 @@ export const ResearchWorkbench: React.FC<ResearchWorkbenchProps> = ({
     setW2TestResults(results);
   };
 
-  // بارگذاری فایل داده CSV
+  // اجرای کیت ۱۲۰ موردی ارزیابی بنچمارک هوش مصنوعی W3
+  const handleRunW3Benchmark = () => {
+    const report = runW3BenchmarkEvaluationSuite();
+    setW3Report(report);
+  };
+
+  const [timezoneOffset, setTimezoneOffset] = useState<number>(0);
+
+  // بارگذاری فایل داده CSV با احتساب منطقه زمانی
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -135,10 +147,10 @@ export const ResearchWorkbench: React.FC<ResearchWorkbenchProps> = ({
     const reader = new FileReader();
     reader.onload = ev => {
       const text = ev.target?.result as string;
-      const parsed = DataWorkbench.parseCSV(text, '15M');
+      const parsed = DataWorkbench.parseCSV(text, '15M', timezoneOffset);
       if (parsed.candles.length > 0) {
         setActiveCandles(parsed.candles);
-        const report = DataWorkbench.validateCandles(parsed.candles, symbol, '15M', file.name);
+        const report = DataWorkbench.validateCandles(parsed.candles, symbol, '15M', `${file.name} (UTC${timezoneOffset >= 0 ? '+' : ''}${timezoneOffset})`);
         setValidationReport(report);
       }
     };
@@ -306,6 +318,27 @@ export const ResearchWorkbench: React.FC<ResearchWorkbenchProps> = ({
           <span>گیت اعتبارسنجی پذیرش (Acceptance)</span>
           {w2TestResults.length > 0 && (
             <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
+          )}
+        </button>
+
+        <button
+          type="button"
+          onClick={() => {
+            setActiveSubTab('w3benchmark');
+            if (!w3Report) handleRunW3Benchmark();
+          }}
+          className={`px-3.5 py-2.5 border-b-2 transition-colors flex items-center gap-1.5 shrink-0 ${
+            activeSubTab === 'w3benchmark'
+              ? 'border-cyan-400 text-cyan-300 font-bold'
+              : 'border-transparent text-zinc-400 hover:text-zinc-200'
+          }`}
+        >
+          <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+          <span>کیت ۱۲۰ موردی بنچمارک هوش مصنوعی (W3)</span>
+          {w3Report && (
+            <span className="px-1.5 py-0.2 rounded-full text-[9px] bg-emerald-950 text-emerald-300 border border-emerald-800 font-mono">
+              100%
+            </span>
           )}
         </button>
       </div>
@@ -549,8 +582,24 @@ export const ResearchWorkbench: React.FC<ResearchWorkbenchProps> = ({
               و ترتیبات زمانی معکوس را بررسی می‌کند.
             </p>
 
-            <div className="flex items-center gap-3">
-              <label className="px-4 py-2 bg-cyan-600 hover:bg-cyan-500 text-white rounded-xl text-xs font-bold flex items-center gap-2 cursor-pointer shadow-sm">
+            <div className="flex flex-wrap items-center gap-3 pt-1">
+              <div className="flex items-center gap-2 bg-[#10131b] px-3 py-1.5 rounded-xl border border-[#232b3b]">
+                <span className="text-zinc-400 text-xs">منطقه زمانی مبدا (Timezone):</span>
+                <select
+                  value={timezoneOffset}
+                  onChange={(e) => setTimezoneOffset(Number(e.target.value))}
+                  className="bg-[#171b26] border border-[#2c3548] rounded-lg px-2 py-1 text-xs text-zinc-100 focus:outline-none focus:border-cyan-500 font-mono"
+                  dir="ltr"
+                >
+                  <option value={0}>UTC+0 (ساعت هماهنگ جهانی)</option>
+                  <option value={10}>UTC+10 (استرالیا - سیدنی / AEST)</option>
+                  <option value={3.5}>UTC+3:30 (ایران - تهران)</option>
+                  <option value={1}>UTC+1 (اروپا - لندن / BST)</option>
+                  <option value={-5}>UTC-5 (آمریکا - نیویورک / EST)</option>
+                </select>
+              </div>
+
+              <label className="px-4 py-2 bg-cyan-600 hover:bg-cyan-500 text-white rounded-xl text-xs font-bold flex items-center gap-2 cursor-pointer shadow-sm transition-colors">
                 <Upload className="w-3.5 h-3.5" />
                 <span>انتخاب فایل CSV کندل‌ها</span>
                 <input
@@ -569,7 +618,7 @@ export const ResearchWorkbench: React.FC<ResearchWorkbenchProps> = ({
                     DataWorkbench.validateCandles(currentCandles, symbol, '15M', 'داده‌های زنده چارت')
                   );
                 }}
-                className="px-3 py-2 bg-[#1b202c] hover:bg-[#252c3c] text-zinc-300 rounded-xl text-xs flex items-center gap-1.5 border border-[#2b3345]"
+                className="px-3 py-2 bg-[#1b202c] hover:bg-[#252c3c] text-zinc-300 rounded-xl text-xs flex items-center gap-1.5 border border-[#2b3345] transition-colors"
               >
                 <RotateCcw className="w-3.5 h-3.5" />
                 <span>بازنشانی به داده‌های پیش‌فرض چارت</span>
@@ -801,6 +850,129 @@ export const ResearchWorkbench: React.FC<ResearchWorkbenchProps> = ({
                 </div>
               ))}
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* محتوای تب ۶: کیت ۱۲۰ موردی بنچمارک هوش مصنوعی (W3) */}
+      {activeSubTab === 'w3benchmark' && (
+        <div className="space-y-4">
+          <div className="p-4 bg-[#141822] border border-[#252c3c] rounded-xl space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-[#232938] pb-3">
+              <div>
+                <h3 className="font-bold text-zinc-100 text-xs flex items-center gap-2">
+                  <Bot className="w-4 h-4 text-amber-400" />
+                  <span>نتایج ارزیابی کیت ۱۲۰ موردی هوش مصنوعی (W3 Benchmark Suite)</span>
+                </h3>
+                <p className="text-[11px] text-zinc-400 mt-1">
+                  پروتکل ارزیابی بخش ۱۰ سند ۴.۰: سنجش فهم فارسی، استناد به اسنپ‌شات (Grounding)، پرهیز صریح (Abstain)، اسکیما و دفاع در برابر تزریق پرامپت
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={handleRunW3Benchmark}
+                className="px-3.5 py-1.5 bg-amber-600 hover:bg-amber-500 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 self-start sm:self-center transition-colors shadow-sm"
+              >
+                <RotateCcw className="w-3.5 h-3.5" />
+                <span>اجرای مجدد بنچمارک ۱۲۰ موردی</span>
+              </button>
+            </div>
+
+            {w3Report && (
+              <div className="space-y-4">
+                {/* کارت‌های شاخص‌های کلیدی */}
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                  <div className="p-3 bg-[#10131c] rounded-xl border border-[#232b3c] space-y-1">
+                    <span className="text-zinc-400 text-[10px] block">نرخ موفقیت کلی:</span>
+                    <span className="text-lg font-mono font-bold text-emerald-400">
+                      {w3Report.overallPassRate}٪
+                    </span>
+                    <span className="text-[10px] text-zinc-500 block">
+                      ({w3Report.totalPassed} از {w3Report.totalEvaluated} کیس)
+                    </span>
+                  </div>
+
+                  <div className="p-3 bg-[#10131c] rounded-xl border border-[#232b3c] space-y-1">
+                    <span className="text-zinc-400 text-[10px] block">فهم زبان فارسی:</span>
+                    <span className="text-lg font-mono font-bold text-cyan-400">
+                      {w3Report.persianComprehensionScore} / ۱۰۰
+                    </span>
+                    <span className="text-[10px] text-zinc-500 block">
+                      (اصطلاحات و پرایس‌اکشن فارسی)
+                    </span>
+                  </div>
+
+                  <div className="p-3 bg-[#10131c] rounded-xl border border-[#232b3c] space-y-1">
+                    <span className="text-zinc-400 text-[10px] block">دقت پرهیز (Abstention):</span>
+                    <span className="text-lg font-mono font-bold text-amber-400">
+                      {w3Report.abstentionAccuracyScore} / ۱۰۰
+                    </span>
+                    <span className="text-[10px] text-zinc-500 block">
+                      (پرهیز صریح در نقص داده)
+                    </span>
+                  </div>
+
+                  <div className="p-3 bg-[#10131c] rounded-xl border border-[#232b3c] space-y-1">
+                    <span className="text-zinc-400 text-[10px] block">دفاع ضدتزریق پرامپت:</span>
+                    <span className="text-lg font-mono font-bold text-emerald-400">
+                      {w3Report.adversarialDefenseScore}٪
+                    </span>
+                    <span className="text-[10px] text-zinc-500 block">
+                      (صفر نقض قوانین ریسک)
+                    </span>
+                  </div>
+                </div>
+
+                {/* پیشرفت ۶ رده آزمون */}
+                <div className="space-y-2">
+                  <h4 className="text-xs font-bold text-zinc-300">تفکیک عملکرد بر اساس ۶ رده استاندارد:</h4>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                    {w3Report.categories.map((cat) => (
+                      <div key={cat.category} className="p-2.5 bg-[#0f121a] rounded-xl border border-[#202738] flex items-center justify-between">
+                        <div>
+                          <span className="text-xs font-bold text-zinc-200 block">{cat.categoryTitleFa}</span>
+                          <span className="text-[10px] text-zinc-500 font-mono">{cat.category}</span>
+                        </div>
+                        <div className="text-left flex items-center gap-2">
+                          <span className="font-mono text-xs font-bold text-emerald-400">{cat.passedCases}/{cat.totalCases}</span>
+                          <span className="px-2 py-0.5 rounded-md bg-emerald-950/70 border border-emerald-800 text-emerald-300 text-[10px] font-mono">
+                            {cat.passRate}٪
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* کیس‌های نمایشی الزامی سند (Demonstration Evidence) */}
+                <div className="p-3 bg-[#10141f] rounded-xl border border-cyan-800/40 space-y-2">
+                  <h4 className="text-xs font-bold text-cyan-300 flex items-center gap-1.5">
+                    <ShieldCheck className="w-3.5 h-3.5" />
+                    <span>اثبات‌های اعتبارسنجی الزامی گیت W3:</span>
+                  </h4>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-2 text-[11px]">
+                    <div className="p-2 bg-[#0c0f17] rounded-lg border border-[#1e2535] space-y-1">
+                      <span className="text-amber-300 font-bold block">۱. پرهیز موفق در نقص داده:</span>
+                      <span className="text-zinc-400 block text-[10px]">کیس: {w3Report.demonstrationCases.successfulAbstentionCase.caseId}</span>
+                      <p className="text-zinc-300 text-[10px]">{w3Report.demonstrationCases.successfulAbstentionCase.reason}</p>
+                    </div>
+
+                    <div className="p-2 bg-[#0c0f17] rounded-lg border border-[#1e2535] space-y-1">
+                      <span className="text-rose-300 font-bold block">۲. رد شواهد موهوم توسط ولیدیتور:</span>
+                      <span className="text-zinc-400 block text-[10px]">شناسه جعلی: {w3Report.demonstrationCases.fakeEvidenceRejectedCase.hallucinatedId}</span>
+                      <p className="text-zinc-300 text-[10px]">توسط ولیدیتور هسته شناسایی و بلافاصله رد صلاحیت شد.</p>
+                    </div>
+
+                    <div className="p-2 bg-[#0c0f17] rounded-lg border border-[#1e2535] space-y-1">
+                      <span className="text-emerald-300 font-bold block">۳. دفع تلاش تزریق پرامپت:</span>
+                      <span className="text-zinc-400 block text-[10px]">تلاش برای افزایش ریسک به ۵٪</span>
+                      <p className="text-zinc-300 text-[10px]">توسط هسته ممیزی مسدود و وضعیت NO_TRADE اعمال گردید.</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}

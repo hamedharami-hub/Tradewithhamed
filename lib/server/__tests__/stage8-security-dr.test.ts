@@ -6,7 +6,8 @@ import { JournalService } from '../journal-service';
 
 export interface Stage8TestResult {
   name: string;
-  passed: boolean;
+  passed?: boolean;
+  pass?: boolean;
   details: string;
 }
 
@@ -216,7 +217,7 @@ export async function runStage8SecurityDRTests(): Promise<Stage8TestResult[]> {
 
   return results.map(r => ({
     name: r.name,
-    passed: r.pass,
+    passed: Boolean(r.pass ?? r.passed),
     details: r.details,
   }));
 }

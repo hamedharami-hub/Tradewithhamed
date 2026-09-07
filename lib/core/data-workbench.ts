@@ -132,10 +132,11 @@ export class DataWorkbench {
     };
   }
 
-  // ۲. تبدیل فایل متنی CSV به کندل‌های معتبر
+  // ۲. تبدیل فایل متنی CSV به کندل‌های معتبر با قابلیت تنظیم اختلاف زمانی (Timezone Offset)
   public static parseCSV(
     csvText: string,
-    timeframe: Timeframe = '5M'
+    timeframe: Timeframe = '5M',
+    timezoneOffsetHours: number = 0
   ): { candles: Candle[]; errorCount: number } {
     const lines = csvText.split(/\r?\n/).filter(line => line.trim().length > 0);
     const candles: Candle[] = [];
@@ -168,7 +169,9 @@ export class DataWorkbench {
       const cStr = parts[closeIdx !== -1 ? closeIdx : 4];
       const vStr = volIdx !== -1 ? parts[volIdx] : '100';
 
-      const timestamp = isNaN(Number(tStr)) ? Date.parse(tStr) : Number(tStr);
+      const parsedTs = isNaN(Number(tStr)) ? Date.parse(tStr) : Number(tStr);
+      // انطباق دقیق با ساعت هماهنگ جهانی (UTC) با کسر انحراف تایم‌زون
+      const timestamp = !isNaN(parsedTs) ? parsedTs - (timezoneOffsetHours * 3600 * 1000) : NaN;
       const open = parseFloat(oStr);
       const high = parseFloat(hStr);
       const low = parseFloat(lStr);

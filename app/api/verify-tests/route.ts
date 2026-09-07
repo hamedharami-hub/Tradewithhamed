@@ -11,6 +11,7 @@ import { runW2AcceptanceSuite } from '@/lib/core/__tests__/w2-acceptance.test';
 import { runW3AcceptanceSuite } from '@/lib/core/__tests__/w3-acceptance.test';
 import { runW4AcceptanceSuite } from '@/lib/core/__tests__/w4-acceptance.test';
 import { runW5AcceptanceSuite } from '@/lib/core/__tests__/w5-acceptance.test';
+import { runW3BenchmarkEvaluationSuite } from '@/lib/core/__tests__/w3-benchmark.test';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -49,6 +50,14 @@ export async function GET() {
       details: t.details,
     }));
 
+    // کیت استاندارد ۱۲۰ موردی بنچمارک هوش مصنوعی نسخه ۴.۰
+    const w3Bench = runW3BenchmarkEvaluationSuite();
+    const w3BenchResults = w3Bench.categories.map(c => ({
+      name: `[W3 Benchmark v4.0] ${c.categoryTitleFa} (${c.passedCases}/${c.totalCases})`,
+      passed: c.passRate >= 90,
+      details: `تعداد ${c.passedCases} از ${c.totalCases} مورد پاس شدند (دقت: ${c.passRate}٪).`,
+    }));
+
     const combined = [
       ...coreResults,
       ...ctraderResults,
@@ -60,6 +69,7 @@ export async function GET() {
       ...stage9Results,
       ...w2Results,
       ...w3Results,
+      ...w3BenchResults,
       ...w4Results,
       ...w5Results,
     ];

@@ -1,12 +1,13 @@
 // components/trading/offline-ai-manager-modal.tsx
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   PLAN_V4_MODELS,
   BrowserAIModelRecord,
   BrowserOfflineAIManager,
   WebGPUCapabilityReport,
+  ProgressReportPayload,
 } from '@/lib/ai/browser-offline-ai';
 import {
   Bot,
@@ -27,6 +28,7 @@ import {
   Play,
   Square,
   AlertCircle,
+  StopCircle,
 } from 'lucide-react';
 
 interface OfflineAIManagerModalProps {
@@ -48,24 +50,29 @@ export const OfflineAIManagerModal: React.FC<OfflineAIManagerModalProps> = ({
 }) => {
   const [downloadedMap, setDownloadedMap] = useState<Record<string, boolean>>({});
   const [downloadingModelId, setDownloadingModelId] = useState<string | null>(null);
-  const [downloadProgress, setDownloadProgress] = useState<{
-    percent: number;
-    downloadedMB: number;
-    totalMB: number;
-    speedMBs: number;
-  }>({ percent: 0, downloadedMB: 0, totalMB: 0, speedMBs: 0 });
+  const [downloadProgress, setDownloadProgress] = useState<ProgressReportPayload>({
+    percent: 0,
+    downloadedMB: 0,
+    totalMB: 0,
+    speedMBs: 0,
+    text: '',
+  });
 
   const [residentModelId, setResidentModelId] = useState<string | null>(null);
   const [hardwareReport, setHardwareReport] = useState<WebGPUCapabilityReport | null>(null);
-  const [testResult, setTestResult] = useState<{ modelId: string; text: string; latencyMs: number } | null>(null);
-  const [customPrompt, setCustomPrompt] = useState('آیا بر اساس سوییپ نقدینگی و FVG در این تایم‌فریم، ورود لیمیت امن است؟');
+  const [testResult, setTestResult] = useState<{
+    modelId: string;
+    text: string;
+    latencyMs: number;
+    ttftMs?: number;
+    tokensPerSec?: number;
+  } | null>(null);
+  const [customPrompt, setCustomPrompt] = useState('وضعیت سوییپ نقدینگی و FVG در این تایم‌فریم را تحلیل کن و پیشنهاد ورود بده.');
   const [isTesting, setIsTesting] = useState(false);
   const [showGuide, setShowGuide] = useState(false);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
 
-  const abortControllerRef = useRef<AbortController | null>(null);
-
-  // بارگذاری وضعیت اولیه، سنجش سخت‌افزار و حافظه
+  // به‌روزرسانی وضعیت و سنجش سخت‌افزار
   const refreshStatus = async () => {
     const report = await BrowserOfflineAIManager.probeHardware();
     const resident = BrowserOfflineAIManager.getResidentModelId();
@@ -105,58 +112,54 @@ export const OfflineAIManagerModal: React.FC<OfflineAIManagerModalProps> = ({
 
   if (!isOpen) return null;
 
-  // شروع دانلود با رضایت و تایید کاربر
+  // شروع دانلود واقعی و بارگذاری در WebGPU با تایید کاربر
   const handleStartDownload = async (model: BrowserAIModelRecord) => {
     if (model.isBuiltIn) {
       onSelectModel(model.id);
-      setActionMessage(`مدل قطعی ${model.name} فعال شد.`);
+      setActionMessage(`موتور قطعی ${model.name} فعال شد.`);
       return;
     }
 
     const consent = confirm(
-      `درخواست تایید دانلود:\n` +
+      `درخواست تایید دانلود فایل‌های مدل:\n` +
       `مدل: ${model.name}\n` +
-      `حجم فایل: حدود ${model.downloadSizeMB} مگابایت\n` +
-      `محل ذخیره: حافظه CacheStorage مرورگر شما\n\n` +
-      `آیا با شروع دانلود این مدل موافقید؟`
+      `حجم تقریبی فایل‌ها: حدود ${model.downloadSizeMB} مگابایت\n` +
+      `محل ذخیره: CacheStorage مرورگر (کاملاً محلی بدون دخالت سرور)\n\n` +
+      `آیا با شروع دانلود و بارگذاری این مدل در حافظه WebGPU موافقید؟`
     );
     if (!consent) return;
 
     try {
-      abortControllerRef.current = new AbortController();
       setDownloadingModelId(model.id);
-      setDownloadProgress({ percent: 0, downloadedMB: 0, totalMB: model.downloadSizeMB, speedMBs: 0 });
+      setDownloadProgress({
+        percent: 0,
+        downloadedMB: 0,
+        totalMB: model.downloadSizeMB,
+        speedMBs: 0,
+        text: 'در حال آماده‌سازی و اتصال به مخزن مدل...',
+      });
 
-      await BrowserOfflineAIManager.downloadModel(
-        model.id,
-        (percent, downloadedMB, totalMB, speedMBs) => {
-          setDownloadProgress({ percent, downloadedMB, totalMB, speedMBs });
-        },
-        abortControllerRef.current.signal
-      );
+      const loadRes = await BrowserOfflineAIManager.loadModelToMemory(model.id, (prog) => {
+        setDownloadProgress(prog);
+      });
 
       await refreshStatus();
-      setActionMessage(`مدل ${model.name} با موفقیت در مرورگر دانلود شد.`);
+      if (loadRes.success) {
+        onSelectModel(model.id);
+        setActionMessage(loadRes.messageFa);
+      } else {
+        alert(loadRes.messageFa);
+      }
     } catch (err) {
-      alert(`فرآیند دانلود متوقف شد: ${(err as Error).message}`);
+      alert(`خطا در فرآیند بارگذاری: ${(err as Error).message}`);
     } finally {
       setDownloadingModelId(null);
-      abortControllerRef.current = null;
-    }
-  };
-
-  // لغو دانلود در حال اجرا
-  const handleCancelDownload = () => {
-    if (abortControllerRef.current) {
-      abortControllerRef.current.abort();
-      setDownloadingModelId(null);
-      setActionMessage('دانلود لغو شد.');
     }
   };
 
   // بارگذاری مدل در رم گرافیک
   const handleLoadModel = async (modelId: string) => {
-    setActionMessage('در حال بارگذاری مدل در حافظه WebGPU...');
+    setActionMessage('در حال بارگذاری شیدرهای WebGPU و خط لوله استنتاج...');
     const result = await BrowserOfflineAIManager.loadModelToMemory(modelId);
     await refreshStatus();
     if (result.success) {
@@ -174,30 +177,44 @@ export const OfflineAIManagerModal: React.FC<OfflineAIManagerModalProps> = ({
     setActionMessage(result.messageFa);
   };
 
-  // حذف مدل از حافظه محلی
+  // حذف فایل‌های مدل از CacheStorage
   const handleDeleteModel = async (modelId: string) => {
-    if (confirm('آیا مطمئن هستید می‌خواهید فایل‌های این مدل را از حافظه مرورگر پاک کنید؟')) {
+    if (confirm('آیا مطمئن هستید می‌خواهید فایل‌های کش این مدل را از مرورگر پاک کنید؟')) {
       await BrowserOfflineAIManager.deleteModel(modelId);
       await refreshStatus();
       if (selectedModelId === modelId) {
         onSelectModel('s0-deterministic');
       }
-      setActionMessage('مدل با موفقیت از حافظه مرورگر پاک شد.');
+      setActionMessage('فایل‌های مدل با موفقیت از حافظه کش مرورگر پاک شدند.');
     }
   };
 
-  // اجرای آزمون استنتاج محلی بدون اینترنت
+  // اجرای استنتاج زنده با استریم توکن‌ها
   const handleRunTest = async (modelId: string) => {
     setIsTesting(true);
-    setTestResult(null);
+    setTestResult({ modelId, text: '', latencyMs: 0 });
     try {
       const output = await BrowserOfflineAIManager.runOfflineInferenceTest(
         modelId,
         customPrompt,
         symbol,
-        currentPrice
+        currentPrice,
+        (partialText) => {
+          setTestResult((prev) =>
+            prev
+              ? { ...prev, text: partialText }
+              : { modelId, text: partialText, latencyMs: 0 }
+          );
+        }
       );
-      setTestResult({ modelId, text: output.text, latencyMs: output.latencyMs });
+      setTestResult({
+        modelId,
+        text: output.text,
+        latencyMs: output.latencyMs,
+        ttftMs: output.ttftMs,
+        tokensPerSec: output.tokensPerSec,
+      });
+      await refreshStatus();
     } catch (err) {
       setTestResult({
         modelId,
@@ -207,6 +224,12 @@ export const OfflineAIManagerModal: React.FC<OfflineAIManagerModalProps> = ({
     } finally {
       setIsTesting(false);
     }
+  };
+
+  // توقف فوری تولید پاسخ
+  const handleStopTest = () => {
+    BrowserOfflineAIManager.stopInference();
+    setIsTesting(false);
   };
 
   return (
@@ -227,11 +250,11 @@ export const OfflineAIManagerModal: React.FC<OfflineAIManagerModalProps> = ({
                   مرکز مدل‌های هوش مصنوعی داخل مرورگر (Browser AI v4.0)
                 </h2>
                 <span className="px-2 py-0.5 rounded-full text-[10px] bg-emerald-950/80 border border-emerald-800 text-emerald-300 font-mono">
-                  WebLLM / WebGPU
+                  WebLLM / WebGPU Worker
                 </span>
               </div>
               <p className="text-xs text-zinc-400 mt-0.5">
-                اجرای ۱۰۰٪ آفلاین مدل داخل مرورگر بدون نیاز به Ollama، پایتون یا سرور محلی
+                اجرای ۱۰۰٪ مستقل در وب‌ورکر مرورگر بدون نیاز به سرور پایتون، Ollama یا کلود
               </p>
             </div>
           </div>
@@ -314,7 +337,7 @@ export const OfflineAIManagerModal: React.FC<OfflineAIManagerModalProps> = ({
                 </div>
                 <div className="bg-[#12151e] p-2.5 rounded-xl border border-[#212735]">
                   <span className="text-zinc-400 block text-[10px]">ورکر پس‌زمینه (Dedicated Worker):</span>
-                  <span className="text-emerald-400 font-bold">فعال و آماده</span>
+                  <span className="text-emerald-400 font-bold">آماده در ترد مجزا</span>
                 </div>
               </div>
 
@@ -374,7 +397,7 @@ export const OfflineAIManagerModal: React.FC<OfflineAIManagerModalProps> = ({
             </h3>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              {PLAN_V4_MODELS.map(model => {
+              {PLAN_V4_MODELS.map((model) => {
                 const isSelected = selectedModelId === model.id;
                 const isDownloaded = downloadedMap[model.id] || model.isBuiltIn;
                 const isResident = residentModelId === model.id;
@@ -417,7 +440,7 @@ export const OfflineAIManagerModal: React.FC<OfflineAIManagerModalProps> = ({
                           {isResident && (
                             <span className="px-2 py-0.5 rounded-full text-[9px] font-bold bg-cyan-950 text-cyan-300 border border-cyan-800 flex items-center gap-1 animate-pulse">
                               <Zap className="w-2.5 h-2.5" />
-                              <span>مقیم در رم گرافیک</span>
+                              <span>مقیم در VRAM</span>
                             </span>
                           )}
                           {isVerified && (
@@ -453,11 +476,13 @@ export const OfflineAIManagerModal: React.FC<OfflineAIManagerModalProps> = ({
                         </div>
                       </div>
 
-                      {/* نوار پیشرفت در حین دانلود */}
+                      {/* نوار پیشرفت در حین دانلود و کامپایل شیدرهای WebGPU */}
                       {isCurrentlyDownloading && (
                         <div className="mt-3 p-3 bg-[#111622] rounded-xl border border-cyan-800/60 space-y-2">
                           <div className="flex items-center justify-between text-[11px] text-cyan-300">
-                            <span>در حال دریافت بسته‌های باینری...</span>
+                            <span className="truncate max-w-[200px]" title={downloadProgress.text}>
+                              {downloadProgress.text || 'در حال آماده‌سازی خط لوله WebLLM...'}
+                            </span>
                             <span className="font-mono">{downloadProgress.percent}٪</span>
                           </div>
                           <div className="w-full bg-zinc-800 rounded-full h-2 overflow-hidden">
@@ -472,13 +497,6 @@ export const OfflineAIManagerModal: React.FC<OfflineAIManagerModalProps> = ({
                             </span>
                             <span>سرعت: {downloadProgress.speedMBs} MB/s</span>
                           </div>
-                          <button
-                            type="button"
-                            onClick={handleCancelDownload}
-                            className="w-full py-1 text-center text-[10px] text-rose-300 hover:text-rose-100 bg-rose-950/60 hover:bg-rose-900/80 rounded-lg border border-rose-800 transition-colors"
-                          >
-                            لغو دانلود
-                          </button>
                         </div>
                       )}
                     </div>
@@ -528,7 +546,7 @@ export const OfflineAIManagerModal: React.FC<OfflineAIManagerModalProps> = ({
                             onClick={() => handleRunTest(model.id)}
                             disabled={isTesting}
                             className="p-1.5 rounded-xl bg-[#202736] hover:bg-[#2c364b] text-zinc-300 border border-[#2f394f] text-[11px]"
-                            title="آزمون پاسخ آفلاین با پرسش دلخواه"
+                            title="آزمون پاسخ آفلاین با استریم توکن"
                           >
                             تست آفلاین
                           </button>
@@ -553,22 +571,34 @@ export const OfflineAIManagerModal: React.FC<OfflineAIManagerModalProps> = ({
             </div>
           </div>
 
-          {/* بخش آزمون استنتاج آفلاین با پرسش دلخواه حامد */}
+          {/* بخش آزمون استنتاج آفلاین با استریم زنده توکن‌ها و سنجش زمان */}
           <div className="bg-[#171b25] border border-[#283142] rounded-2xl p-4 space-y-3">
-            <h3 className="font-bold text-zinc-200 flex items-center gap-2 text-xs">
-              <Sparkles className="w-4 h-4 text-amber-400" />
-              <span>آزمون اعتبار آفلاین: استنتاج با پرسش جدید بدون اتصال به اینترنت</span>
-            </h3>
+            <div className="flex items-center justify-between">
+              <h3 className="font-bold text-zinc-200 flex items-center gap-2 text-xs">
+                <Sparkles className="w-4 h-4 text-amber-400" />
+                <span>آزمون اعتبار آفلاین: استنتاج عصبی زنده (Real In-Browser Generation)</span>
+              </h3>
+              {isTesting && (
+                <button
+                  type="button"
+                  onClick={handleStopTest}
+                  className="px-2.5 py-1 bg-rose-950 hover:bg-rose-900 text-rose-300 border border-rose-800 rounded-lg text-[10px] font-bold flex items-center gap-1 transition-colors"
+                >
+                  <StopCircle className="w-3 h-3" />
+                  <span>توقف تولید (Stop)</span>
+                </button>
+              )}
+            </div>
 
             <div className="space-y-2">
               <label className="text-zinc-400 block text-[11px]">
-                پرسش اختصاصی برای آزمایش استنتاج مدل فعال ({selectedModelId}):
+                پرسش تکنیکال برای آزمایش استنتاج مدل فعال ({selectedModelId}):
               </label>
               <div className="flex gap-2">
                 <input
                   type="text"
                   value={customPrompt}
-                  onChange={e => setCustomPrompt(e.target.value)}
+                  onChange={(e) => setCustomPrompt(e.target.value)}
                   placeholder="مثال: وضعیت FVG و سوییپ آسیا در این کندل چگونه است؟"
                   className="flex-1 bg-[#10131b] border border-[#262e3e] rounded-xl px-3 py-2 text-xs text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-cyan-500 font-sans"
                   dir="rtl"
@@ -577,27 +607,33 @@ export const OfflineAIManagerModal: React.FC<OfflineAIManagerModalProps> = ({
                   type="button"
                   onClick={() => handleRunTest(selectedModelId)}
                   disabled={isTesting}
-                  className="px-4 py-2 bg-amber-600 hover:bg-amber-500 text-white font-bold rounded-xl text-xs transition-colors flex items-center gap-1.5 disabled:opacity-50"
+                  className="px-4 py-2 bg-amber-600 hover:bg-amber-500 text-white font-bold rounded-xl text-xs transition-colors flex items-center gap-1.5 disabled:opacity-50 shadow-md"
                 >
                   {isTesting ? <RotateCcw className="w-3.5 h-3.5 animate-spin" /> : <Play className="w-3.5 h-3.5" />}
-                  <span>{isTesting ? 'در حال پردازش...' : 'اجرای تست آفلاین'}</span>
+                  <span>{isTesting ? 'در حال استنتاج...' : 'اجرای تست آفلاین'}</span>
                 </button>
               </div>
             </div>
 
             {testResult && (
               <div className="mt-3 p-3.5 bg-[#10131c] rounded-xl border border-[#232b3b] space-y-2">
-                <div className="flex items-center justify-between text-[11px] border-b border-[#1e2535] pb-2">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 text-[11px] border-b border-[#1e2535] pb-2">
                   <span className="text-emerald-400 font-bold flex items-center gap-1.5">
                     <CheckCircle2 className="w-3.5 h-3.5" />
                     <span>پاسخ استنتاج محلی مدل {testResult.modelId}:</span>
                   </span>
-                  <span className="text-zinc-400 font-mono text-[10px]">
-                    زمان استنتاج: {testResult.latencyMs} میلی‌ثانیه (آفلاین)
-                  </span>
+                  <div className="flex items-center gap-3 text-zinc-400 font-mono text-[10px]">
+                    {testResult.ttftMs !== undefined && (
+                      <span>TTFT: {testResult.ttftMs}ms</span>
+                    )}
+                    {testResult.tokensPerSec !== undefined && testResult.tokensPerSec > 0 && (
+                      <span className="text-cyan-400 font-bold">{testResult.tokensPerSec} tok/s</span>
+                    )}
+                    <span>زمان کل: {testResult.latencyMs}ms</span>
+                  </div>
                 </div>
                 <pre className="text-[11px] text-zinc-200 font-sans whitespace-pre-wrap leading-relaxed">
-                  {testResult.text}
+                  {testResult.text || (isTesting ? 'در حال تولید اولین توکن‌ها...' : '')}
                 </pre>
               </div>
             )}
