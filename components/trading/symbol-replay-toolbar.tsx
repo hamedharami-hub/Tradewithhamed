@@ -3,6 +3,7 @@
 
 import React from 'react';
 import { SymbolId } from '@/lib/contracts/market';
+import { TradingStyleType } from '@/lib/contracts/regimes';
 import {
   Coins,
   DollarSign,
@@ -36,6 +37,8 @@ interface SymbolReplayToolbarProps {
   onOpenMultiAgentModal?: () => void;
   activeModelNameFa?: string;
   activeTradingStyleBadgeFa?: string;
+  activeStyleFilter?: TradingStyleType | 'ALL';
+  onChangeStyleFilter?: (filter: TradingStyleType | 'ALL') => void;
 }
 
 export const SymbolReplayToolbar: React.FC<SymbolReplayToolbarProps> = React.memo(({
@@ -57,6 +60,8 @@ export const SymbolReplayToolbar: React.FC<SymbolReplayToolbarProps> = React.mem
   onOpenMultiAgentModal,
   activeModelNameFa = 'S0 آفلاین',
   activeTradingStyleBadgeFa = 'سبک S0',
+  activeStyleFilter = 'ALL',
+  onChangeStyleFilter,
 }) => {
   const speeds = [
     { label: '1x', ms: 1000 },
@@ -105,6 +110,34 @@ export const SymbolReplayToolbar: React.FC<SymbolReplayToolbarProps> = React.mem
           <span dir="ltr" className="tracking-wide">EURUSD (Euro)</span>
         </button>
       </div>
+
+      {/* انتخاب فیلتر سبک معاملاتی ۴ گانه */}
+      {onChangeStyleFilter && (
+        <div className="flex items-center gap-1 bg-[#12151b] border border-[#272d3b] rounded-xl p-1">
+          <Layers className="w-3.5 h-3.5 text-cyan-400 mr-1 ml-1" />
+          <span className="text-zinc-400 text-[11px] ml-1">سبک:</span>
+          {[
+            { id: 'ALL', label: 'همه' },
+            { id: 'SCALP_M1_M5', label: 'اسکلپ' },
+            { id: 'SMC_INTRADAY', label: 'SMC' },
+            { id: 'SWING_MACRO', label: 'سوئینگ' },
+            { id: 'MEAN_REVERSION', label: 'رنج' },
+          ].map(st => (
+            <button
+              key={st.id}
+              type="button"
+              onClick={() => onChangeStyleFilter(st.id as TradingStyleType | 'ALL')}
+              className={`px-2 py-1 rounded-lg text-[11px] transition-all ${
+                activeStyleFilter === st.id
+                  ? 'bg-cyan-600 text-white font-bold shadow-sm'
+                  : 'text-zinc-400 hover:text-zinc-200 hover:bg-[#1b212c]'
+              }`}
+            >
+              {st.label}
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* نوار کنترل نشست معاملاتی و زمان سپری‌شده */}
       <div className="flex items-center gap-2">

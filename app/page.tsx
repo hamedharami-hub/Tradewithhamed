@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { SymbolId } from '@/lib/contracts/market';
 import { StrategyCandidate } from '@/lib/contracts/strategy';
+import { TradingStyleType } from '@/lib/contracts/regimes';
 import { RiskPreviewResult } from '@/lib/contracts/risk';
 import { TransactionalOutboxRecord } from '@/lib/contracts/execution';
 import { SimulatedBroker } from '@/lib/core/simulated-broker';
@@ -269,6 +270,13 @@ export default function TradingLabPage() {
     });
   };
 
+  // تغییر فیلتر سبک معاملاتی ۴ گانه
+  const handleStyleFilterChange = (filter: TradingStyleType | 'ALL') => {
+    replayEngine.setStyleFilter(filter);
+    const snap = replayEngine.getSnapshot();
+    setReplayState({ ...snap });
+  };
+
   // بازیابی وضعیت از فایل JSON
   const handleStateRestored = (imported: AppExportPayloadV1['state']) => {
     setSymbol(imported.symbol);
@@ -370,6 +378,7 @@ export default function TradingLabPage() {
         onOpenAIModal={() => setIsAIModalOpen(true)}
         currentEnvironment={currentEnvironment}
         onChangeEnvironment={setCurrentEnvironment}
+        marketRegime={replayState.marketRegime}
       />
 
       <div className={`w-full mx-auto p-3 sm:p-4 md:p-5 space-y-4 transition-all duration-300 ${
@@ -427,6 +436,8 @@ export default function TradingLabPage() {
               onOpenMultiAgentModal={() => setIsMultiAgentModalOpen(true)}
               activeModelNameFa={activeProfile.nameFa}
               activeTradingStyleBadgeFa={activeTradingStyleBadgeFa}
+              activeStyleFilter={replayState.activeStyleFilter}
+              onChangeStyleFilter={handleStyleFilterChange}
             />
 
             {/* چیدمان نمودار و کارت تحلیل ستاپ - دو ستونه از عرض md به بالا برای تاشوی باز و لپ‌تاپ */}

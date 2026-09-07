@@ -13,9 +13,17 @@ import {
   Globe,
   Radio,
   FileSpreadsheet,
+  Compass,
+  TrendingUp,
+  TrendingDown,
+  Waves,
+  Flame,
+  Minimize2,
 } from 'lucide-react';
 import { PWAInstallButton } from './pwa-install-button';
 import { SystemHealthBadge } from './system-health-badge';
+
+import { MarketRegimeAnalysis } from '@/lib/contracts/regimes';
 
 export type TradingEnvironment =
   | 'PAPER_REPLAY'
@@ -36,6 +44,7 @@ interface HeaderProps {
   onOpenAIModal?: () => void;
   currentEnvironment?: TradingEnvironment;
   onChangeEnvironment?: (env: TradingEnvironment) => void;
+  marketRegime?: MarketRegimeAnalysis;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -51,6 +60,7 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenAIModal,
   currentEnvironment = 'BROKER_DEMO',
   onChangeEnvironment,
+  marketRegime,
 }) => {
   const [showLiveBlockedModal, setShowLiveBlockedModal] = useState(false);
 
@@ -144,6 +154,32 @@ export const Header: React.FC<HeaderProps> = ({
               <span className="hidden sm:inline">مرکز مدل:</span>
               <span className="font-bold font-mono text-[10px]">{activeModelName || 'Qwen/S0'}</span>
             </button>
+          )}
+
+          {/* نشانگر هوشمند رژیم بازار (Market Regime Badge) */}
+          {marketRegime && (
+            <div
+              className={`px-2.5 py-1 rounded-xl border flex items-center gap-1.5 transition-all text-[11px] cursor-help ${
+                marketRegime.regime === 'TRENDING_BULLISH'
+                  ? 'bg-emerald-950/70 border-emerald-500/60 text-emerald-300'
+                  : marketRegime.regime === 'TRENDING_BEARISH'
+                  ? 'bg-rose-950/70 border-rose-500/60 text-rose-300'
+                  : marketRegime.regime === 'CHOPPY_RANGING'
+                  ? 'bg-amber-950/70 border-amber-500/60 text-amber-300'
+                  : marketRegime.regime === 'HIGH_VOL_NEWS'
+                  ? 'bg-purple-950/80 border-purple-500 text-purple-200 animate-pulse'
+                  : 'bg-sky-950/70 border-sky-500/60 text-sky-300'
+              }`}
+              title={`${marketRegime.headlineFa}\n${marketRegime.summaryFa}\nسبک‌های پیشنهادی: ${marketRegime.recommendedStyles.join(', ')}`}
+            >
+              {marketRegime.regime === 'TRENDING_BULLISH' && <TrendingUp className="w-3.5 h-3.5 text-emerald-400" />}
+              {marketRegime.regime === 'TRENDING_BEARISH' && <TrendingDown className="w-3.5 h-3.5 text-rose-400" />}
+              {marketRegime.regime === 'CHOPPY_RANGING' && <Waves className="w-3.5 h-3.5 text-amber-400" />}
+              {marketRegime.regime === 'HIGH_VOL_NEWS' && <Flame className="w-3.5 h-3.5 text-purple-400" />}
+              {marketRegime.regime === 'COMPRESSION' && <Minimize2 className="w-3.5 h-3.5 text-sky-400" />}
+              <span className="font-bold">{marketRegime.headlineFa}</span>
+              <span className="font-mono text-[10px] opacity-80">({marketRegime.confidence}%)</span>
+            </div>
           )}
 
           {/* دکمه نصب PWA */}

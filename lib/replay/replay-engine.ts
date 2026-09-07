@@ -1,8 +1,9 @@
 import { Candle, SymbolId } from '../contracts/market';
 import { StrategyCandidate } from '../contracts/strategy';
+import { MarketRegimeAnalysis, TradingStyleType } from '../contracts/regimes';
 import { GOLD_CANDLES_FIXTURE_5M } from './fixtures/gold-candles';
 import { EURUSD_CANDLES_FIXTURE_5M } from './fixtures/eurusd-candles';
-import { evaluateS0Strategy } from '../core/s0-engine';
+import { MultiStyleEngine } from '../core/multi-style-engine';
 import { SimulatedBroker } from '../core/simulated-broker';
 
 export interface ReplayState {
@@ -13,6 +14,8 @@ export interface ReplayState {
   speed: number;
   visibleCandles: Candle[];
   activeCandidate: StrategyCandidate | null;
+  marketRegime?: MarketRegimeAnalysis;
+  activeStyleFilter?: TradingStyleType | 'ALL';
 }
 
 export class ReplayEngine {
@@ -22,6 +25,7 @@ export class ReplayEngine {
   private isPlaying = false;
   private speed = 1000;
   private broker: SimulatedBroker;
+  private activeStyleFilter: TradingStyleType | 'ALL' = 'ALL';
 
   constructor(symbol: SymbolId, broker: SimulatedBroker) {
     this.symbol = symbol;
@@ -35,9 +39,17 @@ export class ReplayEngine {
     this.currentStepIndex = 14;
   }
 
+  public setStyleFilter(filter: TradingStyleType | 'ALL'): void {
+    this.activeStyleFilter = filter;
+  }
+
   public getSnapshot(): ReplayState {
     const visibleCandles = this.allCandles.slice(0, this.currentStepIndex + 1);
-    const candidate = evaluateS0Strategy(this.symbol, visibleCandles, []);
+    const evaluation = MultiStyleEngine.evaluate(
+      visibleCandles,
+      this.symbol,
+      this.activeStyleFilter
+    );
 
     return {
       symbol: this.symbol,
@@ -46,7 +58,9 @@ export class ReplayEngine {
       isPlaying: this.isPlaying,
       speed: this.speed,
       visibleCandles,
-      activeCandidate: candidate,
+      activeCandidate: evaluation.candidate,
+      marketRegime: evaluation.regime,
+      activeStyleFilter: this.activeStyleFilter,
     };
   }
 

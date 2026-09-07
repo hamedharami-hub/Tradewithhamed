@@ -63,11 +63,16 @@ export const SetupAnalysisCard: React.FC<SetupAnalysisCardProps> = React.memo(({
             <h2 className="text-sm font-bold text-zinc-100">
               ستاپ نقدینگی و تحلیل استراتژی
             </h2>
-            {multiAgentResult && (
+            {candidate?.style ? (
+              <span className="text-[10px] text-cyan-400 font-medium">
+                سبک: {candidate.style === 'SCALP_M1_M5' ? 'اسکلپ سریع M1/M5' : candidate.style === 'SWING_MACRO' ? 'سوئینگ کلان H1/H4' : candidate.style === 'MEAN_REVERSION' ? 'بازگشت به میانگین' : 'اسمارت‌مانی S0'}
+                {candidate.regimeScore ? ` (انطباق رژیم: ${candidate.regimeScore}٪)` : ''}
+              </span>
+            ) : multiAgentResult ? (
               <span className="text-[10px] text-cyan-400 font-medium">
                 سبک: {multiAgentResult.tradingStyleInfo.nameFa}
               </span>
-            )}
+            ) : null}
           </div>
         </div>
         <span
