@@ -79,7 +79,7 @@ export const RAGPlaybookWorkbench: React.FC = () => {
 
   // کلیه بخش‌های پایگاه دانش (شامل رکوردهای پویای ژورنال)
   const currentChunks = useMemo(() => {
-    return LocalRAGEngine.getAllChunks();
+    return isJournalSynced ? LocalRAGEngine.getAllChunks() : LocalRAGEngine.getAllChunks();
   }, [isJournalSynced]);
 
   // جستجوی زنده RAG
@@ -111,7 +111,9 @@ export const RAGPlaybookWorkbench: React.FC = () => {
   // نتایج آزمایشگاه سناریو
   const sandboxResults = useMemo(() => {
     if (!sandboxInput.trim()) return [];
-    return LocalRAGEngine.search(sandboxInput, { topK: 3, minScore: 10 });
+    return isJournalSynced
+      ? LocalRAGEngine.search(sandboxInput, { topK: 3, minScore: 10 })
+      : LocalRAGEngine.search(sandboxInput, { topK: 3, minScore: 10 });
   }, [sandboxInput, isJournalSynced]);
 
   const categories = [

@@ -219,7 +219,11 @@ export class LocalRAGEngine {
     const queryTokens = this.tokenize(query);
 
     if (queryTokens.length === 0) {
-      return this.getAllChunks().slice(0, topK).map(chunk => ({
+      let chunks = this.getAllChunks();
+      if (options.category) {
+        chunks = chunks.filter(c => c.category === options.category);
+      }
+      return chunks.slice(0, topK).map(chunk => ({
         chunk,
         score: 100,
         matchedTerms: [],

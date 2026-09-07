@@ -101,7 +101,7 @@ export const M3Tabs: React.FC<M3TabsProps> = ({
       className="w-full bg-[#161a22] border border-[#272d3b] rounded-2xl p-1.5 shadow-sm"
       dir="rtl"
     >
-      <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-8 gap-1.5">
+      <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar scroll-smooth py-0.5 px-0.5 md:grid md:grid-cols-8 md:overflow-x-visible">
         {tabs.map(tab => {
           const Icon = tab.icon;
           const isActive = activeTab === tab.key;
@@ -111,7 +111,7 @@ export const M3Tabs: React.FC<M3TabsProps> = ({
               key={tab.key}
               type="button"
               onClick={() => onSelectTab(tab.key)}
-              className={`relative flex items-center justify-center gap-2.5 px-3 py-2.5 rounded-xl transition-all font-sans text-xs md:text-sm font-medium ${
+              className={`relative shrink-0 flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl transition-all font-sans text-xs md:text-sm font-medium whitespace-nowrap ${
                 isActive
                   ? 'bg-[#222938] text-cyan-300 shadow-sm border border-cyan-500/40 font-bold'
                   : 'text-zinc-400 hover:text-zinc-200 hover:bg-[#1a1f29] border border-transparent'

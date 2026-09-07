@@ -142,7 +142,7 @@ export const SetupAnalysisCard: React.FC<SetupAnalysisCardProps> = React.memo(({
               <div className="flex justify-between items-center text-emerald-300 font-bold">
                 <span className="flex items-center gap-1">
                   <Percent className="w-3.5 h-3.5" />
-                  حجم محاسبه‌شده (۰٫۲۵٪ سرمایه):
+                  حجم محاسبه‌شده ({riskPreview.plannedRiskPercent}٪ سرمایه):
                 </span>
                 <span dir="ltr" className="font-mono text-sm">
                   {riskPreview.adjustedVolumeLots} Lot

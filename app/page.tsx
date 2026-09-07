@@ -221,6 +221,7 @@ export default function TradingLabPage() {
           setSymbol(saved.symbol);
           replayEngine.setSymbol(saved.symbol);
         }
+        replayEngine.reset();
         for (let i = 14; i < saved.currentStepIndex; i++) {
           replayEngine.stepForward();
         }
@@ -371,7 +372,13 @@ export default function TradingLabPage() {
         onChangeEnvironment={setCurrentEnvironment}
       />
 
-      <div className="max-w-7xl w-full mx-auto p-3 sm:p-4 md:p-5 space-y-4">
+      <div className={`w-full mx-auto p-3 sm:p-4 md:p-5 space-y-4 transition-all duration-300 ${
+        viewMode === 'mobile'
+          ? 'max-w-md'
+          : viewMode === 'windows'
+          ? 'max-w-[1550px]'
+          : 'max-w-7xl'
+      }`}>
         {/* پیام‌های سیستمی و اعلانات امنیتی */}
         {executionMessage && (
           <div className="p-3 bg-[#17212e] border border-cyan-700/60 rounded-2xl text-xs flex items-center justify-between gap-2 text-cyan-200 shadow-sm" dir="rtl">
@@ -422,10 +429,10 @@ export default function TradingLabPage() {
               activeTradingStyleBadgeFa={activeTradingStyleBadgeFa}
             />
 
-            {/* چیدمان نمودار و کارت تحلیل ستاپ */}
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+            {/* چیدمان نمودار و کارت تحلیل ستاپ - دو ستونه از عرض md به بالا برای تاشوی باز و لپ‌تاپ */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               {/* ستون نمودار کندل‌استیک ۵ دقیقه‌ای */}
-              <div className="lg:col-span-2">
+              <div className="md:col-span-2">
                 <ChartCanvas
                   symbol={symbol}
                   candles={replayState.visibleCandles}
@@ -434,7 +441,7 @@ export default function TradingLabPage() {
               </div>
 
               {/* ستون کارت ستاپ و تحلیل هوش مصنوعی آفلاین */}
-              <div className="lg:col-span-1">
+              <div className="md:col-span-1">
                 <SetupAnalysisCard
                   candidate={replayState.activeCandidate}
                   riskPreview={riskPreview}

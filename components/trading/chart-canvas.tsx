@@ -52,8 +52,8 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({ symbol, candles, activ
   });
 
   if (activeCandidate) {
-    minPrice = Math.min(minPrice, activeCandidate.stopLossPrice);
-    maxPrice = Math.max(maxPrice, activeCandidate.takeProfitPrice);
+    minPrice = Math.min(minPrice, activeCandidate.entryPrice, activeCandidate.stopLossPrice, activeCandidate.takeProfitPrice);
+    maxPrice = Math.max(maxPrice, activeCandidate.entryPrice, activeCandidate.stopLossPrice, activeCandidate.takeProfitPrice);
   }
 
   // اضافه کردن حاشیه ۵ درصدی بالا و پایین برای تنفس سطوح
@@ -67,6 +67,12 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({ symbol, candles, activ
   const getY = (price: number) => {
     const ratio = (price - viewMinPrice) / viewRange;
     return PLOT_BOTTOM - ratio * PLOT_HEIGHT;
+  };
+
+  // نگه‌داشتن برچسب‌ها در محدوده قابل مشاهده بدون خروج از لبه‌های بالا و پایین
+  const getClampedLabelY = (price: number) => {
+    const rawY = getY(price);
+    return Math.max(PLOT_TOP + 18, Math.min(PLOT_BOTTOM, rawY));
   };
 
   // محاسبه عرض کندل‌ها و فواصل
@@ -198,7 +204,7 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({ symbol, candles, activ
               />
               <rect
                 x={12}
-                y={getY(activeCandidate.entryPrice) - 16}
+                y={getClampedLabelY(activeCandidate.entryPrice) - 16}
                 width={130}
                 height={16}
                 fill="#0c4a6e"
@@ -207,7 +213,7 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({ symbol, candles, activ
               />
               <text
                 x={16}
-                y={getY(activeCandidate.entryPrice) - 4}
+                y={getClampedLabelY(activeCandidate.entryPrice) - 4}
                 fill="#7dd3fc"
                 fontSize="10"
                 fontFamily="sans-serif"
@@ -227,7 +233,7 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({ symbol, candles, activ
               />
               <rect
                 x={12}
-                y={getY(activeCandidate.stopLossPrice) - 16}
+                y={getClampedLabelY(activeCandidate.stopLossPrice) - 16}
                 width={120}
                 height={16}
                 fill="#4c0519"
@@ -236,7 +242,7 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({ symbol, candles, activ
               />
               <text
                 x={16}
-                y={getY(activeCandidate.stopLossPrice) - 4}
+                y={getClampedLabelY(activeCandidate.stopLossPrice) - 4}
                 fill="#fda4af"
                 fontSize="10"
                 fontFamily="sans-serif"
@@ -256,7 +262,7 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({ symbol, candles, activ
               />
               <rect
                 x={12}
-                y={getY(activeCandidate.takeProfitPrice) - 16}
+                y={getClampedLabelY(activeCandidate.takeProfitPrice) - 16}
                 width={120}
                 height={16}
                 fill="#022c22"
@@ -265,7 +271,7 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({ symbol, candles, activ
               />
               <text
                 x={16}
-                y={getY(activeCandidate.takeProfitPrice) - 4}
+                y={getClampedLabelY(activeCandidate.takeProfitPrice) - 4}
                 fill="#6ee7b7"
                 fontSize="10"
                 fontFamily="sans-serif"
