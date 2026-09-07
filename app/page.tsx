@@ -34,6 +34,9 @@ import { AVAILABLE_OFFLINE_MODELS } from '@/lib/ai/browser-offline-ai';
 import { M3Tabs, ActiveTabKey } from '@/components/trading/m3-tabs';
 import { SymbolReplayToolbar } from '@/components/trading/symbol-replay-toolbar';
 import { SetupAnalysisCard } from '@/components/trading/setup-analysis-card';
+import { InstantExecutionPad } from '@/components/trading/instant-execution-pad';
+import { PositionScalingEngine } from '@/lib/core/position-scaling-engine';
+import { PartialTPConfig } from '@/lib/contracts/tactical-cockpit';
 import { PersistenceStorage, AppExportPayloadV1 } from '@/lib/persistence/storage';
 import {
   AnalystCriticPipeline,
@@ -277,6 +280,70 @@ export default function TradingLabPage() {
     setReplayState({ ...snap });
   };
 
+  // اجرای سفارش فوری ۱-کلیکی از کاکپیت تاکتیکی
+  const handleExecuteInstantOrder = (
+    direction: 'BUY' | 'SELL',
+    riskPercent: number,
+    useCandidateLevels: boolean,
+    partialConfig: PartialTPConfig
+  ) => {
+    try {
+      const lastCandle = replayState.visibleCandles[replayState.visibleCandles.length - 1];
+      const livePrice = lastCandle ? lastCandle.close : symbol === 'XAUUSD' ? 2050 : 1.085;
+      const liveAtr = symbol === 'XAUUSD' ? 2.5 : 0.0015;
+
+      let lots = 0.01;
+      let entry = livePrice;
+      let sl = direction === 'BUY' ? entry - liveAtr * 1.2 : entry + liveAtr * 1.2;
+      let tp = direction === 'BUY' ? entry + liveAtr * 2.5 : entry - liveAtr * 2.5;
+
+      if (useCandidateLevels && replayState.activeCandidate) {
+        entry = replayState.activeCandidate.entryPrice;
+        sl = replayState.activeCandidate.stopLossPrice;
+        tp = replayState.activeCandidate.takeProfitPrice;
+        lots = riskPreview?.adjustedVolumeLots || 0.01;
+      } else {
+        const bracket = PositionScalingEngine.calculateInstantBracket(
+          symbol,
+          direction,
+          livePrice,
+          liveAtr,
+          riskPercent,
+          brokerState.accountEquity,
+          partialConfig
+        );
+        lots = bracket.calculatedLots;
+        entry = bracket.entryPrice;
+        sl = bracket.stopLossPrice;
+        tp = bracket.takeProfitPrice;
+      }
+
+      const { position } = broker.createMarketBracketOrder(
+        symbol,
+        direction,
+        lots,
+        entry,
+        sl,
+        tp
+      );
+
+      setExecutionMessage(
+        `سفارش فوری ${direction === 'BUY' ? 'خرید' : 'فروش'} با حجم ${lots} لات در قیمت ${entry} ثبت شد (شناسه پوزیشن: ${position.id}).`
+      );
+
+      setReplayState({ ...replayEngine.getSnapshot() });
+    } catch (err) {
+      setExecutionMessage(`خطای ثبت فوری: ${(err as Error).message}`);
+    }
+  };
+
+  // کلید اضطراری بستن کلیه پوزیشن‌ها (Panic Kill-Switch)
+  const handlePanicKillSwitch = () => {
+    const event = PositionScalingEngine.triggerPanicKillSwitch(broker, 'MANUAL_PANIC');
+    setExecutionMessage(event.summaryFa);
+    setReplayState({ ...replayEngine.getSnapshot() });
+  };
+
   // بازیابی وضعیت از فایل JSON
   const handleStateRestored = (imported: AppExportPayloadV1['state']) => {
     setSymbol(imported.symbol);
@@ -438,6 +505,21 @@ export default function TradingLabPage() {
               activeTradingStyleBadgeFa={activeTradingStyleBadgeFa}
               activeStyleFilter={replayState.activeStyleFilter}
               onChangeStyleFilter={handleStyleFilterChange}
+            />
+
+            {/* کاکپیت تاکتیکی ترید سریع ۱-کلیکی، خروج پله‌ای و Kill-Switch (فاز ۲) */}
+            <InstantExecutionPad
+              symbol={symbol}
+              currentPrice={
+                replayState.visibleCandles[replayState.visibleCandles.length - 1]?.close ||
+                (symbol === 'XAUUSD' ? 2050 : 1.085)
+              }
+              currentAtr={symbol === 'XAUUSD' ? 2.5 : 0.0015}
+              accountEquity={brokerState.accountEquity}
+              activeCandidate={replayState.activeCandidate}
+              onExecuteInstantOrder={handleExecuteInstantOrder}
+              onPanicKillSwitch={handlePanicKillSwitch}
+              openPositionsCount={brokerState.positions.filter(p => p.isOpen).length}
             />
 
             {/* چیدمان نمودار و کارت تحلیل ستاپ - دو ستونه از عرض md به بالا برای تاشوی باز و لپ‌تاپ */}

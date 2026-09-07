@@ -137,4 +137,143 @@ export class SimulatedBroker {
 
     this.equity = Number((this.balance + totalUnrealized).toFixed(2));
   }
+
+  /**
+   * ثبت آنی سفارش مارکت براکت و بازگشایی فوری پوزیشن (Instant Execution)
+   */
+  public createMarketBracketOrder(
+    symbol: SymbolId,
+    direction: SimulatedOrder['direction'],
+    volumeLots: number,
+    currentPrice: number,
+    stopLoss: number,
+    takeProfit: number
+  ): { order: SimulatedOrder; position: SimulatedPosition } {
+    const now = Date.now();
+    const order: SimulatedOrder = {
+      id: `MKT-ORD-${now}`,
+      candidateId: `INSTANT-${now}`,
+      symbol,
+      type: 'MARKET',
+      direction,
+      volumeLots,
+      requestedPrice: currentPrice,
+      stopLoss,
+      takeProfit,
+      status: 'FILLED',
+      createdAt: now,
+      updatedAt: now,
+    };
+    this.orders.push(order);
+
+    const position: SimulatedPosition = {
+      id: `POS-${order.id}`,
+      orderId: order.id,
+      symbol,
+      direction,
+      volumeLots,
+      initialVolumeLots: volumeLots,
+      entryPrice: currentPrice,
+      currentPrice,
+      stopLoss,
+      takeProfit,
+      unrealizedPnl: 0,
+      realizedPnl: 0,
+      commissionPaid: volumeLots * 6.0,
+      isOpen: true,
+      openedAt: now,
+      partialCloseCount: 0,
+      isBreakevenActive: false,
+    };
+    this.positions.push(position);
+
+    return { order, position };
+  }
+
+  /**
+   * اعمال خروج پله‌ای و انتقال به Breakeven روی یک پوزیشن باز
+   */
+  public applyPartialClose(
+    positionId: string,
+    closeRatio = 0.5,
+    moveSlToBreakeven = true
+  ): { success: boolean; realizedPnl: number; remainingLots: number } {
+    const pos = this.positions.find(p => p.id === positionId && p.isOpen);
+    if (!pos) return { success: false, realizedPnl: 0, remainingLots: 0 };
+
+    const specSize = pos.symbol === 'XAUUSD' ? 100 : 100000;
+    const closedVolume = Number((pos.volumeLots * closeRatio).toFixed(2));
+    const priceDiff =
+      pos.direction === 'BUY'
+        ? pos.currentPrice - pos.entryPrice
+        : pos.entryPrice - pos.currentPrice;
+
+    const partialPnl = Number((closedVolume * priceDiff * specSize).toFixed(2));
+    pos.volumeLots = Number((pos.volumeLots - closedVolume).toFixed(2));
+    pos.realizedPnl = Number((pos.realizedPnl + partialPnl).toFixed(2));
+    this.balance += partialPnl;
+
+    pos.partialCloseCount = (pos.partialCloseCount || 0) + 1;
+
+    if (moveSlToBreakeven) {
+      pos.stopLoss = pos.entryPrice;
+      pos.isBreakevenActive = true;
+    }
+
+    this.equity = Number((this.balance + (pos.unrealizedPnl || 0)).toFixed(2));
+
+    return {
+      success: true,
+      realizedPnl: partialPnl,
+      remainingLots: pos.volumeLots,
+    };
+  }
+
+  /**
+   * اجرای بستن اضطراری سراسری (Panic Kill-Switch): بستن آنی تمام پوزیشن‌ها و لغو تمام سفارش‌ها
+   */
+  public panicCloseAll(): {
+    closedPositionsCount: number;
+    cancelledOrdersCount: number;
+    netRealizedPnl: number;
+  } {
+    let closedPositionsCount = 0;
+    let netRealizedPnl = 0;
+    const now = Date.now();
+
+    // بستن تمام پوزیشن‌های باز
+    for (const pos of this.positions.filter(p => p.isOpen)) {
+      pos.isOpen = false;
+      pos.closedAt = now;
+      pos.closeReason = 'PANIC_KILL_SWITCH';
+
+      const contractSize = pos.symbol === 'XAUUSD' ? 100 : 100000;
+      const priceDiff =
+        pos.direction === 'BUY'
+          ? pos.currentPrice - pos.entryPrice
+          : pos.entryPrice - pos.currentPrice;
+
+      const pnl = Number((pos.volumeLots * priceDiff * contractSize - pos.commissionPaid).toFixed(2));
+      pos.realizedPnl = Number((pos.realizedPnl + pnl).toFixed(2));
+      this.balance += pnl;
+      netRealizedPnl += pnl;
+      closedPositionsCount++;
+    }
+
+    // لغو کلیه سفارش‌های در انتظار
+    let cancelledOrdersCount = 0;
+    for (const order of this.orders.filter(o => o.status === 'PENDING')) {
+      order.status = 'CANCELLED';
+      order.updatedAt = now;
+      cancelledOrdersCount++;
+    }
+
+    this.equity = this.balance;
+
+    return {
+      closedPositionsCount,
+      cancelledOrdersCount,
+      netRealizedPnl: Number(netRealizedPnl.toFixed(2)),
+    };
+  }
 }

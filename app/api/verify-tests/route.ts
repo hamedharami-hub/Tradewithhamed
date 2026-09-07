@@ -15,6 +15,7 @@ import { runW3BenchmarkEvaluationSuite } from '@/lib/core/__tests__/w3-benchmark
 import { runW4OnlineExecutionTests } from '@/lib/server/__tests__/w4-online-execution.test';
 import { runLocalRAGTests } from '@/lib/core/__tests__/local-rag.test';
 import { runMultiStyleRegimesTestSuite } from '@/lib/core/__tests__/multi-style-regimes.test';
+import { runTacticalCockpitTestSuite } from '@/lib/core/__tests__/tactical-cockpit.test';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -75,6 +76,9 @@ export async function GET() {
     // نتایج آزمون‌های موتور سبک‌های معاملاتی چندگانه و رژیم‌های بازار (Multi-Style & Market Regimes)
     const multiStyleResults = runMultiStyleRegimesTestSuite();
 
+    // نتایج آزمون‌های کاکپیت تاکتیکی ترید سریع، خروج پله‌ای و فیوز اضطراری (Tactical Cockpit & Kill-Switch)
+    const tacticalCockpitResults = runTacticalCockpitTestSuite();
+
     const combined = [
       ...coreResults,
       ...ctraderResults,
@@ -92,6 +96,7 @@ export async function GET() {
       ...w5Results,
       ...ragResults,
       ...multiStyleResults,
+      ...tacticalCockpitResults,
     ];
     const allPassed = combined.every(t => t.passed);
 

@@ -1,7 +1,7 @@
 import { SymbolId } from './market';
 import { CandidateDirection } from './strategy';
 
-export type OrderType = 'LIMIT';
+export type OrderType = 'LIMIT' | 'MARKET';
 
 export type OrderStatus =
   | 'PENDING'
@@ -35,6 +35,7 @@ export interface SimulatedPosition {
   symbol: SymbolId;
   direction: CandidateDirection;
   volumeLots: number;
+  initialVolumeLots?: number;
   entryPrice: number;
   currentPrice: number;
   stopLoss: number;
@@ -45,5 +46,7 @@ export interface SimulatedPosition {
   isOpen: boolean;
   openedAt: number;
   closedAt?: number;
-  closeReason?: 'SL' | 'TP' | 'MANUAL';
+  closeReason?: 'SL' | 'TP' | 'MANUAL' | 'PARTIAL_TP' | 'PANIC_KILL_SWITCH';
+  isBreakevenActive?: boolean;
+  partialCloseCount?: number;
 }
