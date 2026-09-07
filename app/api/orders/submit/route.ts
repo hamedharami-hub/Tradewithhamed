@@ -35,10 +35,15 @@ export async function POST(request: NextRequest) {
         stopLossPrice: body.stopLossPrice,
         takeProfitPrice: body.takeProfitPrice,
         userConfirmationTimestamp: body.userConfirmationTimestamp || Date.now(),
+        environment: body.environment,
+        executorSessionId: body.executorSessionId,
+        executorEpoch: body.executorEpoch,
+        deviceLabel: body.deviceLabel,
       },
       {
         simulateTimeout: body.simulateTimeout,
         simulateRejection: body.simulateRejection,
+        simulateMissingProtection: (body as any).simulateMissingProtection,
       }
     );
 

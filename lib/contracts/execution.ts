@@ -51,9 +51,12 @@ export interface TransactionalOutboxRecord {
   isBrokerStopLossConfirmed: boolean;
   isBrokerTakeProfitConfirmed: boolean;
   
-  // حساب
-  accountType: 'DEMO';
+  // محیط و حساب
+  environment?: 'PAPER_LIVE' | 'BROKER_DEMO' | 'BROKER_LIVE' | 'PAPER_REPLAY';
+  accountType: 'DEMO' | 'LIVE' | 'PAPER';
   accountMaskedId: string;
+  executorEpoch?: number;
+  deviceLabel?: 'windows' | 'pixel';
 }
 
 export interface OrderSubmissionRequest {
@@ -66,6 +69,10 @@ export interface OrderSubmissionRequest {
   stopLossPrice: number;
   takeProfitPrice: number;
   userConfirmationTimestamp: number;
+  environment?: 'PAPER_LIVE' | 'BROKER_DEMO' | 'BROKER_LIVE';
+  executorSessionId?: string;
+  executorEpoch?: number;
+  deviceLabel?: 'windows' | 'pixel';
 }
 
 export interface OrderSubmissionResponse {

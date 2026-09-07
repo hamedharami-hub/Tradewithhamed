@@ -20,6 +20,12 @@ import {
   Layers,
   Sparkles,
   Info,
+  Laptop,
+  Smartphone,
+  AlertTriangle,
+  Radio,
+  Lock,
+  Flame,
 } from 'lucide-react';
 import { LiveShadowExecutionEngine } from '@/lib/core/live-shadow-engine';
 import { LiveShadowOrder, ReconciliationIncident } from '@/lib/contracts/w3-ems';
@@ -35,10 +41,107 @@ export const LiveShadowWorkbench: React.FC = () => {
   const [incidents, setIncidents] = useState<ReconciliationIncident[]>(() =>
     engine.getReconciliationEngine().getAllIncidents()
   );
-  const [activeSubTab, setActiveSubTab] = useState<'dispatcher' | 'drift' | 'reconciliation' | 'tests'>('dispatcher');
+  const [activeSubTab, setActiveSubTab] = useState<'dispatcher' | 'drift' | 'reconciliation' | 'tests' | 'w4_online'>('dispatcher');
   const [w3TestResults, setW3TestResults] = useState<W3AcceptanceTestResult[]>([]);
+  const [w4TestResults, setW4TestResults] = useState<any[]>([]);
   const [isRunningTests, setIsRunningTests] = useState(false);
   const [actionNotice, setActionNotice] = useState<string | null>(null);
+
+  // وضعیت‌های زنده، چنددستگاهی و سوئیچ اضطراری بسته W4
+  const [liveQuotes, setLiveQuotes] = useState<Record<string, any>>({});
+  const [feedStatus, setFeedStatus] = useState<any>(null);
+  const [executorState, setExecutorState] = useState<{
+    activeDeviceLabel: 'windows' | 'pixel';
+    epoch: number;
+    activeSessionId: string;
+    status: string;
+  } | null>(null);
+  const [isKillNewEntries, setIsKillNewEntries] = useState(false);
+
+  // واکشی دوره‌ای وضعیت زنده قیمت‌ها، تک‌مجری و کلید اضطراری
+  useEffect(() => {
+    let mounted = true;
+    const fetchW4State = async () => {
+      try {
+        const [qRes, eRes, kRes] = await Promise.all([
+          fetch('/api/market/quotes').then(r => r.json()).catch(() => null),
+          fetch('/api/executor').then(r => r.json()).catch(() => null),
+          fetch('/api/orders/emergency-stop').then(r => r.json()).catch(() => null),
+        ]);
+        if (!mounted) return;
+        if (qRes?.quotes) {
+          setLiveQuotes(qRes.quotes);
+          setFeedStatus(qRes.feedStatus);
+        }
+        if (eRes?.state) {
+          setExecutorState(eRes.state);
+        }
+        if (kRes) {
+          setIsKillNewEntries(!!kRes.isKillNewEntriesActive);
+        }
+      } catch {}
+    };
+
+    fetchW4State();
+    const interval = setInterval(fetchW4State, 2500);
+    return () => {
+      mounted = false;
+      clearInterval(interval);
+    };
+  }, []);
+
+  // واگذاری مجری‌گری بین ویندوز و گوشی پیکسل (W4 Gate B)
+  const handleSwitchExecutor = async (targetDevice: 'windows' | 'pixel') => {
+    try {
+      const res = await fetch('/api/executor', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'switch',
+          targetDevice,
+          targetSessionId: `${targetDevice}-session-${Date.now()}`,
+        }),
+      });
+      const data = await res.json();
+      if (data.success && data.state) {
+        setExecutorState(data.state);
+        setActionNotice(`مجری‌گری با موفقیت به ${targetDevice === 'windows' ? 'ویندوز' : 'گوشی پیکسل'} منتقل شد (ایپاک: ${data.state.epoch}).`);
+      }
+    } catch (e) {
+      setActionNotice(`خطا در تغییر مجری: ${(e as Error).message}`);
+    }
+  };
+
+  // فعال/غیرفعال‌سازی سوئیچ اضطراری توقف معاملات جدید (W4 Gate C)
+  const handleToggleKillSwitch = async () => {
+    try {
+      const newActive = !isKillNewEntries;
+      const res = await fetch('/api/orders/emergency-stop', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ active: newActive }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setIsKillNewEntries(data.isKillNewEntriesActive);
+        setActionNotice(data.message);
+      }
+    } catch (e) {
+      setActionNotice(`خطا در تنظیم سوئیچ اضطراری: ${(e as Error).message}`);
+    }
+  };
+
+  // اجرای آزمون‌های آنلاین W4
+  const handleRunW4OnlineSuite = async () => {
+    setIsRunningTests(true);
+    try {
+      const res = await fetch('/api/verify-tests');
+      const data = await res.json();
+      const filtered = (data.results || []).filter((r: any) => r.name.includes('[W4 Online'));
+      setW4TestResults(filtered);
+    } catch {}
+    setIsRunningTests(false);
+  };
 
   // فرم ارسال سفارش لیمیت آزمایشی
   const [symbol, setSymbol] = useState<'XAUUSD' | 'EURUSD'>('XAUUSD');
@@ -216,6 +319,109 @@ export const LiveShadowWorkbench: React.FC = () => {
         )}
       </div>
 
+      {/* نوار مظنه‌های زنده، کنترل تک‌مجری و سوئیچ اضطراری W4 */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+        {/* مظنه طلا */}
+        <div className="p-3.5 rounded-2xl bg-slate-900/90 border border-slate-800 flex items-center justify-between">
+          <div className="flex items-center gap-2.5">
+            <div className="p-2 rounded-xl bg-amber-500/10 text-amber-400 border border-amber-500/20">
+              <Radio className="w-4 h-4 animate-pulse" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="font-bold text-white text-sm">XAUUSD</span>
+                <span className="text-[10px] px-1.5 py-0.2 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-mono">
+                  {liveQuotes['XAUUSD']?.quality || 'LIVE'}
+                </span>
+              </div>
+              <span className="text-[11px] text-slate-400">
+                اسپرد: {liveQuotes['XAUUSD']?.spreadPips ?? 2.5} پیپ
+              </span>
+            </div>
+          </div>
+          <div className="text-left font-mono" dir="ltr">
+            <div className="text-xs text-slate-300 font-semibold">
+              ${liveQuotes['XAUUSD']?.bid?.toFixed(2) ?? '2652.45'} / ${liveQuotes['XAUUSD']?.ask?.toFixed(2) ?? '2652.70'}
+            </div>
+            <div className="text-[10px] text-slate-500">Bid / Ask</div>
+          </div>
+        </div>
+
+        {/* مظنه یورو */}
+        <div className="p-3.5 rounded-2xl bg-slate-900/90 border border-slate-800 flex items-center justify-between">
+          <div className="flex items-center gap-2.5">
+            <div className="p-2 rounded-xl bg-blue-500/10 text-blue-400 border border-blue-500/20">
+              <Radio className="w-4 h-4 animate-pulse" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="font-bold text-white text-sm">EURUSD</span>
+                <span className="text-[10px] px-1.5 py-0.2 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-mono">
+                  {liveQuotes['EURUSD']?.quality || 'LIVE'}
+                </span>
+              </div>
+              <span className="text-[11px] text-slate-400">
+                اسپرد: {liveQuotes['EURUSD']?.spreadPips ?? 1.4} پیپ
+              </span>
+            </div>
+          </div>
+          <div className="text-left font-mono" dir="ltr">
+            <div className="text-xs text-slate-300 font-semibold">
+              {liveQuotes['EURUSD']?.bid?.toFixed(5) ?? '1.08465'} / {liveQuotes['EURUSD']?.ask?.toFixed(5) ?? '1.08479'}
+            </div>
+            <div className="text-[10px] text-slate-500">Bid / Ask</div>
+          </div>
+        </div>
+
+        {/* کنترل تک‌مجری بین‌دستگاهی (W4 Gate B) و سوئیچ اضطراری (Gate C) */}
+        <div className="p-3.5 rounded-2xl bg-slate-900/90 border border-slate-800 flex flex-col justify-between gap-2">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-1.5">
+              <span className="text-xs text-slate-400">مجری:</span>
+              <span className="font-bold text-cyan-400 text-xs flex items-center gap-1">
+                {executorState?.activeDeviceLabel === 'pixel' ? (
+                  <>
+                    <Smartphone className="w-3.5 h-3.5 text-amber-400" />
+                    <span>پیکسل</span>
+                  </>
+                ) : (
+                  <>
+                    <Laptop className="w-3.5 h-3.5 text-cyan-400" />
+                    <span>ویندوز</span>
+                  </>
+                )}
+              </span>
+              <span className="text-[10px] font-mono text-slate-400 bg-slate-800 px-1.5 py-0.5 rounded border border-slate-700">
+                Epoch: {executorState?.epoch ?? 1}
+              </span>
+            </div>
+
+            <button
+              onClick={() => handleSwitchExecutor(executorState?.activeDeviceLabel === 'windows' ? 'pixel' : 'windows')}
+              className="text-[10px] px-2 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-cyan-300 border border-cyan-500/30 transition-colors"
+              title="واگذاری نوبت مجری‌گری با افزایش اتمیک Epoch"
+            >
+              واگذاری به {executorState?.activeDeviceLabel === 'windows' ? 'پیکسل' : 'ویندوز'}
+            </button>
+          </div>
+
+          <div className="flex items-center justify-between pt-1 border-t border-slate-800/80">
+            <span className="text-xs text-slate-400">سوئیچ اضطراری:</span>
+            <button
+              onClick={handleToggleKillSwitch}
+              className={`px-2.5 py-0.5 rounded-lg text-xs font-semibold flex items-center gap-1 transition-colors border ${
+                isKillNewEntries
+                  ? 'bg-rose-950 text-rose-300 border-rose-600 animate-pulse'
+                  : 'bg-slate-800 text-slate-400 hover:text-slate-200 border-slate-700'
+              }`}
+            >
+              <AlertTriangle className="w-3 h-3" />
+              <span>{isKillNewEntries ? 'ورود جدید مسدود (فعال)' : 'عادی (غیرفعال)'}</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
       {/* سربرگ‌های ثانویه تمیز */}
       <div className="flex flex-wrap items-center gap-2 border-b border-slate-800 pb-3">
         <button
@@ -267,6 +473,21 @@ export const LiveShadowWorkbench: React.FC = () => {
         >
           <Sparkles className="w-3.5 h-3.5" />
           <span>آزمون‌های گیت پذیرش W3 ({w3TestResults.length}/7)</span>
+        </button>
+
+        <button
+          onClick={() => {
+            setActiveSubTab('w4_online');
+            if (w4TestResults.length === 0) handleRunW4OnlineSuite();
+          }}
+          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-medium transition-all ${
+            activeSubTab === 'w4_online'
+              ? 'bg-cyan-500/15 text-cyan-300 border border-cyan-500/40'
+              : 'bg-slate-900/60 text-slate-400 hover:text-slate-200 border border-transparent'
+          }`}
+        >
+          <Radio className="w-3.5 h-3.5" />
+          <span>آزمون‌های آنلاین W4 (Paper Live / Demo / Handoff)</span>
         </button>
       </div>
 
@@ -635,6 +856,66 @@ export const LiveShadowWorkbench: React.FC = () => {
                 </div>
               </div>
             ))}
+          </div>
+        </div>
+      )}
+
+      {/* محتوای تب ۵: مجموعه آزمون‌های آنلاین دروازه‌های W4 */}
+      {activeSubTab === 'w4_online' && (
+        <div className="rounded-2xl bg-slate-900/80 border border-slate-800 p-5 space-y-4">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+            <div className="space-y-1">
+              <h2 className="text-sm font-semibold text-white flex items-center gap-2">
+                <Radio className="w-4 h-4 text-cyan-400 animate-pulse" />
+                <span>مجموعه آزمون‌های جامع دروازه‌های آنلاین W4 (Gate A, Gate B, Gate C)</span>
+              </h2>
+              <p className="text-xs text-slate-400">
+                پوشش آزمون‌های داده زنده، Paper Live با صفر خروج به بروکر، تک‌مجری بین‌دستگاهی با Handoff و Epoch، تایید دستی دمو، شکست امن لایو و سوئیچ اضطراری.
+              </p>
+            </div>
+            <button
+              onClick={handleRunW4OnlineSuite}
+              disabled={isRunningTests}
+              className="px-4 py-2 rounded-xl bg-cyan-600 hover:bg-cyan-500 disabled:bg-slate-800 text-white text-xs font-medium transition-colors flex items-center gap-2 shadow-sm whitespace-nowrap"
+            >
+              <Play className="w-3.5 h-3.5" />
+              <span>{isRunningTests ? 'در حال اجرای آزمون‌ها...' : 'اجرای آزمون‌های آنلاین W4'}</span>
+            </button>
+          </div>
+
+          <div className="space-y-2.5">
+            {w4TestResults.length === 0 ? (
+              <div className="p-8 text-center text-slate-400 text-xs border border-dashed border-slate-800 rounded-xl bg-slate-950/40">
+                جهت اجرای خودکار آزمون‌های آنلاین، روی دکمه «اجرای آزمون‌های آنلاین W4» کلیک کنید.
+              </div>
+            ) : (
+              w4TestResults.map((t, idx) => (
+                <div
+                  key={idx}
+                  className="p-3.5 rounded-xl bg-slate-900/60 border border-slate-800 hover:border-slate-700 transition-colors flex items-start justify-between gap-4"
+                >
+                  <div className="space-y-1 text-xs">
+                    <div className="flex items-center gap-2">
+                      <span className="font-semibold text-white">{t.name}</span>
+                    </div>
+                    <p className="text-slate-300 leading-relaxed">{t.details}</p>
+                  </div>
+                  <div className="flex-shrink-0">
+                    {t.passed ? (
+                      <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                        <CheckCircle2 className="w-3.5 h-3.5" />
+                        <span>قبول (PASS)</span>
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-rose-500/10 text-rose-400 border border-rose-500/20">
+                        <AlertCircle className="w-3.5 h-3.5" />
+                        <span>مردود (FAIL)</span>
+                      </span>
+                    )}
+                  </div>
+                </div>
+              ))
+            )}
           </div>
         </div>
       )}

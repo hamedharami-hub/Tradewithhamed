@@ -12,6 +12,7 @@ import { runW3AcceptanceSuite } from '@/lib/core/__tests__/w3-acceptance.test';
 import { runW4AcceptanceSuite } from '@/lib/core/__tests__/w4-acceptance.test';
 import { runW5AcceptanceSuite } from '@/lib/core/__tests__/w5-acceptance.test';
 import { runW3BenchmarkEvaluationSuite } from '@/lib/core/__tests__/w3-benchmark.test';
+import { runW4OnlineExecutionTests } from '@/lib/server/__tests__/w4-online-execution.test';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -58,6 +59,14 @@ export async function GET() {
       details: `تعداد ${c.passedCases} از ${c.totalCases} مورد پاس شدند (دقت: ${c.passRate}٪).`,
     }));
 
+    // مجموعه آزمون‌های جامع دروازه‌های آنلاین W4 (Gates A, B, C)
+    const w4OnlineRaw = await runW4OnlineExecutionTests();
+    const w4OnlineResults = w4OnlineRaw.map(t => ({
+      name: `[W4 Online - ${t.gate}] ${t.name}`,
+      passed: t.passed,
+      details: t.details,
+    }));
+
     const combined = [
       ...coreResults,
       ...ctraderResults,
@@ -71,6 +80,7 @@ export async function GET() {
       ...w3Results,
       ...w3BenchResults,
       ...w4Results,
+      ...w4OnlineResults,
       ...w5Results,
     ];
     const allPassed = combined.every(t => t.passed);

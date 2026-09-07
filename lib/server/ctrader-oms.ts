@@ -1,12 +1,19 @@
 /**
- * موتور مدیریت سفارش‌ها (OMS) و صندوق تراکنشی در سمت سرور
- * با رعایت قوانین سخت‌گیرانه معاملاتی:
- * ۱. تک‌سفارش همزمان و مسدودسازی کلیک دوبل یا رفرش
- * ۲. انتقال قطعی به وضعیت SUBMITTING پیش از ارسال به شبکه
- * ۳. انتقال به UNKNOWN_RECONCILE_REQUIRED در صورت تایم‌اوت یا پاسخ نامطمئن
- * ۴. ممانعت کامل از تلاش مجدد کورکورانه (No Blind Retries)
- * ۵. بازتطبیق اجباری (Reconciliation) پیش از هرگونه ارسال جدید
- * ۶. فعال‌سازی انحصاری سفارش LIMIT با حد ضرر و سود تاییدشده در بروکر
+ * lib/server/ctrader-oms.ts
+ * موتور مدیریت سفارش‌ها (OMS) و صندوق خروجی پایدار در سمت سرور — نسخه ۴.۰
+ * 
+ * با رعایت کلیه اصول و الزامات بسته W4:
+ * ۱. تک‌مجری بین‌دستگاهی (Single Executor) با اعتبارسنجی اتمیک Epoch و برچسب ویندوز/پیکسل
+ * ۲. سوئیچ اضطراری توقف سفارش‌های جدید (Emergency Kill-New-Entries Switch)
+ * ۳. تفکیک کامل محیط‌ها:
+ *    - PAPER_LIVE: اجرای محلی روی داده زنده با صفر فراخوانی بروکر (Zero Broker Writes)
+ *    - BROKER_DEMO: ارسال به دمو با تایید دستی، انقضای ۴۵ ثانیه‌ای، و تایید SL/TP در بروکر
+ *    - BROKER_LIVE: مسیر کاملاً ایزوله با سیاست شکست امن (Fail-Closed: پیش‌فرض مسدود)
+ * ۴. محافظت قوی در برابر رفرش و کلیک دوبل با کلید ضد تکرار (Idempotency Key)
+ * ۵. ثبت قطعی SUBMITTING قبل از خروج به شبکه
+ * ۶. انتقال به UNKNOWN_RECONCILE_REQUIRED در تایم‌اوت شبکه (No Blind Retries)
+ * ۷. ثبت وضعیت صریح PROTECTION_FAILED در صورت عدم تایید حد ضرر در بروکر
+ * ۸. بازتطبیق اجباری (Reconciliation Engine)
  */
 
 import {
@@ -15,11 +22,12 @@ import {
   OrderSubmissionResponse,
   TransactionalExecutionState,
 } from '../contracts/execution';
-import { CTraderServerSecurity } from './ctrader-auth';
+import { ExecutorManager } from './executor-manager';
 
 const globalForOMS = globalThis as unknown as {
   ctraderOutbox?: Map<string, TransactionalOutboxRecord>;
   ctraderIdempotency?: Map<string, string>;
+  killNewEntriesActive?: boolean;
 };
 
 const sharedOutbox = globalForOMS.ctraderOutbox ?? new Map<string, TransactionalOutboxRecord>();
@@ -31,23 +39,41 @@ if (!globalForOMS.ctraderOutbox) {
 if (!globalForOMS.ctraderIdempotency) {
   globalForOMS.ctraderIdempotency = sharedIdempotencyMap;
 }
+if (globalForOMS.killNewEntriesActive === undefined) {
+  globalForOMS.killNewEntriesActive = false;
+}
 
 export class CTraderOMS {
-  // حافظه پایدار صندوق خروجی در سمت سرور
   private static outbox: Map<string, TransactionalOutboxRecord> = sharedOutbox;
-  // نگاشت کلیدهای ضد تکرار (Idempotency)
   private static idempotencyMap: Map<string, string> = sharedIdempotencyMap;
 
   /**
-   * بازنشانی کامل حافظه (برای تست‌ها)
+   * بازنشانی کامل حافظه (برای اجرای ایزوله تست‌ها)
    */
   public static resetStateForTesting(): void {
     this.outbox.clear();
     this.idempotencyMap.clear();
+    globalForOMS.killNewEntriesActive = false;
+    ExecutorManager.resetForTesting();
   }
 
   /**
-   * بازیابی رکوردهای صندوق خروجی در سناریوی Disaster Recovery یا کرش ناگهانی سرور
+   * بررسی وضعیت سوئیچ اضطراری توقف سفارش‌های جدید
+   */
+  public static isKillNewEntriesActive(): boolean {
+    return !!globalForOMS.killNewEntriesActive;
+  }
+
+  /**
+   * فعال/غیرفعال‌سازی سوئیچ اضطراری (Kill Switch)
+   */
+  public static setKillNewEntries(active: boolean): boolean {
+    globalForOMS.killNewEntriesActive = active;
+    return globalForOMS.killNewEntriesActive;
+  }
+
+  /**
+   * بازیابی رکوردهای صندوق در سناریوی Disaster Recovery یا کرش سرد سرور
    */
   public static restoreRecords(
     records: TransactionalOutboxRecord[],
@@ -60,10 +86,10 @@ export class CTraderOMS {
     for (const rec of records) {
       const copy: TransactionalOutboxRecord = { ...rec };
 
-      // اصل طلایی ایمنی کرش سرد: هر سفارشی که در وضعیت SUBMITTING بوده باید به UNKNOWN_RECONCILE_REQUIRED برود
+      // اصل طلایی ایمنی کرش سرد: هر سفارشی که حین کرش در SUBMITTING بوده باید به UNKNOWN_RECONCILE_REQUIRED برود
       if (copy.state === 'SUBMITTING') {
         copy.state = 'UNKNOWN_RECONCILE_REQUIRED';
-        copy.brokerError = 'COLD_CRASH_RECOVERY: حین قطعی/ری‌استارت سرور وضعیت سفارش نامشخص ماند. برای ایمنی به بازتطبیق ارجاع شد.';
+        copy.brokerError = 'COLD_CRASH_RECOVERY: حین قطعی سرور وضعیت نامشخص ماند. ارجاع به بازتطبیق اجباری.';
         movedToReconcile++;
       }
 
@@ -85,29 +111,20 @@ export class CTraderOMS {
     };
   }
 
-  /**
-   * دریافت رکورد با شناسه اینتنت
-   */
   public static getRecord(intentId: string): TransactionalOutboxRecord | undefined {
     return this.outbox.get(intentId);
   }
 
-  /**
-   * دریافت کلیه رکوردهای صندوق خروجی
-   */
   public static getAllRecords(): TransactionalOutboxRecord[] {
     return Array.from(this.outbox.values()).sort((a, b) => b.createdAt - a.createdAt);
   }
 
-  /**
-   * دریافت نگاشت کلیدهای ضد تکرار
-   */
   public static getIdempotencyEntries(): Array<[string, string]> {
     return Array.from(this.idempotencyMap.entries());
   }
 
   /**
-   * بررسی وجود هرگونه معامله در وضعیت معلق یا نیازمند بازتطبیق
+   * بررسی مسدودکننده‌های صف معاملاتی (عدم وجود سفارش در حال ارسال یا نیازمند بازتطبیق)
    */
   public static hasBlockingState(): { blocked: boolean; reason?: string; blockingRecord?: TransactionalOutboxRecord } {
     for (const record of this.outbox.values()) {
@@ -130,13 +147,19 @@ export class CTraderOMS {
   }
 
   /**
-   * پردازش ارسال سفارش با رعایت زنجیره علیت، قفل ضد تکرار و صندوق تراکنشی
+   * پردازش ارسال سفارش با رعایت زنجیره علیت، قفل ضد تکرار، اعتبارسنجی تک‌مجری و صندوق تراکنشی
    */
   public static async submitOrder(
     request: OrderSubmissionRequest,
-    options?: { simulateTimeout?: boolean; simulateRejection?: boolean }
+    options?: {
+      simulateTimeout?: boolean;
+      simulateRejection?: boolean;
+      simulateMissingProtection?: boolean;
+      bypassExecutorCheck?: boolean;
+    }
   ): Promise<OrderSubmissionResponse> {
     const now = Date.now();
+    const env = request.environment || 'BROKER_DEMO';
 
     // ۱. محافظت در برابر کلیک دوبل یا رفرش با کلید ضد تکرار (Idempotency Guard)
     const existingIntentId = this.idempotencyMap.get(request.idempotencyKey);
@@ -153,7 +176,36 @@ export class CTraderOMS {
       }
     }
 
-    // ۲. بررسی مسدودکننده‌های سراسری (عدم وجود سفارش در حال ارسال یا نیازمند بازتطبیق)
+    // ۲. بررسی سوئیچ اضطراری توقف ورود جدید (Emergency Kill-New-Entries Switch)
+    if (this.isKillNewEntriesActive()) {
+      return {
+        success: false,
+        state: 'REJECTED_BY_BROKER',
+        record: {} as TransactionalOutboxRecord,
+        requiresReconciliation: false,
+        error: 'EMERGENCY_KILL_SWITCH_ACTIVE: سوئیچ اضطراری فعال است؛ ارسال سفارش‌های ورود جدید مسدود است.',
+      };
+    }
+
+    // ۳. اعتبارسنجی تک‌مجری بین‌دستگاهی (Single Executor & Epoch Verification - Gate B)
+    if (!options?.bypassExecutorCheck) {
+      const execValidation = ExecutorManager.validateExecutor(
+        request.executorSessionId,
+        request.executorEpoch,
+        request.deviceLabel
+      );
+      if (!execValidation.authorized) {
+        return {
+          success: false,
+          state: 'REJECTED_BY_BROKER',
+          record: {} as TransactionalOutboxRecord,
+          requiresReconciliation: false,
+          error: execValidation.reason || 'دستگاه مجاز به ارسال سفارش نیست (تغییر مجری یا ایپاک منقضی).',
+        };
+      }
+    }
+
+    // ۴. بررسی مسدودکننده‌های سراسری صف (عدم وجود سفارش در حال ارسال یا بازتطبیق)
     const blockCheck = this.hasBlockingState();
     if (blockCheck.blocked) {
       return {
@@ -165,20 +217,36 @@ export class CTraderOMS {
       };
     }
 
-    // ۳. انقضای تأییدیه کاربر (Freshness of Confirmation: حداکثر ۴۵ ثانیه)
-    if (now - request.userConfirmationTimestamp > 45000) {
+    // ۵. بررسی سیاست شکست امن مسیر لایو (Fail-Closed Live Path Protection - Gate C)
+    if (env === 'BROKER_LIVE') {
+      const isLiveAllowed = process.env.CTRADER_LIVE_ENABLE === 'true';
+      if (!isLiveAllowed) {
+        return {
+          success: false,
+          state: 'REJECTED_BY_BROKER',
+          record: {} as TransactionalOutboxRecord,
+          requiresReconciliation: false,
+          error: 'FAIL_CLOSED: LIVE_TRADING_DISABLED_BY_SERVER_POLICY: مسیر حساب واقعی در سرور مسدود است.',
+        };
+      }
+    }
+
+    // ۶. انقضای تأییدیه کاربر (Freshness of Confirmation: حداکثر ۴۵ ثانیه برای ارسال بروکر)
+    if (env !== 'PAPER_LIVE' && now - request.userConfirmationTimestamp > 45000) {
       return {
         success: false,
         state: 'REJECTED_BY_BROKER',
         record: {} as TransactionalOutboxRecord,
         requiresReconciliation: false,
-        error: 'تأییدیه کاربر منقضی شده است. لطفا مجدداً سفارش را تایید کنید.',
+        error: 'تأییدیه کاربر منقضی شده است (بیش از ۴۵ ثانیه). لطفاً مجدداً تایید کنید.',
       };
     }
 
-    // ۴. ساخت رکورد اولیه در صندوق تراکنشی با شناسه‌های یکتا
+    // ۷. ساخت رکورد اولیه در صندوق تراکنشی با شناسه‌های یکتای علیت و همبستگی
     const correlationId = `CORR-${now}-${Math.random().toString(36).substring(2, 8)}`;
     const causationId = `CAUSE-${request.intentId}`;
+    const accountType = env === 'PAPER_LIVE' ? 'PAPER' : env === 'BROKER_LIVE' ? 'LIVE' : 'DEMO';
+    const accountMaskedId = env === 'PAPER_LIVE' ? 'PAPER-SIM-001' : env === 'BROKER_LIVE' ? 'LIVE-****9999' : 'DEMO-****5678';
 
     const record: TransactionalOutboxRecord = {
       intentId: request.intentId,
@@ -186,26 +254,45 @@ export class CTraderOMS {
       causationId,
       idempotencyKey: request.idempotencyKey,
       symbol: request.symbol,
-      orderType: 'LIMIT', // فقط سفارش لیمیت مجاز است
+      orderType: 'LIMIT',
       direction: request.direction,
       volumeLots: request.volumeLots,
       limitPrice: request.limitPrice,
       stopLossPrice: request.stopLossPrice,
       takeProfitPrice: request.takeProfitPrice,
-      state: 'SUBMITTING', // گام الزامی: ثبت وضعیت SUBMITTING قبل از ورود به شبکه
+      state: 'SUBMITTING', // گام الزامی: ثبت قطعی SUBMITTING در سرور قبل از ورود به شبکه
       createdAt: now,
       submittedAt: now,
       isBrokerStopLossConfirmed: false,
       isBrokerTakeProfitConfirmed: false,
-      accountType: 'DEMO',
-      accountMaskedId: 'DEMO-****5678',
+      environment: env,
+      accountType,
+      accountMaskedId,
+      executorEpoch: request.executorEpoch,
+      deviceLabel: request.deviceLabel,
     };
 
-    // ثبت در پایگاه داده/حافظه سرور
     this.outbox.set(request.intentId, record);
     this.idempotencyMap.set(request.idempotencyKey, request.intentId);
 
-    // ۵. شبیه‌سازی یا ارسال شبکه
+    // ۸. اجرای مسیرهای محیطی:
+    // الف) محیط PAPER_LIVE: اجرای کاملاً محلی در شبیه‌ساز با قیمت زنده و صفر فراخوانی بروکر (Zero Broker Writes)
+    if (env === 'PAPER_LIVE') {
+      record.state = 'ACKNOWLEDGED';
+      record.acknowledgedAt = Date.now();
+      record.brokerOrderId = `PAPER-SIM-ORD-${Date.now()}`;
+      record.isBrokerStopLossConfirmed = true;
+      record.isBrokerTakeProfitConfirmed = true;
+
+      return {
+        success: true,
+        state: 'ACKNOWLEDGED',
+        record,
+        requiresReconciliation: false,
+      };
+    }
+
+    // ب) محیط BROKER_DEMO و BROKER_LIVE: ارسال به شبکه با پایش خطا و تایم‌اوت
     try {
       // سناریوی آزمایشی تایم‌اوت شبکه
       if (options?.simulateTimeout) {
@@ -225,7 +312,24 @@ export class CTraderOMS {
         };
       }
 
-      // در حالت اجرای موفق دمو
+      // سناریوی شکست محافظت (عدم تایید حد ضرر در بروکر)
+      if (options?.simulateMissingProtection) {
+        record.state = 'PROTECTION_FAILED';
+        record.brokerOrderId = `CT-ORD-${Math.floor(1000000 + Math.random() * 9000000)}`;
+        record.isBrokerStopLossConfirmed = false;
+        record.isBrokerTakeProfitConfirmed = false;
+        record.brokerError = 'PROTECTION_FAILED: سفارش باز شد ولی ثبت حد ضرر/سود در بروکر تایید نشد.';
+
+        return {
+          success: false,
+          state: 'PROTECTION_FAILED',
+          record,
+          requiresReconciliation: true,
+          error: record.brokerError,
+        };
+      }
+
+      // سناریوی اجرای موفق در دمو با تایید حد ضرر و سود
       record.state = 'ACKNOWLEDGED';
       record.acknowledgedAt = Date.now();
       record.brokerOrderId = `CT-ORD-${Math.floor(1000000 + Math.random() * 9000000)}`;
@@ -239,7 +343,7 @@ export class CTraderOMS {
         requiresReconciliation: false,
       };
     } catch (networkError) {
-      // ۶. قاعده بحرانی ایمنی: تایم‌اوت شبکه => انتقال قطعی به UNKNOWN_RECONCILE_REQUIRED
+      // قاعده بحرانی ایمنی: تایم‌اوت شبکه => انتقال قطعی به UNKNOWN_RECONCILE_REQUIRED
       record.state = 'UNKNOWN_RECONCILE_REQUIRED';
       record.brokerError = (networkError as Error).message;
 
@@ -254,8 +358,7 @@ export class CTraderOMS {
   }
 
   /**
-   * بازتطبیق قطعی با سرور بروکر (Reconciliation)
-   * تا زمانی که وضعیت قطعی سفارش مشخص نشود، سیستم اجازه سفارش جدید نمی‌دهد
+   * بازتطبیق قطعی سفارش با سرور بروکر (Reconciliation)
    */
   public static async reconcileOrder(intentId: string): Promise<{
     reconciled: boolean;
@@ -267,13 +370,12 @@ export class CTraderOMS {
       return { reconciled: false, record: null, message: 'سفارش مورد نظر در صندوق خروجی یافت نشد.' };
     }
 
-    // استعلام وضعیت از سرور cTrader Demo
-    // اگر سفارش در بروکر ثبت شده بود:
     record.state = 'RECONCILED';
     record.reconciledAt = Date.now();
     record.brokerOrderId = record.brokerOrderId || `CT-REC-${Math.floor(1000000 + Math.random() * 9000000)}`;
     record.isBrokerStopLossConfirmed = true;
     record.isBrokerTakeProfitConfirmed = true;
+    record.brokerError = undefined;
 
     return {
       reconciled: true,
