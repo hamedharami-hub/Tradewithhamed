@@ -3,6 +3,7 @@
 // طبق بخش‌های ۷، ۱۰ و ۱۲ سند v4.0 با اعتبارسنجی قطعی اسکیما و ممانعت از توهم شواهد
 
 import { BenchmarkTestCase } from './evaluation-corpus-120';
+import { LocalRAGEngine, GroundingContext } from './local-rag-engine';
 
 export interface AIReviewSchemaV4 {
   schema_version: 'v4.0';
@@ -31,6 +32,7 @@ export interface SequentialEvaluationResult {
   hallucinatedEvidenceDetected: boolean;
   adversarialAttackBlocked: boolean;
   latencyMs: number;
+  ragGrounding?: GroundingContext;
 }
 
 export class SequentialAnalystCriticEngine {
@@ -125,11 +127,25 @@ export class SequentialAnalystCriticEngine {
       };
     }
 
-    // ۳. نقش اول: تحلیل‌گر بازار (Analyst Role)
+    // ۳. استخراج شواهد مستند از پایگاه دانش محلی استراتژی S0 (Local Semantic RAG Grounding)
+    const ragGrounding = LocalRAGEngine.retrieveGroundingContext({
+      symbol: snapshot.symbol,
+      direction: snapshot.trendH1 === 'BULLISH' ? 'BUY' : 'SELL',
+      sweepDetected: snapshot.sweepDetected,
+      fvgDetected: snapshot.fvgDetected,
+      isNewsUpcoming: snapshot.isNewsUpcoming,
+      riskRewardRatio: snapshot.riskRewardRatio,
+    });
+
+    // ۴. نقش اول: تحلیل‌گر بازار (Analyst Role)
     const analystStatus: 'APPROVE' | 'REJECT' | 'ABSTAIN' =
       snapshot.sweepDetected && snapshot.fvgDetected && snapshot.riskRewardRatio >= 1.5
         ? 'APPROVE'
         : 'REJECT';
+
+    const groundedCitation = ragGrounding.groundedRuleIds.length > 0
+      ? ` (مستند به ${ragGrounding.groundedRuleIds.slice(0, 2).join(' و ')})`
+      : '';
 
     const analystReview: AIReviewSchemaV4 = {
       schema_version: 'v4.0',
@@ -140,7 +156,7 @@ export class SequentialAnalystCriticEngine {
       evidence_ids: [...snapshot.evidenceIds],
       invalidation_ids: analystStatus === 'REJECT' ? ['INSUFFICIENT_RR_OR_STRUCTURE'] : [],
       concise_reason: analystStatus === 'APPROVE'
-        ? `شواهد پرایس‌اکشن (${snapshot.symbol}) شامل سوییپ و عدم تعادل FVG در جهت روند H1 احراز گردید.`
+        ? `شواهد پرایس‌اکشن (${snapshot.symbol}) شامل سوییپ و عدم تعادل FVG در جهت روند H1 احراز گردید.${groundedCitation}`
         : `کیفیت ستاپ زیر حد آستانه است (RR=${snapshot.riskRewardRatio}).`,
       uncertainties: snapshot.riskRewardRatio < 2.0 ? ['نسبت ریسک به ریوارد مرزی'] : [],
       model_id: modelId,
@@ -151,7 +167,7 @@ export class SequentialAnalystCriticEngine {
       expires_at: now + 300000,
     };
 
-    // ۴. نقش دوم: منتقد ریسک و اخبار (Critic Role - بدبینانه و سخت‌گیر)
+    // ۵. نقش دوم: منتقد ریسک و اخبار (Critic Role - بدبینانه و سخت‌گیر)
     let criticStatus: 'APPROVE' | 'REJECT' | 'ABSTAIN' = analystStatus;
     const criticInvalidations: string[] = [];
 
@@ -184,7 +200,7 @@ export class SequentialAnalystCriticEngine {
       expires_at: now + 300000,
     };
 
-    // ۵. اعتبارسنجی توسط هسته قطعی (Core Verification & Consensus)
+    // ۶. اعتبارسنجی توسط هسته قطعی (Core Verification & Consensus)
     // بررسی عدم وجود شواهد جعلی (Fake Evidence Detection)
     let hallucinatedEvidenceDetected = false;
     if (testCase.mustNotContainEvidenceIds && testCase.mustNotContainEvidenceIds.length > 0) {
@@ -226,6 +242,7 @@ export class SequentialAnalystCriticEngine {
       hallucinatedEvidenceDetected,
       adversarialAttackBlocked: false,
       latencyMs: Number((performance.now() - t0).toFixed(1)),
+      ragGrounding,
     };
   }
 }

@@ -10,9 +10,10 @@ import {
   FlaskConical,
   Sparkles,
   Zap,
+  Brain,
 } from 'lucide-react';
 
-export type ActiveTabKey = 'chart' | 'research' | 'execution' | 'guardian' | 'journal' | 'security' | 'tests';
+export type ActiveTabKey = 'chart' | 'research' | 'execution' | 'guardian' | 'journal' | 'playbook' | 'security' | 'tests';
 
 interface M3TabsProps {
   activeTab: ActiveTabKey;
@@ -69,6 +70,14 @@ export const M3Tabs: React.FC<M3TabsProps> = ({
       badgeColor: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40',
     },
     {
+      key: 'playbook' as ActiveTabKey,
+      labelFa: 'کتابچه استراتژی و RAG',
+      labelEn: 'S0 Playbook & RAG',
+      icon: Brain,
+      badge: 'RAG محلی',
+      badgeColor: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40',
+    },
+    {
       key: 'security' as ActiveTabKey,
       labelFa: 'صندوق امنیت cTrader',
       labelEn: 'Outbox & Security',
@@ -92,7 +101,7 @@ export const M3Tabs: React.FC<M3TabsProps> = ({
       className="w-full bg-[#161a22] border border-[#272d3b] rounded-2xl p-1.5 shadow-sm"
       dir="rtl"
     >
-      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-7 gap-1.5">
+      <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-8 gap-1.5">
         {tabs.map(tab => {
           const Icon = tab.icon;
           const isActive = activeTab === tab.key;

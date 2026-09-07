@@ -13,6 +13,7 @@ import { runW4AcceptanceSuite } from '@/lib/core/__tests__/w4-acceptance.test';
 import { runW5AcceptanceSuite } from '@/lib/core/__tests__/w5-acceptance.test';
 import { runW3BenchmarkEvaluationSuite } from '@/lib/core/__tests__/w3-benchmark.test';
 import { runW4OnlineExecutionTests } from '@/lib/server/__tests__/w4-online-execution.test';
+import { runLocalRAGTests } from '@/lib/core/__tests__/local-rag.test';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -67,6 +68,9 @@ export async function GET() {
       details: t.details,
     }));
 
+    // نتایج آزمون‌های موتور بازیابی معنایی محلی و پایگاه دانش S0 (Local Semantic RAG)
+    const ragResults = runLocalRAGTests();
+
     const combined = [
       ...coreResults,
       ...ctraderResults,
@@ -82,6 +86,7 @@ export async function GET() {
       ...w4Results,
       ...w4OnlineResults,
       ...w5Results,
+      ...ragResults,
     ];
     const allPassed = combined.every(t => t.passed);
 

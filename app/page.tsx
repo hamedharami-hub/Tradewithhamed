@@ -28,6 +28,7 @@ import {
 import { ResearchWorkbench } from '@/components/trading/research-workbench';
 import { LiveShadowWorkbench } from '@/components/trading/live-shadow-workbench';
 import { RiskGuardianWorkbench } from '@/components/trading/risk-guardian-workbench';
+import { RAGPlaybookWorkbench } from '@/components/trading/rag-playbook-workbench';
 import { AVAILABLE_OFFLINE_MODELS } from '@/lib/ai/browser-offline-ai';
 import { M3Tabs, ActiveTabKey } from '@/components/trading/m3-tabs';
 import { SymbolReplayToolbar } from '@/components/trading/symbol-replay-toolbar';
@@ -477,6 +478,13 @@ export default function TradingLabPage() {
         {activeTab === 'journal' && (
           <div className="space-y-4">
             <JournalWorkbenchW5 />
+          </div>
+        )}
+
+        {/* بخش کتابچه استراتژی S0 و بازیابی معنایی محلی (Local Semantic RAG) */}
+        {activeTab === 'playbook' && (
+          <div className="space-y-4">
+            <RAGPlaybookWorkbench />
           </div>
         )}
 
