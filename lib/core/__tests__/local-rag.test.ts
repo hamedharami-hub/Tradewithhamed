@@ -6,6 +6,7 @@ import { LocalRAGEngine } from '../local-rag-engine';
 import { S0_KNOWLEDGE_BASE } from '../s0-knowledge-base';
 import { SequentialAnalystCriticEngine } from '../sequential-analyst-critic';
 import { BENCHMARK_EVALUATION_CORPUS_120 } from '../evaluation-corpus-120';
+import { DEFAULT_W5_TRADES } from '../../contracts/w5-journal-analytics';
 
 export interface LocalRAGTestResult {
   name: string;
@@ -213,6 +214,66 @@ export function runLocalRAGTests(): LocalRAGTestResult[] {
   } catch (e) {
     results.push({
       name: '[Local RAG] Sub-10ms Latency Benchmark',
+      passed: false,
+      details: (e as Error).message,
+    });
+  }
+
+  // تست ۱۰: ثبت پویای معاملات ژورنال W5 در پایگاه دانش محلی RAG
+  try {
+    LocalRAGEngine.registerJournalTrades(DEFAULT_W5_TRADES);
+    const allChunks = LocalRAGEngine.getAllChunks();
+    const dynamicCount = LocalRAGEngine.getDynamicChunkCount();
+    const passed = dynamicCount === DEFAULT_W5_TRADES.length && allChunks.length === 15 + DEFAULT_W5_TRADES.length;
+    results.push({
+      name: '[Local RAG] Dynamic Journal Trades Registration',
+      passed,
+      details: passed
+        ? `تعداد ${dynamicCount} معامله واقعی ژورنال با موفقیت به پایگاه وکتور اضافه شد (کل بخش‌ها: ${allChunks.length}).`
+        : `خطا در ثبت پویای معاملات: ${dynamicCount}`,
+    });
+  } catch (e) {
+    results.push({
+      name: '[Local RAG] Dynamic Journal Trades Registration',
+      passed: false,
+      details: (e as Error).message,
+    });
+  }
+
+  // تست ۱۱: جستجوی معنایی و بازیابی معامله واقعی TR-102 از ژورنال
+  try {
+    const hits = LocalRAGEngine.search('معامله یورو قبل از زمان بهینه سشن با حد ضرر', { topK: 3 });
+    const foundTR102 = hits.some(h => h.chunk.id === 'JOURNAL-TR-102');
+    results.push({
+      name: '[Local RAG] Real Journal Trade Semantic Retrieval',
+      passed: foundTR102,
+      details: foundTR102
+        ? 'معامله واقعی JOURNAL-TR-102 با موفقیت از طریق جستجوی معنایی یادداشت ژورنال بازیابی شد.'
+        : `معامله TR-102 در نتایج جستجو یافت نشد (برترین نتیجه: ${hits[0]?.chunk.id || 'هیچ'}).`,
+    });
+  } catch (e) {
+    results.push({
+      name: '[Local RAG] Real Journal Trade Semantic Retrieval',
+      passed: false,
+      details: (e as Error).message,
+    });
+  }
+
+  // تست ۱۲: پاکسازی و بازگشت به حالت مرجع
+  try {
+    LocalRAGEngine.clearDynamicChunks();
+    const baseCount = LocalRAGEngine.getAllChunks().length;
+    const passed = baseCount === 15;
+    results.push({
+      name: '[Local RAG] Dynamic Chunks Safe Cleanup',
+      passed,
+      details: passed
+        ? 'پایگاه دانش پس از پاکسازی با موفقیت به ۱۵ بخش مرجع بازگشت.'
+        : `تعداد بخش‌ها پس از پاکسازی نامعتبر است: ${baseCount}`,
+    });
+  } catch (e) {
+    results.push({
+      name: '[Local RAG] Dynamic Chunks Safe Cleanup',
       passed: false,
       details: (e as Error).message,
     });

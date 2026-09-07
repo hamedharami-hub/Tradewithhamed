@@ -30,6 +30,7 @@ import {
   S0KnowledgeCategory,
 } from '@/lib/core/s0-knowledge-base';
 import { LocalRAGEngine, RAGSearchResult } from '@/lib/core/local-rag-engine';
+import { DEFAULT_W5_TRADES } from '@/lib/contracts/w5-journal-analytics';
 
 export const RAGPlaybookWorkbench: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
@@ -37,12 +38,30 @@ export const RAGPlaybookWorkbench: React.FC = () => {
   const [expandedChunkId, setExpandedChunkId] = useState<string | null>('S0-RULE-02');
   const [sandboxInput, setSandboxInput] = useState('سوییپ نقدینگی سقف آسیا و ورود با FVG در سشن لندن با نسبت ریسک ۲');
   const [showSandbox, setShowSandbox] = useState(true);
+  const [isJournalSynced, setIsJournalSynced] = useState(true);
+
+  // همگام‌سازی معاملات ژورنال W5 با موتور وکتور محلی
+  React.useEffect(() => {
+    if (isJournalSynced) {
+      LocalRAGEngine.registerJournalTrades(DEFAULT_W5_TRADES);
+    } else {
+      LocalRAGEngine.clearDynamicChunks();
+    }
+  }, [isJournalSynced]);
 
   // پیش‌تنظیم‌های سناریو جهت تست سریع
   const scenarioPresets = [
     {
       title: 'سوییپ + FVG استاندارد',
       query: 'سوییپ نقدینگی و هانت استاپ با شکست ساختار BOS و ورود در FVG',
+    },
+    {
+      title: 'سودآور با سوییپ آسیا (TR-101)',
+      query: 'جاروب نقدینگی کف آسیا با خروج در سقف FVG ۴ ساعته',
+    },
+    {
+      title: 'معامله قبل سشن بهینه (TR-102)',
+      query: 'شکست سقف ساختار یورو قبل از زمان بهینه سشن و استاپ بدون دستکاری',
     },
     {
       title: 'ریسک بالا پیش از اخبار FOMC',
@@ -58,6 +77,11 @@ export const RAGPlaybookWorkbench: React.FC = () => {
     },
   ];
 
+  // کلیه بخش‌های پایگاه دانش (شامل رکوردهای پویای ژورنال)
+  const currentChunks = useMemo(() => {
+    return LocalRAGEngine.getAllChunks();
+  }, [isJournalSynced]);
+
   // جستجوی زنده RAG
   const searchResults: RAGSearchResult[] = useMemo(() => {
     const activeQuery = searchQuery.trim();
@@ -65,7 +89,7 @@ export const RAGPlaybookWorkbench: React.FC = () => {
 
     if (!activeQuery) {
       // نمایش همه یا فیلتر دسته‌بندی
-      let list = S0_KNOWLEDGE_BASE;
+      let list = currentChunks;
       if (categoryFilter) {
         list = list.filter(c => c.category === categoryFilter);
       }
@@ -78,27 +102,30 @@ export const RAGPlaybookWorkbench: React.FC = () => {
     }
 
     return LocalRAGEngine.search(activeQuery, {
-      topK: 15,
+      topK: 20,
       minScore: 5,
       category: categoryFilter,
     });
-  }, [searchQuery, selectedCategory]);
+  }, [searchQuery, selectedCategory, currentChunks]);
 
   // نتایج آزمایشگاه سناریو
   const sandboxResults = useMemo(() => {
     if (!sandboxInput.trim()) return [];
     return LocalRAGEngine.search(sandboxInput, { topK: 3, minScore: 10 });
-  }, [sandboxInput]);
+  }, [sandboxInput, isJournalSynced]);
 
   const categories = [
-    { key: 'ALL', label: 'همه بخش‌ها (۱۵)', count: S0_KNOWLEDGE_BASE.length },
-    { key: 'CORE_RULE', label: 'قوانین اصلی S0', count: S0_KNOWLEDGE_BASE.filter(c => c.category === 'CORE_RULE').length },
-    { key: 'RISK_POLICY', label: 'مدیریت ریسک', count: S0_KNOWLEDGE_BASE.filter(c => c.category === 'RISK_POLICY').length },
-    { key: 'JOURNAL_LESSON', label: 'درس‌های ژورنال', count: S0_KNOWLEDGE_BASE.filter(c => c.category === 'JOURNAL_LESSON').length },
-    { key: 'PSYCHOLOGY', label: 'روانشناسی و انضباط', count: S0_KNOWLEDGE_BASE.filter(c => c.category === 'PSYCHOLOGY').length },
+    { key: 'ALL', label: `همه بخش‌ها (${currentChunks.length})`, count: currentChunks.length },
+    { key: 'CORE_RULE', label: 'قوانین اصلی S0', count: currentChunks.filter(c => c.category === 'CORE_RULE').length },
+    { key: 'RISK_POLICY', label: 'مدیریت ریسک', count: currentChunks.filter(c => c.category === 'RISK_POLICY').length },
+    { key: 'JOURNAL_LESSON', label: `درس‌های ژورنال (${currentChunks.filter(c => c.category === 'JOURNAL_LESSON').length})`, count: currentChunks.filter(c => c.category === 'JOURNAL_LESSON').length },
+    { key: 'PSYCHOLOGY', label: 'روانشناسی و انضباط', count: currentChunks.filter(c => c.category === 'PSYCHOLOGY').length },
   ];
 
-  const getCategoryBadge = (cat: S0KnowledgeCategory) => {
+  const getCategoryBadge = (cat: S0KnowledgeCategory, chunkId?: string) => {
+    if (chunkId && chunkId.startsWith('JOURNAL-')) {
+      return { label: 'معامله واقعی ژورنال W5', color: 'bg-purple-500/20 text-purple-300 border-purple-500/30' };
+    }
     switch (cat) {
       case 'CORE_RULE':
         return { label: 'قاعده اصلی S0', color: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30' };
@@ -136,6 +163,17 @@ export const RAGPlaybookWorkbench: React.FC = () => {
           </div>
 
           <div className="flex items-center gap-2">
+            <button
+              onClick={() => setIsJournalSynced(!isJournalSynced)}
+              className={`text-xs px-3 py-1.5 rounded-xl border flex items-center gap-1.5 transition-colors ${
+                isJournalSynced
+                  ? 'bg-purple-500/20 text-purple-300 border-purple-500/40'
+                  : 'bg-[#1b202c] text-gray-400 border-[#2b3345] hover:border-purple-500/30'
+              }`}
+            >
+              <RefreshCw className="w-3.5 h-3.5" />
+              <span>{isJournalSynced ? 'همگام با ژورنال W5 (فعال)' : 'اتصال به ژورنال W5'}</span>
+            </button>
             <button
               onClick={() => setShowSandbox(!showSandbox)}
               className={`text-xs px-3 py-1.5 rounded-xl border flex items-center gap-1.5 transition-colors ${
@@ -198,7 +236,7 @@ export const RAGPlaybookWorkbench: React.FC = () => {
                   <div className="text-xs font-medium text-gray-300 mb-2">قوانین و درس‌های کشف‌شده در سناریوی فوق:</div>
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
                     {sandboxResults.map((hit, idx) => {
-                      const badge = getCategoryBadge(hit.chunk.category);
+                      const badge = getCategoryBadge(hit.chunk.category, hit.chunk.id);
                       return (
                         <div
                           key={idx}
@@ -289,7 +327,7 @@ export const RAGPlaybookWorkbench: React.FC = () => {
           searchResults.map(result => {
             const chunk = result.chunk;
             const isExpanded = expandedChunkId === chunk.id;
-            const badge = getCategoryBadge(chunk.category);
+            const badge = getCategoryBadge(chunk.category, chunk.id);
 
             return (
               <div

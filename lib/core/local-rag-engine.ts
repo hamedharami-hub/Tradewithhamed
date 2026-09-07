@@ -4,6 +4,7 @@
 // طبق بخش‌های ۱، ۲ و ۱۶ سند معماری v4.0
 
 import { S0_KNOWLEDGE_BASE, S0KnowledgeChunk, S0KnowledgeCategory } from './s0-knowledge-base';
+import { TradeLifecycleRecord } from '../contracts/w5-journal-analytics';
 
 export interface RAGSearchResult {
   chunk: S0KnowledgeChunk;
@@ -22,6 +23,7 @@ export class LocalRAGEngine {
   private static idfMap: Map<string, number> = new Map();
   private static chunkVectors: Map<string, Map<string, number>> = new Map();
   private static chunkNorms: Map<string, number> = new Map();
+  private static dynamicChunks: S0KnowledgeChunk[] = [];
   private static isInitialized = false;
 
   // واژگان تخصصی مالی با وزن تقویت‌شده برای بازشناسی دقیق قصد معامله‌گر
@@ -94,18 +96,26 @@ export class LocalRAGEngine {
   };
 
   /**
+   * دریافت کلیه بخش‌های پایگاه دانش (قوانین پایه + بخش‌های پویای ثبت‌شده از ژورنال)
+   */
+  public static getAllChunks(): S0KnowledgeChunk[] {
+    return [...S0_KNOWLEDGE_BASE, ...this.dynamicChunks];
+  }
+
+  /**
    * مقداردهی اولیه ایندکس برداری و محاسبات TF-IDF به صورت درون‌حافظه‌ای
    */
   public static initialize(): void {
     if (this.isInitialized) return;
 
-    const totalDocs = S0_KNOWLEDGE_BASE.length;
+    const allChunks = this.getAllChunks();
+    const totalDocs = allChunks.length;
     const docFrequency: Map<string, number> = new Map();
 
     // ۱. استخراج واژه‌ها و محاسبه فرکانس اسناد (Doc Frequency)
     const docTermsMap: Map<string, string[]> = new Map();
 
-    for (const chunk of S0_KNOWLEDGE_BASE) {
+    for (const chunk of allChunks) {
       const fullText = [
         chunk.titleFa,
         chunk.titleEn,
@@ -133,7 +143,7 @@ export class LocalRAGEngine {
     }
 
     // ۳. ساخت بردارهای TF-IDF برای تک‌تک بخش‌های پایگاه دانش
-    for (const chunk of S0_KNOWLEDGE_BASE) {
+    for (const chunk of allChunks) {
       const terms = docTermsMap.get(chunk.id) || [];
       const termFreqs: Map<string, number> = new Map();
 
@@ -209,7 +219,7 @@ export class LocalRAGEngine {
     const queryTokens = this.tokenize(query);
 
     if (queryTokens.length === 0) {
-      return S0_KNOWLEDGE_BASE.slice(0, topK).map(chunk => ({
+      return this.getAllChunks().slice(0, topK).map(chunk => ({
         chunk,
         score: 100,
         matchedTerms: [],
@@ -240,7 +250,7 @@ export class LocalRAGEngine {
     const results: RAGSearchResult[] = [];
 
     // مقایسه کسینوسی با تمام اسناد موجود در ایندکس
-    for (const chunk of S0_KNOWLEDGE_BASE) {
+    for (const chunk of this.getAllChunks()) {
       if (options.category && chunk.category !== options.category) {
         continue;
       }
@@ -310,7 +320,80 @@ export class LocalRAGEngine {
    * دریافت یک سند خاص بر اساس شناسه منحصر‌به‌فرد
    */
   public static getChunkById(id: string): S0KnowledgeChunk | undefined {
-    return S0_KNOWLEDGE_BASE.find(c => c.id === id);
+    return this.getAllChunks().find(c => c.id === id);
+  }
+
+  /**
+   * ثبت خودکار رکوردهای معامله ژورنال در پایگاه دانش محلی RAG
+   */
+  public static registerJournalTrades(trades: TradeLifecycleRecord[]): void {
+    this.dynamicChunks = trades.map(t => this.convertTradeToChunk(t));
+    this.isInitialized = false;
+    this.initialize();
+  }
+
+  /**
+   * پاکسازی رکوردهای پویای ژورنال و بازگرداندن پایگاه دانش به حالت پایه S0
+   */
+  public static clearDynamicChunks(): void {
+    this.dynamicChunks = [];
+    this.isInitialized = false;
+    this.initialize();
+  }
+
+  /**
+   * تعداد اسناد و درس‌های پویای ثبت‌شده از ژورنال
+   */
+  public static getDynamicChunkCount(): number {
+    return this.dynamicChunks.length;
+  }
+
+  /**
+   * تبدیل ساختار رکورد چرخه حیات معامله W5 به بخش دانشی قابل جستجو در وکتور
+   */
+  public static convertTradeToChunk(trade: TradeLifecycleRecord): S0KnowledgeChunk {
+    const isWin = trade.realizedNetPnL > 0;
+    const pnlFormatted = `${isWin ? '+' : ''}${trade.realizedNetPnL.toFixed(1)}$ (${trade.realizedRMultiple > 0 ? '+' : ''}${trade.realizedRMultiple.toFixed(2)}R)`;
+    const directionFa = trade.direction === 'BUY' ? 'خرید (BUY)' : 'فروش (SELL)';
+    const resultFa = isWin ? 'سودآور' : 'زیان‌ده';
+
+    const titleFa = `معامله ${trade.tradeId} (${resultFa}) روی ${trade.symbol} - ${pnlFormatted}`;
+    const titleEn = `Live Trade ${trade.tradeId} (${trade.exitReason}) on ${trade.symbol} - ${pnlFormatted}`;
+
+    const contentFa = `معامله واقعی شماره ${trade.tradeId} در جهت ${directionFa} با حجم ${trade.volumeLots} لات در قیمت ${trade.entryPrice} ثبت شد و در قیمت ${trade.exitPrice} با علت ${trade.exitReason} بسته شد. سود/زیان نهایی: ${pnlFormatted}. حداکثر افت شناور (MAE): ${trade.maxAdverseExcursionPips} پیپ. حداکثر سود شناور (MFE): ${trade.maxFavorableExcursionPips} پیپ. رتبه ستاپ: ${trade.setupGrade || 'ثبت نشده'}. یادداشت معامله‌گر: ${trade.traderNotesFa || 'بدون یادداشت'}.`;
+
+    const contentEn = `Real execution ${trade.tradeId} ${trade.direction} ${trade.volumeLots} lots on ${trade.symbol} at ${trade.entryPrice}, exited at ${trade.exitPrice} (${trade.exitReason}). Net PnL: ${pnlFormatted}, MAE: ${trade.maxAdverseExcursionPips} pips, MFE: ${trade.maxFavorableExcursionPips} pips. Grade: ${trade.setupGrade || 'N/A'}. Notes: ${trade.traderNotesFa || 'None'}.`;
+
+    const tags = [
+      trade.symbol.toLowerCase(),
+      trade.direction.toLowerCase(),
+      isWin ? 'سود' : 'ضرر',
+      isWin ? 'win' : 'loss',
+      trade.exitReason.toLowerCase(),
+      'ژورنال',
+      'تجربه واقعی',
+      ...(trade.behavioralTags || []),
+    ];
+
+    return {
+      id: `JOURNAL-${trade.tradeId}`,
+      titleFa,
+      titleEn,
+      category: 'JOURNAL_LESSON',
+      tags,
+      contentFa,
+      contentEn,
+      invalidationTriggers: [
+        `تکرار خطای معامله ${trade.tradeId} با حداکثر دراودان نامطلوب ${trade.maxAdverseExcursionPips} پیپ`,
+        trade.exitReason === 'SL_HIT' ? 'لمس مجدد حد ضرر مشابه این معامله' : 'خروج زودهنگام قبل از دستیابی به تارگت کامل',
+      ],
+      executionChecklist: [
+        `بررسی یادداشت ثبت‌شده: ${trade.traderNotesFa || 'تطبیق شواهد ستاپ'}`,
+        `کنترل نسبت R:R (تحقق‌یافته: ${trade.realizedRMultiple.toFixed(2)}R)`,
+        'اعتبارسنجی تاییدیه تایم‌فریم تریگر پیش از ورود',
+      ],
+      weight: 1.1,
+    };
   }
 
   /**
