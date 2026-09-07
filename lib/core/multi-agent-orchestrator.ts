@@ -7,6 +7,7 @@ import {
   MultiAgentConfiguration,
   MultiAgentPipelineResult,
   AgentReviewResult,
+  CouncilConsensusReport,
   TRADING_STYLES,
   AGENT_ROLES_INFO,
   AGENT_ENGINE_OPTIONS,
@@ -71,12 +72,64 @@ export class MultiAgentOrchestrator {
     // ۴. ارزیابی ایجنت ۴: داور نهایی و دیده‌بان قوانین
     const judgeReview = this.runJudgeAgent(candidate, config, styleInfo.id, analystReview, criticReview, now);
 
-    const isApprovedForTrading = judgeReview.verdict === 'APPROVED';
+    // محاسبه ماتریس اجماع شورای عالی آلفا (Alpha Consensus Quorum Matrix)
+    const agentWeights = {
+      SCANNER: 0.20,
+      ANALYST: 0.30,
+      CRITIC: 0.30,
+      JUDGE: 0.20,
+    };
+
+    let approvedVotes = 0;
+    let rejectedVotes = 0;
+    let neutralVotes = 0;
+    let weightedScore = 0;
+
+    const reviews = [scannerReview, analystReview, criticReview, judgeReview];
+    for (const r of reviews) {
+      if (r.verdict === 'APPROVED') {
+        approvedVotes++;
+        weightedScore += (agentWeights[r.agentRole] || 0.25) * r.confidence * 100;
+      } else if (r.verdict === 'REJECTED') {
+        rejectedVotes++;
+      } else {
+        neutralVotes++;
+      }
+    }
+
+    const alphaConsensusScore = Number(weightedScore.toFixed(1));
+    const quorumReached = alphaConsensusScore >= 75 && approvedVotes >= 3;
+    const vetoTriggered = criticReview.verdict === 'REJECTED' || judgeReview.verdict === 'REJECTED';
+    const vetoReasonFa = criticReview.verdict === 'REJECTED'
+      ? criticReview.summaryFa
+      : (judgeReview.verdict === 'REJECTED' ? judgeReview.summaryFa : undefined);
+
+    const verdictPersian = vetoTriggered
+      ? `توقف معامله توسط وتوی منتقد/داور (امتیاز اجماع: ${alphaConsensusScore}٪)`
+      : (quorumReached
+        ? `اجماع قاطع شورا با امتیاز آلفا ${alphaConsensusScore}٪ (تایید ۳+ ایجنت)`
+        : `عدم حصول حدنصاب ۷۵٪ (امتیاز فعلی: ${alphaConsensusScore}٪)`);
+
+    const councilConsensus: CouncilConsensusReport = {
+      alphaConsensusScore,
+      quorumReached,
+      vetoTriggered,
+      vetoReasonFa,
+      votes: {
+        approved: approvedVotes,
+        rejected: rejectedVotes,
+        neutral: neutralVotes,
+      },
+      agentWeights,
+      verdictPersian,
+    };
+
+    const isApprovedForTrading = judgeReview.verdict === 'APPROVED' && (!vetoTriggered || judgeReview.engineId !== 'alpha-consensus-quorum-judge');
     const failClosedTriggered = judgeReview.verdict === 'REJECTED' && analystReview.verdict === 'APPROVED';
 
     let finalRecommendationFa = '';
     if (isApprovedForTrading) {
-      finalRecommendationFa = `اجماع کامل هر ۴ ایجنت در سبک «${styleInfo.nameFa}» حاصل شد. مجوز ارسال سفارش لیمیت با ریسک حداکثر ۰.۲۵٪ صادر گردید.`;
+      finalRecommendationFa = `اجماع کامل هر ۴ ایجنت در سبک «${styleInfo.nameFa}» حاصل شد (شاخص آلفا: ${alphaConsensusScore}٪). مجوز ارسال سفارش لیمیت صادر گردید.`;
     } else if (failClosedTriggered) {
       finalRecommendationFa = `توقف بر اساس قاعده شکست امن (Fail-Closed): منتقد به دلیل ${criticReview.summaryFa} ورود را متوقف کرد. هیچ سفارشی ارسال نمی‌شود.`;
     } else {
@@ -99,6 +152,7 @@ export class MultiAgentOrchestrator {
       finalRecommendationFa,
       overallConfidence,
       timestamp: now,
+      councilConsensus,
     };
   }
 

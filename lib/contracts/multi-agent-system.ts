@@ -142,6 +142,15 @@ export const AGENT_ENGINE_OPTIONS: AgentEngineOption[] = [
     latencyMs: 2,
     descriptionFa: 'شناسایی شکست آخرین سووینگ معتبر و تشکیل اردر بلاک‌های دست‌نخورده.',
   },
+  {
+    id: 'llama-3.2-3b-scanner',
+    role: 'SCANNER',
+    name: 'Meta Llama-3.2-3B Neural Scanner',
+    nameFa: 'اسکنر عصبی فوق‌سریع Llama-3.2-3B',
+    type: 'NEURAL_WEBGPU',
+    latencyMs: 18,
+    descriptionFa: 'پایش بلادرنگ کندل‌ها با سرعت بالا و مصرف حداقل توان پردازشی روی موبایل، تبلت و پی‌سی.',
+  },
 
   // گزینه‌های ایجنت ۲: تحلیل‌گر بستر
   {
@@ -152,6 +161,15 @@ export const AGENT_ENGINE_OPTIONS: AgentEngineOption[] = [
     type: 'DETERMINISTIC',
     latencyMs: 2,
     descriptionFa: 'اعتبارسنجی قطعی شواهد نقدینگی و هم‌راستایی مومنتوم بدون مصرف رم یا گرافیک.',
+  },
+  {
+    id: 'phi-4-mini-analyst',
+    role: 'ANALYST',
+    name: 'Microsoft Phi-4-mini Dense Analyst',
+    nameFa: 'تحلیل‌گر فوق‌فشرده Microsoft Phi-4-mini (چگالی استدلال حداکثری)',
+    type: 'NEURAL_WEBGPU',
+    latencyMs: 24,
+    descriptionFa: 'بالاترین نسبت بهره‌وری استدلال به حجم (۳.۸ میلیارد پارامتر) با توانایی تحلیل ساختار و زمینه ماکرو.',
   },
   {
     id: 'qwen3.5-0.8b-analyst',
@@ -172,6 +190,24 @@ export const AGENT_ENGINE_OPTIONS: AgentEngineOption[] = [
     descriptionFa: 'تعادل ایده‌آل سرعت و هوش استدلال برای درک سطوح نقدینگی و سناریوهای قیمت.',
   },
   {
+    id: 'qwen2.5-7b-analyst',
+    role: 'ANALYST',
+    name: 'Qwen2.5-7B Instruct Analyst',
+    nameFa: 'تحلیل‌گر جامع و چندزبانه Qwen2.5-7B',
+    type: 'NEURAL_WEBGPU',
+    latencyMs: 40,
+    descriptionFa: 'تحلیل عمیق شواهد نقدینگی چندساعته با درک قدرتمند ساختار بازار و متن فارسی.',
+  },
+  {
+    id: 'qwen2.5-14b-analyst',
+    role: 'ANALYST',
+    name: 'Qwen2.5-14B Heavy Macro Analyst',
+    nameFa: 'تحلیل‌گر کلان ۱۴ میلیاردی Qwen2.5-14B (ویژه دستگاه‌های ۱۶ گیگابایت)',
+    type: 'NEURAL_WEBGPU',
+    latencyMs: 65,
+    descriptionFa: 'تحلیل‌گر سنگین‌وزن ۱۴ میلیاردی برای واکاوی ساختارهای چندتایم‌فریمه و سناریوهای پایش عمیق در Pixel Fold و Snapdragon.',
+  },
+  {
     id: 'qwen3.5-4b-analyst',
     role: 'ANALYST',
     name: 'Qwen3.5-4B Desktop Analyst',
@@ -189,15 +225,6 @@ export const AGENT_ENGINE_OPTIONS: AgentEngineOption[] = [
     latencyMs: 22,
     descriptionFa: 'آرتیفکت پایدار و تست‌شده در مرورگر با سازگاری گسترده با درایورها.',
   },
-  {
-    id: 'gemma-4-e2b-analyst',
-    role: 'ANALYST',
-    name: 'Gemma 4 E2B Web Analyst',
-    nameFa: 'تحلیل‌گر پژوهشی گوگل Gemma 4 E2B',
-    type: 'NEURAL_WEBGPU',
-    latencyMs: 38,
-    descriptionFa: 'مدل تحقیقاتی گوگل برای ارزیابی بنچمارک مقایسه‌ای استدلال بازار.',
-  },
 
   // گزینه‌های ایجنت ۳: منتقد سخت‌گیر
   {
@@ -210,31 +237,40 @@ export const AGENT_ENGINE_OPTIONS: AgentEngineOption[] = [
     descriptionFa: 'غربالگری بدبینانه ستاپ‌ها، رد معاملات با نسبت R:R زیر ۲٫۵ یا شواهد کمتر از ۲ فاکتور.',
   },
   {
+    id: 'deepseek-r1-7b-critic',
+    role: 'CRITIC',
+    name: 'DeepSeek-R1 Distill 7B CoT Trap Critic',
+    nameFa: 'منتقد تله‌های نقدینگی DeepSeek-R1 7B (تفکر عمیق <think>)',
+    type: 'NEURAL_WEBGPU',
+    latencyMs: 42,
+    descriptionFa: 'موشکافی تله‌های استاپ هانتینگ با زنجیره تفکر عمیق و شبیه‌سازی رفتار بازارگردان.',
+  },
+  {
+    id: 'deepseek-r1-14b-critic',
+    role: 'CRITIC',
+    name: 'DeepSeek-R1 Distill 14B Heavy CoT Critic',
+    nameFa: 'منتقد ابرقدرت ۱۴ میلیاردی DeepSeek-R1 (دستگاه‌های ۱۶ گیگابایت)',
+    type: 'NEURAL_WEBGPU',
+    latencyMs: 70,
+    descriptionFa: 'سخت‌گیرانه‌ترین منتقد ریسک با استدلال ۱۴ میلیاردی و ابطال احتمالی سناریوهای فومو.',
+  },
+  {
+    id: 'phi-4-mini-critic',
+    role: 'CRITIC',
+    name: 'Microsoft Phi-4-mini Adversarial Critic',
+    nameFa: 'منتقد استدلالی فشرده Phi-4-mini (وکیل مدافع شیطان)',
+    type: 'NEURAL_WEBGPU',
+    latencyMs: 26,
+    descriptionFa: 'جستجوی فعال تناقض‌های مومنتوم و نسبت سود به ضرر با چگالی استدلال بالا.',
+  },
+  {
     id: 'qwen3.5-4b-critic',
     role: 'CRITIC',
     name: 'Qwen3.5-4B Adversarial Critic',
-    nameFa: 'منتقد عصبی بدبین Qwen3.5-4B (وکیل مدافع شیطان)',
+    nameFa: 'منتقد عصبی بدبین Qwen3.5-4B',
     type: 'NEURAL_WEBGPU',
     latencyMs: 48,
     descriptionFa: 'جستجوی فعالانه عیوب و سناریوهای نقض ستاپ با استنتاج چندوجهی در مرورگر.',
-  },
-  {
-    id: 'qwen3.5-2b-critic',
-    role: 'CRITIC',
-    name: 'Qwen3.5-2B Risk Critic',
-    nameFa: 'منتقد عصبی متعادل Qwen3.5-2B',
-    type: 'NEURAL_WEBGPU',
-    latencyMs: 30,
-    descriptionFa: 'نقد هوشمند با تأکید بر موانع احتمالی و اسلیپیج نقدینگی.',
-  },
-  {
-    id: 'gemma-4-e2b-critic',
-    role: 'CRITIC',
-    name: 'Gemma 4 E2B Critic',
-    nameFa: 'منتقد عصبی پژوهشی Gemma 4 E2B',
-    type: 'NEURAL_WEBGPU',
-    latencyMs: 40,
-    descriptionFa: 'ارزیابی سخت‌گیرانه ستاپ‌ها در قالب پرامپت استرس و تناقض‌یاب.',
   },
 
   // گزینه‌های ایجنت ۴: داور نهایی و دیده‌بان ریسک
@@ -246,6 +282,15 @@ export const AGENT_ENGINE_OPTIONS: AgentEngineOption[] = [
     type: 'DETERMINISTIC',
     latencyMs: 1,
     descriptionFa: 'در صورت کوچک‌ترین تضاد بین تحلیل‌گر و منتقد، فوراً وضعیت NO_TRADE اعلام می‌کند (بدون استثنا).',
+  },
+  {
+    id: 'alpha-consensus-quorum-judge',
+    role: 'JUDGE',
+    name: 'Alpha Consensus Quorum Council Judge',
+    nameFa: 'داور شورای عالی آلفا با حدنصاب رأی‌گیری (Quorum 75%+)',
+    type: 'DETERMINISTIC',
+    latencyMs: 2,
+    descriptionFa: 'ماتریس اجماع کواروم با ارزیابی وزنی ۴ ایجنت؛ رد خودکار در صورت وتوی منتقد نقدینگی.',
   },
   {
     id: 'risk-guardian-w4-judge',
@@ -299,6 +344,20 @@ export interface AgentReviewResult {
   latencyMs: number;
 }
 
+export interface CouncilConsensusReport {
+  alphaConsensusScore: number; // بین ۰ تا ۱۰۰
+  quorumReached: boolean;
+  vetoTriggered: boolean;
+  vetoReasonFa?: string;
+  votes: {
+    approved: number;
+    rejected: number;
+    neutral: number;
+  };
+  agentWeights: Record<AgentRole, number>;
+  verdictPersian: string;
+}
+
 export interface MultiAgentPipelineResult {
   tradingStyle: TradingStyleId;
   tradingStyleInfo: TradingStyleInfo;
@@ -311,4 +370,5 @@ export interface MultiAgentPipelineResult {
   finalRecommendationFa: string;
   overallConfidence: number;
   timestamp: number;
+  councilConsensus?: CouncilConsensusReport;
 }

@@ -43,6 +43,8 @@ import {
   OfflineAIProfileId,
   OFFLINE_AI_PROFILES,
 } from '@/lib/core/analyst-critic';
+import { MultiTimeframeSyncView } from '@/components/trading/multi-timeframe-sync-view';
+import { MonteCarloModal } from '@/components/trading/monte-carlo-modal';
 import { ShieldCheck, AlertCircle, X } from 'lucide-react';
 
 const broker = new SimulatedBroker(10000);
@@ -72,6 +74,7 @@ export default function TradingLabPage() {
   // وضعیت مدل هوش مصنوعی آفلاین
   const [isAIModalOpen, setIsAIModalOpen] = useState(false);
   const [isMultiAgentModalOpen, setIsMultiAgentModalOpen] = useState(false);
+  const [isMonteCarloModalOpen, setIsMonteCarloModalOpen] = useState(false);
   const [multiAgentConfig, setMultiAgentConfig] = useState<MultiAgentConfiguration>(() =>
     MultiAgentOrchestrator.loadConfiguration()
   );
@@ -524,12 +527,21 @@ export default function TradingLabPage() {
 
             {/* چیدمان نمودار و کارت تحلیل ستاپ - دو ستونه از عرض md به بالا برای تاشوی باز و لپ‌تاپ */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              {/* ستون نمودار کندل‌استیک ۵ دقیقه‌ای */}
-              <div className="md:col-span-2">
+              {/* ستون نمودار کندل‌استیک ۵ دقیقه‌ای و دیدبان چندتایم‌فریمه */}
+              <div className="md:col-span-2 space-y-4">
                 <ChartCanvas
                   symbol={symbol}
                   candles={replayState.visibleCandles}
                   activeCandidate={replayState.activeCandidate}
+                />
+                <MultiTimeframeSyncView
+                  symbol={symbol}
+                  currentPrice={
+                    replayState.visibleCandles[replayState.visibleCandles.length - 1]?.close ||
+                    (symbol === 'XAUUSD' ? 2050 : 1.085)
+                  }
+                  macroTrend="BULLISH"
+                  onOpenMonteCarlo={() => setIsMonteCarloModalOpen(true)}
                 />
               </div>
 
@@ -658,6 +670,26 @@ export default function TradingLabPage() {
         onClose={() => setIsMultiAgentModalOpen(false)}
         config={multiAgentConfig}
         onSaveConfig={handleSaveMultiAgentConfig}
+      />
+
+      {/* مودال شبیه‌سازی ۱۰۰۰ مسیره مونت‌کارلو */}
+      <MonteCarloModal
+        isOpen={isMonteCarloModalOpen}
+        onClose={() => setIsMonteCarloModalOpen(false)}
+        initialPrice={
+          replayState.activeCandidate?.entryPrice ||
+          replayState.visibleCandles[replayState.visibleCandles.length - 1]?.close ||
+          (symbol === 'XAUUSD' ? 2050 : 1.085)
+        }
+        targetPrice={
+          replayState.activeCandidate?.takeProfitPrice ||
+          (symbol === 'XAUUSD' ? 2062 : 1.092)
+        }
+        stopLossPrice={
+          replayState.activeCandidate?.stopLossPrice ||
+          (symbol === 'XAUUSD' ? 2044 : 1.081)
+        }
+        symbol={symbol}
       />
     </main>
   );

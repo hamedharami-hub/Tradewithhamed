@@ -71,6 +71,7 @@ export const OfflineAIManagerModal: React.FC<OfflineAIManagerModalProps> = ({
   const [isTesting, setIsTesting] = useState(false);
   const [showGuide, setShowGuide] = useState(false);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
+  const [filterTier, setFilterTier] = useState<'ALL' | 'ULTRA_DENSE' | 'HEAVY_POWER' | 'MOBILE_TABLET' | 'ZERO_WEIGHT'>('ALL');
 
   // به‌روزرسانی وضعیت و سنجش سخت‌افزار
   const refreshStatus = async () => {
@@ -389,15 +390,98 @@ export const OfflineAIManagerModal: React.FC<OfflineAIManagerModalProps> = ({
             )}
           </div>
 
+          {/* بنر آزادی انتخاب مدل‌های سنگین روی موبایل/تبلت ۱۶ گیگابایت */}
+          <div className="p-3.5 bg-gradient-to-r from-cyan-950/60 via-purple-950/40 to-slate-900 rounded-2xl border border-cyan-800/50 flex items-start gap-3 text-[11px] text-zinc-300 leading-relaxed shadow-sm">
+            <Sparkles className="w-4 h-4 text-cyan-400 mt-0.5 shrink-0" />
+            <div>
+              <span className="font-bold text-white block mb-0.5">
+                انعطاف‌پذیری سخت‌افزاری: آزادی کامل انتخاب مدل‌های قدرتمند و ۱۴ میلیاردی
+              </span>
+              <span>
+                بر روی دستگاه‌های قدرتمند همراه نظیر <strong className="text-cyan-300">Google Pixel 9 Pro Fold (۱۶ گیگابایت رم)</strong>، تبلت‌ها و لپ‌تاپ‌های <strong className="text-purple-300">Snapdragon X Plus</strong>، هیچ محدودیتی در انتخاب وجود ندارد؛ می‌توانید آزادانه از مدل‌های کم‌حجم با چگالی استدلال بالا (Phi-4-mini و Llama-3.2) تا ابرقدرت‌های ۱۴ میلیاردی (DeepSeek-R1 14B) را کاملاً آفلاین در مرورگر اجرا کنید.
+              </span>
+            </div>
+          </div>
+
           {/* فهرست کارت‌های مدل‌های طرح نسخه ۴.۰ */}
           <div className="space-y-3">
-            <h3 className="text-xs font-bold text-zinc-300 flex items-center gap-2">
-              <Layers className="w-4 h-4 text-cyan-400" />
-              <span>کاتالوگ مدل‌های استاندارد پلن v4.0:</span>
-            </h3>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <h3 className="text-xs font-bold text-zinc-300 flex items-center gap-2">
+                <Layers className="w-4 h-4 text-cyan-400" />
+                <span>کاتالوگ مدل‌های هوش مصنوعی (نسخه ۴.۰):</span>
+              </h3>
+
+              {/* فیلتر دسته‌بندی مدل‌ها */}
+              <div className="flex items-center gap-1 overflow-x-auto pb-1 text-[10px]">
+                <button
+                  type="button"
+                  onClick={() => setFilterTier('ALL')}
+                  className={`px-2.5 py-1 rounded-lg font-medium transition-colors whitespace-nowrap ${
+                    filterTier === 'ALL'
+                      ? 'bg-cyan-600 text-white'
+                      : 'bg-[#181d28] text-zinc-400 hover:text-zinc-200'
+                  }`}
+                >
+                  همه ({PLAN_V4_MODELS.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFilterTier('ULTRA_DENSE')}
+                  className={`px-2.5 py-1 rounded-lg font-medium transition-colors whitespace-nowrap ${
+                    filterTier === 'ULTRA_DENSE'
+                      ? 'bg-purple-600 text-white'
+                      : 'bg-[#181d28] text-zinc-400 hover:text-zinc-200'
+                  }`}
+                >
+                  بالاترین چگالی استدلال (Dense)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFilterTier('HEAVY_POWER')}
+                  className={`px-2.5 py-1 rounded-lg font-medium transition-colors whitespace-nowrap ${
+                    filterTier === 'HEAVY_POWER'
+                      ? 'bg-rose-600 text-white'
+                      : 'bg-[#181d28] text-zinc-400 hover:text-zinc-200'
+                  }`}
+                >
+                  مدل‌های ۱۴ میلیاردی و سنگین
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFilterTier('MOBILE_TABLET')}
+                  className={`px-2.5 py-1 rounded-lg font-medium transition-colors whitespace-nowrap ${
+                    filterTier === 'MOBILE_TABLET'
+                      ? 'bg-emerald-600 text-white'
+                      : 'bg-[#181d28] text-zinc-400 hover:text-zinc-200'
+                  }`}
+                >
+                  بهینه موبایل و تبلت
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFilterTier('ZERO_WEIGHT')}
+                  className={`px-2.5 py-1 rounded-lg font-medium transition-colors whitespace-nowrap ${
+                    filterTier === 'ZERO_WEIGHT'
+                      ? 'bg-amber-600 text-white'
+                      : 'bg-[#181d28] text-zinc-400 hover:text-zinc-200'
+                  }`}
+                >
+                  بدون دانلود (توکار)
+                </button>
+              </div>
+            </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              {PLAN_V4_MODELS.map((model) => {
+              {PLAN_V4_MODELS.filter((m) => {
+                if (filterTier === 'ALL') return true;
+                if (filterTier === 'ULTRA_DENSE') return m.densityTier === 'ULTRA_DENSE';
+                if (filterTier === 'HEAVY_POWER') return m.densityTier === 'HEAVY_POWER';
+                if (filterTier === 'ZERO_WEIGHT') return m.densityTier === 'ZERO_WEIGHT';
+                if (filterTier === 'MOBILE_TABLET') {
+                  return m.recommendedDevices?.includes('MOBILE_16GB') || m.recommendedDevices?.includes('TABLET');
+                }
+                return true;
+              }).map((model) => {
                 const isSelected = selectedModelId === model.id;
                 const isDownloaded = downloadedMap[model.id] || model.isBuiltIn;
                 const isResident = residentModelId === model.id;
@@ -417,26 +501,36 @@ export const OfflineAIManagerModal: React.FC<OfflineAIManagerModalProps> = ({
                       {/* ردیف عنوان، تگ‌ها و وضعیت */}
                       <div className="flex items-start justify-between gap-2">
                         <div>
-                          <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-2 flex-wrap">
                             <h4 className="font-bold text-zinc-100 text-xs">{model.name}</h4>
                             {model.isBuiltIn && (
                               <span className="px-1.5 py-0.5 text-[9px] bg-emerald-950 text-emerald-300 rounded font-bold border border-emerald-800">
                                 توکار
                               </span>
                             )}
-                            {model.isExperimental && (
-                              <span className="px-1.5 py-0.5 text-[9px] bg-amber-950 text-amber-300 rounded font-bold border border-amber-800">
-                                آزمایشی
+                            {model.densityBadgeFa && (
+                              <span
+                                className={`px-1.5 py-0.5 text-[9px] rounded font-bold border ${
+                                  model.densityTier === 'ULTRA_DENSE'
+                                    ? 'bg-purple-950 text-purple-300 border-purple-800'
+                                    : model.densityTier === 'HEAVY_POWER'
+                                    ? 'bg-rose-950 text-rose-300 border-rose-800'
+                                    : model.densityTier === 'ZERO_WEIGHT'
+                                    ? 'bg-emerald-950 text-emerald-300 border-emerald-800'
+                                    : 'bg-cyan-950 text-cyan-300 border-cyan-800'
+                                }`}
+                              >
+                                {model.densityBadgeFa}
                               </span>
                             )}
                           </div>
-                          <span className="text-[10px] text-zinc-400 font-mono mt-0.5 block">
+                          <span className="text-[10px] text-zinc-400 font-mono mt-1 block">
                             {model.params} • {model.quantization} • {model.runtime}
                           </span>
                         </div>
 
                         {/* نشان وضعیت اقامت در رم یا تایید آفلاین */}
-                        <div className="flex flex-col items-end gap-1">
+                        <div className="flex flex-col items-end gap-1 shrink-0">
                           {isResident && (
                             <span className="px-2 py-0.5 rounded-full text-[9px] font-bold bg-cyan-950 text-cyan-300 border border-cyan-800 flex items-center gap-1 animate-pulse">
                               <Zap className="w-2.5 h-2.5" />
@@ -457,7 +551,7 @@ export const OfflineAIManagerModal: React.FC<OfflineAIManagerModalProps> = ({
                       </p>
 
                       {/* اطلاعات فنی و حجم */}
-                      <div className="mt-3 grid grid-cols-2 gap-2 text-[10px] bg-[#10131b] p-2 rounded-xl border border-[#1f2533]">
+                      <div className="mt-3 grid grid-cols-2 gap-2 text-[10px] bg-[#10131b] p-2.5 rounded-xl border border-[#1f2533]">
                         <div>
                           <span className="text-zinc-500">حجم دانلود: </span>
                           <span className="text-zinc-200 font-mono">
@@ -465,14 +559,14 @@ export const OfflineAIManagerModal: React.FC<OfflineAIManagerModalProps> = ({
                           </span>
                         </div>
                         <div>
-                          <span className="text-zinc-500">تخمین VRAM: </span>
+                          <span className="text-zinc-500">تخمین رم/VRAM: </span>
                           <span className="text-zinc-200 font-mono">
                             {model.estimatedVRAMMB > 0 ? `${model.estimatedVRAMMB} MB` : 'سبک'}
                           </span>
                         </div>
-                        <div className="col-span-2">
+                        <div className="col-span-2 flex items-center gap-1.5 pt-1 border-t border-[#1a1f2c]">
                           <span className="text-zinc-500">دستگاه پیشنهادی: </span>
-                          <span className="text-zinc-300">{model.targetDeviceFa}</span>
+                          <span className="text-cyan-300 font-medium">{model.targetDeviceFa}</span>
                         </div>
                       </div>
 

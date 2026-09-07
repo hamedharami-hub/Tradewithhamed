@@ -16,6 +16,8 @@ import { runW4OnlineExecutionTests } from '@/lib/server/__tests__/w4-online-exec
 import { runLocalRAGTests } from '@/lib/core/__tests__/local-rag.test';
 import { runMultiStyleRegimesTestSuite } from '@/lib/core/__tests__/multi-style-regimes.test';
 import { runTacticalCockpitTestSuite } from '@/lib/core/__tests__/tactical-cockpit.test';
+import { runMultiAgentCouncilTestSuite } from '@/lib/core/__tests__/multi-agent-council.test';
+import { runMonteCarloTestSuite } from '@/lib/core/__tests__/monte-carlo.test';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -79,6 +81,12 @@ export async function GET() {
     // نتایج آزمون‌های کاکپیت تاکتیکی ترید سریع، خروج پله‌ای و فیوز اضطراری (Tactical Cockpit & Kill-Switch)
     const tacticalCockpitResults = runTacticalCockpitTestSuite();
 
+    // نتایج آزمون‌های شورای چندعاملی هوش مصنوعی و ماتریس اجماع کوروم (Multi-Agent Council & Alpha Consensus)
+    const councilResults = runMultiAgentCouncilTestSuite();
+
+    // نتایج آزمون‌های موتور مونت‌کارلو ۱۰۰۰ مسیری و ارزیابی ریسک احتمالاتی (Monte Carlo GBM Engine)
+    const monteCarloResults = runMonteCarloTestSuite();
+
     const combined = [
       ...coreResults,
       ...ctraderResults,
@@ -97,6 +105,8 @@ export async function GET() {
       ...ragResults,
       ...multiStyleResults,
       ...tacticalCockpitResults,
+      ...councilResults,
+      ...monteCarloResults,
     ];
     const allPassed = combined.every(t => t.passed);
 

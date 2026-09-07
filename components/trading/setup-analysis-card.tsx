@@ -170,9 +170,18 @@ export const SetupAnalysisCard: React.FC<SetupAnalysisCardProps> = React.memo(({
           {multiAgentResult ? (
             <div className="p-3 bg-[#11141a] border border-[#242a37] rounded-xl space-y-2.5 text-xs">
               <div className="flex items-center justify-between border-b border-[#1f2532] pb-2">
-                <div className="flex items-center gap-1.5 font-bold text-zinc-200">
+                <div className="flex items-center gap-1.5 font-bold text-zinc-200 flex-wrap">
                   <Bot className="w-4 h-4 text-cyan-400" />
-                  <span>خط‌لوله ۴ ایجنت هوشمند (تیمی)</span>
+                  <span>خط‌لوله ۴ ایجنت هوشمند (شورای آلفا)</span>
+                  {multiAgentResult.councilConsensus && (
+                    <span className={`text-[10px] px-2 py-0.5 rounded-full font-mono font-bold ${
+                      multiAgentResult.councilConsensus.quorumReached && !multiAgentResult.councilConsensus.vetoTriggered
+                        ? 'bg-emerald-950 text-emerald-300 border border-emerald-800'
+                        : 'bg-amber-950 text-amber-300 border border-amber-800'
+                    }`}>
+                      آلفا: {multiAgentResult.councilConsensus.alphaConsensusScore}٪ ({multiAgentResult.councilConsensus.quorumReached ? 'کواروم تایید' : 'فاقد کواروم'})
+                    </span>
+                  )}
                 </div>
                 <button
                   type="button"
