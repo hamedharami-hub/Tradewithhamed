@@ -23,6 +23,7 @@ import {
   TransactionalExecutionState,
 } from '../contracts/execution';
 import { ExecutorManager } from './executor-manager';
+import { PersistentStore } from './storage/persistent-store';
 
 const globalForOMS = globalThis as unknown as {
   ctraderOutbox?: Map<string, TransactionalOutboxRecord>;
@@ -30,22 +31,48 @@ const globalForOMS = globalThis as unknown as {
   killNewEntriesActive?: boolean;
 };
 
+// بارگذاری وضعیت پایدار دیسک در شروع اولیه
+const persistentSnapshot = PersistentStore.init();
+
 const sharedOutbox = globalForOMS.ctraderOutbox ?? new Map<string, TransactionalOutboxRecord>();
 const sharedIdempotencyMap = globalForOMS.ctraderIdempotency ?? new Map<string, string>();
 
 if (!globalForOMS.ctraderOutbox) {
+  if (persistentSnapshot.outbox.length > 0) {
+    for (const rec of persistentSnapshot.outbox) {
+      sharedOutbox.set(rec.intentId, rec);
+    }
+  }
   globalForOMS.ctraderOutbox = sharedOutbox;
 }
+
 if (!globalForOMS.ctraderIdempotency) {
+  if (persistentSnapshot.idempotencyEntries.length > 0) {
+    for (const [key, intentId] of persistentSnapshot.idempotencyEntries) {
+      sharedIdempotencyMap.set(key, intentId);
+    }
+  }
   globalForOMS.ctraderIdempotency = sharedIdempotencyMap;
 }
+
 if (globalForOMS.killNewEntriesActive === undefined) {
-  globalForOMS.killNewEntriesActive = false;
+  globalForOMS.killNewEntriesActive = Boolean(persistentSnapshot.killNewEntriesActive);
 }
 
 export class CTraderOMS {
   private static outbox: Map<string, TransactionalOutboxRecord> = sharedOutbox;
   private static idempotencyMap: Map<string, string> = sharedIdempotencyMap;
+
+  /**
+   * همگام‌سازی بلادرنگ صندوق با دیسک محلی
+   */
+  private static syncPersistent(): void {
+    PersistentStore.saveState({
+      outbox: Array.from(this.outbox.values()),
+      idempotencyEntries: Array.from(this.idempotencyMap.entries()),
+      killNewEntriesActive: !!globalForOMS.killNewEntriesActive,
+    });
+  }
 
   /**
    * بازنشانی کامل حافظه (برای اجرای ایزوله تست‌ها)
@@ -54,6 +81,7 @@ export class CTraderOMS {
     this.outbox.clear();
     this.idempotencyMap.clear();
     globalForOMS.killNewEntriesActive = false;
+    this.syncPersistent();
     ExecutorManager.resetForTesting();
   }
 
@@ -69,6 +97,7 @@ export class CTraderOMS {
    */
   public static setKillNewEntries(active: boolean): boolean {
     globalForOMS.killNewEntriesActive = active;
+    this.syncPersistent();
     return globalForOMS.killNewEntriesActive;
   }
 
@@ -104,6 +133,8 @@ export class CTraderOMS {
         this.idempotencyMap.set(key, intentId);
       }
     }
+
+    this.syncPersistent();
 
     return {
       restoredCount: this.outbox.size,
@@ -274,6 +305,7 @@ export class CTraderOMS {
 
     this.outbox.set(request.intentId, record);
     this.idempotencyMap.set(request.idempotencyKey, request.intentId);
+    this.syncPersistent();
 
     // ۸. اجرای مسیرهای محیطی:
     // الف) محیط PAPER_LIVE: اجرای کاملاً محلی در شبیه‌ساز با قیمت زنده و صفر فراخوانی بروکر (Zero Broker Writes)
@@ -283,6 +315,7 @@ export class CTraderOMS {
       record.brokerOrderId = `PAPER-SIM-ORD-${Date.now()}`;
       record.isBrokerStopLossConfirmed = true;
       record.isBrokerTakeProfitConfirmed = true;
+      this.syncPersistent();
 
       return {
         success: true,
@@ -303,6 +336,7 @@ export class CTraderOMS {
       if (options?.simulateRejection) {
         record.state = 'REJECTED_BY_BROKER';
         record.brokerError = 'BROKER_OFF_QUOTES: نوسان قیمت فراتر از لیمیت مجاز است.';
+        this.syncPersistent();
         return {
           success: false,
           state: 'REJECTED_BY_BROKER',
@@ -319,6 +353,7 @@ export class CTraderOMS {
         record.isBrokerStopLossConfirmed = false;
         record.isBrokerTakeProfitConfirmed = false;
         record.brokerError = 'PROTECTION_FAILED: سفارش باز شد ولی ثبت حد ضرر/سود در بروکر تایید نشد.';
+        this.syncPersistent();
 
         return {
           success: false,
@@ -335,6 +370,7 @@ export class CTraderOMS {
       record.brokerOrderId = `CT-ORD-${Math.floor(1000000 + Math.random() * 9000000)}`;
       record.isBrokerStopLossConfirmed = true;
       record.isBrokerTakeProfitConfirmed = true;
+      this.syncPersistent();
 
       return {
         success: true,
@@ -346,6 +382,7 @@ export class CTraderOMS {
       // قاعده بحرانی ایمنی: تایم‌اوت شبکه => انتقال قطعی به UNKNOWN_RECONCILE_REQUIRED
       record.state = 'UNKNOWN_RECONCILE_REQUIRED';
       record.brokerError = (networkError as Error).message;
+      this.syncPersistent();
 
       return {
         success: false,
@@ -376,6 +413,7 @@ export class CTraderOMS {
     record.isBrokerStopLossConfirmed = true;
     record.isBrokerTakeProfitConfirmed = true;
     record.brokerError = undefined;
+    this.syncPersistent();
 
     return {
       reconciled: true,

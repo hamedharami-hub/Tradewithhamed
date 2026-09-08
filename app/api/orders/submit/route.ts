@@ -17,10 +17,26 @@ export async function POST(request: NextRequest) {
       simulateRejection?: boolean;
     };
 
-    if (!body.intentId || !body.idempotencyKey || !body.limitPrice || !body.stopLossPrice) {
+    if (
+      !body.intentId ||
+      !body.idempotencyKey ||
+      !Number.isFinite(body.limitPrice) ||
+      !Number.isFinite(body.stopLossPrice) ||
+      !Number.isFinite(body.volumeLots) ||
+      body.volumeLots < 0.01 ||
+      body.limitPrice <= 0 ||
+      body.stopLossPrice <= 0
+    ) {
       return NextResponse.json(
-        { error: 'پارامترهای ارسالی برای ثبت سفارش ناقص است.' },
+        { error: 'پارامترهای ارسالی برای ثبت سفارش ناقص یا غیرمعتبر (NaN/منفی/کمتر از حداقل لات) هستند.' },
         { status: 400 }
+      );
+    }
+
+    if (!body.executorSessionId || body.executorEpoch === undefined || !Number.isFinite(body.executorEpoch)) {
+      return NextResponse.json(
+        { error: 'شناسه نشست و ایپاک مجری الزامی است (احراز هویت تک‌مجری).' },
+        { status: 403 }
       );
     }
 

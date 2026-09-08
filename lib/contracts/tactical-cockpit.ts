@@ -29,6 +29,8 @@ export interface InstantOrderIntent {
   tp2Price?: number;
   partialTP: PartialTPConfig;
   timestamp: number;
+  isValid?: boolean;
+  errorFa?: string;
 }
 
 export interface KillSwitchEvent {

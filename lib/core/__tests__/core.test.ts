@@ -3,6 +3,7 @@ import { detectSwingPoints } from '../swings';
 import { calculateDeterministicRisk } from '../risk-calculator';
 import { Candle } from '../../contracts/market';
 import { SimulatedBroker } from '../simulated-broker';
+import { PositionScalingEngine } from '../position-scaling-engine';
 
 export function runAllCoreTests(): {
   name: string;
@@ -171,6 +172,72 @@ export function runAllCoreTests(): {
     });
   } catch (e) {
     results.push({ name: 'Equity Accounting Double-Counting Immunity', passed: false, details: (e as Error).message });
+  }
+
+  // تست ۷: سقف قطعی ریسک ۰٫۲۵٪ و رد سفارش در سرمایه ناکافی (ممانعت از تحمیل لات حداقل ۳٪)
+  try {
+    // سناریوی ممیزی: حساب ۱۰۰ دلاری با ریسک ۰٫۲۵٪ روی طلا
+    const tinyAccountRisk = calculateDeterministicRisk({
+      symbol: 'XAUUSD',
+      direction: 'BUY',
+      entryPrice: 2650.0,
+      stopLossPrice: 2645.0, // ۵ دلار فاصله = ۵۰۰ دلار ریسک در هر لات
+      takeProfitPrice: 2665.0,
+      accountEquity: 100, // ۱۰۰ دلار کل سرمایه
+      riskPercentage: 0.25, // حداکثر ریسک ۰.۲۵ دلار
+    });
+
+    const instantBracket = PositionScalingEngine.calculateInstantBracket(
+      'XAUUSD',
+      'BUY',
+      2650.0,
+      2.5,
+      0.25,
+      100
+    );
+
+    const isProperlyRejected =
+      !tinyAccountRisk.isValid &&
+      tinyAccountRisk.adjustedVolumeLots === 0 &&
+      !instantBracket.isValid &&
+      instantBracket.calculatedLots === 0;
+
+    results.push({
+      name: 'Zero Risk Inflation Guard (Strict 0.25% Cap & Sub-Minimum Lot Rejection)',
+      passed: isProperlyRejected,
+      details: isProperlyRejected
+        ? 'معامله در سرمایه ۱۰۰ دلاری به جای تحمیل حجم حداقل و تحمیل ریسک ۳ درصدی، با موفقیت رد شد (حجم = ۰).'
+        : `خطا در کنترل ریسک: حجم محاسبه‌شده=${tinyAccountRisk.adjustedVolumeLots}، وضعیت اعتبار=${tinyAccountRisk.isValid}`,
+    });
+  } catch (e) {
+    results.push({ name: 'Zero Risk Inflation Guard', passed: false, details: (e as Error).message });
+  }
+
+  // تست ۸: بستن دستی پوزیشن و برابری مطلق اکوئیتی و بالانس
+  try {
+    const manualBroker = new SimulatedBroker(5000);
+    const { position } = manualBroker.createMarketBracketOrder('EURUSD', 'BUY', 0.05, 1.0850, 1.0820, 1.0920);
+
+    // بستن دستی پوزیشن در سود
+    const closeRes = manualBroker.closePosition(position.id, 1.0890, 'MANUAL');
+    const stateAfterClose = manualBroker.getState();
+    const openPositionsCount = stateAfterClose.positions.filter(p => p.isOpen).length;
+
+    const parityVerified =
+      closeRes.success &&
+      openPositionsCount === 0 &&
+      stateAfterClose.accountEquity === stateAfterClose.accountBalance &&
+      closeRes.netRealizedPnl > 0;
+
+    results.push({
+      name: 'Manual Position Close Ledger Parity (Equity === Balance)',
+      passed: parityVerified,
+      details: parityVerified
+        ? `پوزیشن با موفقیت بسته شد و اکوئیتی ($${stateAfterClose.accountEquity}) با بالانس ($${stateAfterClose.accountBalance}) دقیقاً منطبق است.`
+        : `عدم انطباق اکوئیتی و بالانس: اکوئیتی=${stateAfterClose.accountEquity}، بالانس=${stateAfterClose.accountBalance}`,
+    });
+  } catch (e) {
+    results.push({ name: 'Manual Position Close Ledger Parity', passed: false, details: (e as Error).message });
   }
 
   return results;

@@ -263,6 +263,50 @@ export class SimulatedBroker {
   }
 
   /**
+   * بستن یک پوزیشن معین و تسویه آنی PnL نقدشده در بالانس و اکوئیتی
+   */
+  public closePosition(
+    positionId: string,
+    exitPrice?: number,
+    closeReason: 'MANUAL' | 'TP' | 'SL' = 'MANUAL'
+  ): { success: boolean; closedPosition?: SimulatedPosition; netRealizedPnl: number } {
+    const pos = this.positions.find(p => p.id === positionId && p.isOpen);
+    if (!pos) return { success: false, netRealizedPnl: 0 };
+
+    const now = Date.now();
+    const finalPrice = exitPrice ?? pos.currentPrice;
+    pos.isOpen = false;
+    pos.closedAt = now;
+    pos.closeReason = closeReason;
+    pos.currentPrice = finalPrice;
+
+    const contractSize = pos.symbol === 'XAUUSD' ? 100 : 100000;
+    const priceDiff =
+      pos.direction === 'BUY'
+        ? finalPrice - pos.entryPrice
+        : pos.entryPrice - finalPrice;
+
+    const pnl = Number((pos.volumeLots * priceDiff * contractSize - pos.commissionPaid).toFixed(2));
+    pos.realizedPnl = Number((pos.realizedPnl + pnl).toFixed(2));
+    pos.unrealizedPnl = 0;
+    this.balance = Number((this.balance + pnl).toFixed(2));
+
+    const stillOpen = this.positions.filter(p => p.isOpen);
+    if (stillOpen.length === 0) {
+      this.equity = this.balance;
+    } else {
+      const totalUnrealized = stillOpen.reduce((sum, p) => sum + p.unrealizedPnl, 0);
+      this.equity = Number((this.balance + totalUnrealized).toFixed(2));
+    }
+
+    return {
+      success: true,
+      closedPosition: pos,
+      netRealizedPnl: pnl,
+    };
+  }
+
+  /**
    * اجرای بستن اضطراری سراسری (Panic Kill-Switch): بستن آنی تمام پوزیشن‌ها و لغو تمام سفارش‌ها
    */
   public panicCloseAll(): {
@@ -288,7 +332,8 @@ export class SimulatedBroker {
 
       const pnl = Number((pos.volumeLots * priceDiff * contractSize - pos.commissionPaid).toFixed(2));
       pos.realizedPnl = Number((pos.realizedPnl + pnl).toFixed(2));
-      this.balance += pnl;
+      pos.unrealizedPnl = 0;
+      this.balance = Number((this.balance + pnl).toFixed(2));
       netRealizedPnl += pnl;
       closedPositionsCount++;
     }

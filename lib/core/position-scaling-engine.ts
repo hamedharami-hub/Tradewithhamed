@@ -8,6 +8,7 @@ import {
   PartialTPConfig,
 } from '../contracts/tactical-cockpit';
 import { SimulatedBroker } from './simulated-broker';
+import { calculateDeterministicRisk } from './risk-calculator';
 
 /**
  * موتور مدیریت تاکتیکی پوزیشن، خروج پله‌ای و فیوز اضطراری (Tactical Position & Scaling Engine 2026)
@@ -25,7 +26,6 @@ export class PositionScalingEngine {
     accountEquity: number,
     config: PartialTPConfig = DEFAULT_PARTIAL_TP_CONFIG
   ): InstantOrderIntent {
-    const spec = SYMBOL_SPECS[symbol];
     const atr = Math.max(currentAtr, symbol === 'XAUUSD' ? 1.5 : 0.001);
 
     // محاسبه فاصله حد ضرر (1.2 برابر ATR)
@@ -36,14 +36,6 @@ export class PositionScalingEngine {
         : Number((currentPrice + slPipsDistance).toFixed(symbol === 'XAUUSD' ? 2 : 5));
 
     const slDistance = Math.abs(currentPrice - stopLossPrice);
-
-    // محاسبه دقیق لات معامله بر مبنای ارزش ریسک
-    const riskAmount = (accountEquity * riskPercent) / 100;
-    const lossPerLot = slDistance * spec.contractSize;
-    let calculatedLots = lossPerLot > 0 ? riskAmount / lossPerLot : spec.minLots;
-
-    // رند کردن و کلمپ به حدود مجاز بروکر
-    calculatedLots = Math.max(spec.minLots, Math.min(spec.maxLots, Number(calculatedLots.toFixed(2))));
 
     // محاسبه تارگت‌های پله‌ای ۱ و ۲
     const tp1Distance = slDistance * config.tp1RRMultiplier;
@@ -59,19 +51,36 @@ export class PositionScalingEngine {
         ? Number((currentPrice + tp2Distance).toFixed(symbol === 'XAUUSD' ? 2 : 5))
         : Number((currentPrice - tp2Distance).toFixed(symbol === 'XAUUSD' ? 2 : 5));
 
+    const takeProfitPrice = config.enabled ? tp2Price : tp1Price;
+
+    // محاسبه قطعی و یکپارچه ریسک با سقف ۰٫۲۵٪ و گردکردن رو به پایین (Floor)
+    const riskResult = calculateDeterministicRisk({
+      symbol,
+      direction,
+      entryPrice: currentPrice,
+      stopLossPrice,
+      takeProfitPrice,
+      accountEquity,
+      riskPercentage: riskPercent,
+    });
+
+    const calculatedLots = riskResult.adjustedVolumeLots;
+
     return {
       id: `INSTANT-${direction}-${Date.now()}`,
       symbol,
       direction,
-      riskPercent,
+      riskPercent: riskResult.plannedRiskPercent || riskPercent,
       calculatedLots,
       entryPrice: currentPrice,
       stopLossPrice,
-      takeProfitPrice: config.enabled ? tp2Price : tp1Price,
+      takeProfitPrice,
       tp1Price,
       tp2Price,
       partialTP: config,
       timestamp: Date.now(),
+      isValid: riskResult.isValid && calculatedLots >= 0.01,
+      errorFa: riskResult.isValid ? undefined : riskResult.explanation,
     };
   }
 

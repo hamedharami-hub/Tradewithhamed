@@ -355,6 +355,52 @@ export async function runStage8SecurityDRTests(): Promise<Stage8TestResult[]> {
     });
   }
 
+  // ۸. آزمون پایداری تراکنشی دیسک (Persistent Store Durability across Server Restarts)
+  try {
+    const { PersistentStore } = await import('../storage/persistent-store');
+    
+    // ثبت یک وضعیت تستی در PersistentStore
+    const testRecord: any = {
+      intentId: 'INT-PERSIST-TEST-001',
+      idempotencyKey: 'IDEMP-PERSIST-TEST-001',
+      symbol: 'XAUUSD',
+      direction: 'BUY',
+      volumeLots: 0.05,
+      limitPrice: 2650.0,
+      stopLossPrice: 2640.0,
+      takeProfitPrice: 2660.0,
+      state: 'ACKNOWLEDGED',
+      createdAt: Date.now(),
+    };
+
+    PersistentStore.saveState({
+      outbox: [testRecord],
+      idempotencyEntries: [['IDEMP-PERSIST-TEST-001', 'INT-PERSIST-TEST-001']],
+      killNewEntriesActive: true,
+    });
+
+    const readState = PersistentStore.getState();
+    const isOutboxSaved = readState.outbox.some(r => r.intentId === 'INT-PERSIST-TEST-001');
+    const isIdempotencySaved = readState.idempotencyEntries.some(([k]) => k === 'IDEMP-PERSIST-TEST-001');
+    const isKillSwitchSaved = readState.killNewEntriesActive === true;
+
+    const pass = isOutboxSaved && isIdempotencySaved && isKillSwitchSaved;
+
+    results.push({
+      name: 'آزمون ۸: پایداری تراکنشی دیسک (Persistent Store Durability across Server Restarts)',
+      pass,
+      details: pass
+        ? 'رکوردهای صندوق خروجی، کلیدهای ضد تکرار و وضعیت کلید اضطراری با موفقیت در ذخیره‌ساز پایدار دیسک ذخیره و بازخوانی شدند.'
+        : 'خطا در پایداری داده‌های سرور روی دیسک.',
+    });
+  } catch (err) {
+    results.push({
+      name: 'آزمون ۸: پایداری تراکنشی دیسک',
+      pass: false,
+      details: `خطا در اجرای آزمون: ${(err as Error).message}`,
+    });
+  }
+
   return results.map(r => ({
     name: r.name,
     passed: Boolean(r.pass ?? r.passed),

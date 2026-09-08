@@ -378,7 +378,13 @@ export default function TradingLabPage() {
         entry = replayState.activeCandidate.entryPrice;
         sl = replayState.activeCandidate.stopLossPrice;
         tp = replayState.activeCandidate.takeProfitPrice;
-        lots = riskPreview?.adjustedVolumeLots || 0.01;
+        if (!riskPreview || !riskPreview.isValid || riskPreview.adjustedVolumeLots < 0.01) {
+          setExecutionMessage(
+            `خطای کنترل ریسک: ${riskPreview?.explanation || 'سرمایه حساب برای رعایت سقف ریسک ۰٫۲۵٪ و حداقل حجم بروکر (۰٫۰۱ لات) کافی نیست.'}`
+          );
+          return;
+        }
+        lots = riskPreview.adjustedVolumeLots;
       } else {
         const bracket = PositionScalingEngine.calculateInstantBracket(
           symbol,
@@ -389,6 +395,12 @@ export default function TradingLabPage() {
           brokerState.accountEquity,
           partialConfig
         );
+        if (!bracket.isValid || bracket.calculatedLots < 0.01) {
+          setExecutionMessage(
+            `خطای کنترل ریسک: ${bracket.errorFa || 'سرمایه حساب برای رعایت سقف ریسک ۰٫۲۵٪ و حداقل حجم بروکر (۰٫۰۱ لات) کافی نیست.'}`
+          );
+          return;
+        }
         lots = bracket.calculatedLots;
         entry = bracket.entryPrice;
         sl = bracket.stopLossPrice;

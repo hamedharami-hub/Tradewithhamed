@@ -30,8 +30,17 @@ export async function POST(request: NextRequest) {
     }
 
     if (action === 'switch') {
-      // سوئیچ مستقیم دستگاه توسط کاربر
-      const res = ExecutorManager.forceSwitchExecutor(targetDevice || 'windows', targetSessionId || `session-${Date.now()}`);
+      if (!targetDevice || (targetDevice !== 'windows' && targetDevice !== 'pixel')) {
+        return NextResponse.json({ success: false, error: 'دستگاه نامعتبر است. مجاز: windows یا pixel' }, { status: 400 });
+      }
+      if (!targetSessionId || typeof targetSessionId !== 'string') {
+        return NextResponse.json({ success: false, error: 'شناسه نشست مقصد الزامی است.' }, { status: 400 });
+      }
+      if (!body.userConfirmation) {
+        return NextResponse.json({ success: false, error: 'تایید صریح کاربر برای سوئیچ اجباری مجری الزامی است.' }, { status: 403 });
+      }
+      // سوئیچ مستقیم دستگاه توسط کاربر تاییدشده
+      const res = ExecutorManager.forceSwitchExecutor(targetDevice, targetSessionId);
       return NextResponse.json({ success: true, ...res, state: ExecutorManager.getExecutorState() });
     }
 

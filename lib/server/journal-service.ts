@@ -1,19 +1,28 @@
 import { TradePosition, JournalAuditEvent, StrategyPerformanceStats } from '../contracts/journal';
 import { calculateStrategyStatistics } from '../core/analytics-calculator';
 import { TransactionalOutboxRecord } from '../contracts/execution';
+import { PersistentStore } from './storage/persistent-store';
 
 const globalForJournal = globalThis as unknown as {
   journalPositions?: Map<string, TradePosition>;
   journalAuditLogs?: JournalAuditEvent[];
 };
 
+const persistentSnapshot = PersistentStore.init();
+
 const positionsMap = globalForJournal.journalPositions ?? new Map<string, TradePosition>();
 const auditLogsArray = globalForJournal.journalAuditLogs ?? [];
 
 if (!globalForJournal.journalPositions) {
+  if (persistentSnapshot.journalPositions.length > 0) {
+    persistentSnapshot.journalPositions.forEach(p => positionsMap.set(p.positionId, p));
+  }
   globalForJournal.journalPositions = positionsMap;
 }
 if (!globalForJournal.journalAuditLogs) {
+  if (persistentSnapshot.journalAuditLogs.length > 0) {
+    auditLogsArray.push(...persistentSnapshot.journalAuditLogs);
+  }
   globalForJournal.journalAuditLogs = auditLogsArray;
 }
 
@@ -127,6 +136,13 @@ if (positionsMap.size === 0) {
 }
 
 export class JournalService {
+  private static syncPersistent(): void {
+    PersistentStore.saveState({
+      journalPositions: Array.from(positionsMap.values()),
+      journalAuditLogs: [...auditLogsArray],
+    });
+  }
+
   public static recordAuditLog(event: Omit<JournalAuditEvent, 'eventId' | 'timestamp'>): JournalAuditEvent {
     const fullEvent: JournalAuditEvent = {
       ...event,
@@ -134,6 +150,7 @@ export class JournalService {
       timestamp: Date.now(),
     };
     auditLogsArray.push(fullEvent);
+    this.syncPersistent();
     return fullEvent;
   }
 
@@ -170,6 +187,7 @@ export class JournalService {
       severity: 'INFO',
     });
 
+    this.syncPersistent();
     return position;
   }
 
@@ -207,6 +225,7 @@ export class JournalService {
       severity: netPnL >= 0 ? 'INFO' : 'WARN',
     });
 
+    this.syncPersistent();
     return pos;
   }
 
@@ -232,11 +251,13 @@ export class JournalService {
       auditLogsArray.length = 0;
       auditLogsArray.push(...logs);
     }
+    this.syncPersistent();
     return positionsMap.size;
   }
 
   public static resetForTesting(): void {
     positionsMap.clear();
     auditLogsArray.length = 0;
+    this.syncPersistent();
   }
 }

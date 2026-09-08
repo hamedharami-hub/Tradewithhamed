@@ -19,19 +19,18 @@ export function runTacticalCockpitTestSuite(): TacticalCockpitTestResult[] {
       'BUY',
       2050.0,
       2.5,
-      0.5, // 0.5% ریسک
-      10000.0, // سرمایه ده‌هزار دلار (ریسک مجاز: ۵۰ دلار)
+      0.25, // سقف مجاز پلتفرم ۰٫۲۵٪
+      10000.0, // سرمایه ده‌هزار دلار (ریسک مجاز: ۲۵ دلار)
       DEFAULT_PARTIAL_TP_CONFIG
     );
 
     // فاصله SL باید 1.2 * 2.5 = 3.0 دلار باشد -> SL = 2047.0
-    // مقدار ریسک ۵۰ دلار / (۳ دلار * ۱۰۰) = ۰٫۱۶۶ -> ۰٫۱۷ لات
+    // مقدار ریسک ۲۵ دلار / (۳ دلار * ۱۰۰ + ۶ کارمزد) = ۰٫۰۸۱ -> ۰٫۰۸ لات با سقف ۰٫۲۵٪
     const expectedSl = 2047.0;
     const passed =
       bracket.direction === 'BUY' &&
       bracket.stopLossPrice === expectedSl &&
-      bracket.calculatedLots > 0.1 &&
-      bracket.calculatedLots < 0.25 &&
+      bracket.calculatedLots === 0.08 &&
       bracket.tp1Price !== undefined &&
       bracket.tp1Price > bracket.entryPrice;
 

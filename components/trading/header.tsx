@@ -192,7 +192,7 @@ export const Header: React.FC<HeaderProps> = ({
             <button
               type="button"
               onClick={onOpenAlertModal}
-              className="p-2 rounded-xl bg-[#161c28] hover:bg-cyan-950/60 text-cyan-300 border border-cyan-800/60 flex items-center gap-1.5 transition-colors text-[11px] relative"
+              className="p-2 min-h-[44px] min-w-[44px] justify-center rounded-xl bg-[#161c28] hover:bg-cyan-950/60 text-cyan-300 border border-cyan-800/60 flex items-center gap-1.5 transition-colors text-[11px] relative"
               title="دیدبان هشدارهای معاملاتی هوشمند و تنظیمات صدا"
             >
               <Bell className="w-4 h-4 text-cyan-400" />
@@ -216,7 +216,7 @@ export const Header: React.FC<HeaderProps> = ({
           <button
             type="button"
             onClick={() => handleEnvClick('PAPER_REPLAY')}
-            className={`px-2.5 py-1.5 min-h-[36px] rounded-lg flex items-center gap-1 transition-colors whitespace-nowrap ${
+            className={`px-3 py-2 min-h-[44px] rounded-lg flex items-center gap-1 transition-colors whitespace-nowrap ${
               currentEnvironment === 'PAPER_REPLAY'
                 ? 'bg-amber-950 text-amber-300 font-bold border border-amber-800'
                 : 'text-zinc-400 hover:text-zinc-200'
@@ -230,7 +230,7 @@ export const Header: React.FC<HeaderProps> = ({
           <button
             type="button"
             onClick={() => handleEnvClick('PAPER_LIVE')}
-            className={`px-2.5 py-1.5 min-h-[36px] rounded-lg flex items-center gap-1 transition-colors whitespace-nowrap ${
+            className={`px-3 py-2 min-h-[44px] rounded-lg flex items-center gap-1 transition-colors whitespace-nowrap ${
               currentEnvironment === 'PAPER_LIVE'
                 ? 'bg-cyan-950 text-cyan-300 font-bold border border-cyan-800'
                 : 'text-zinc-400 hover:text-zinc-200'
@@ -244,7 +244,7 @@ export const Header: React.FC<HeaderProps> = ({
           <button
             type="button"
             onClick={() => handleEnvClick('BROKER_DEMO')}
-            className={`px-2.5 py-1.5 min-h-[36px] rounded-lg flex items-center gap-1 transition-colors whitespace-nowrap ${
+            className={`px-3 py-2 min-h-[44px] rounded-lg flex items-center gap-1 transition-colors whitespace-nowrap ${
               currentEnvironment === 'BROKER_DEMO'
                 ? 'bg-emerald-950 text-emerald-300 font-bold border border-emerald-800'
                 : 'text-zinc-400 hover:text-zinc-200'
@@ -258,7 +258,7 @@ export const Header: React.FC<HeaderProps> = ({
           <button
             type="button"
             onClick={() => handleEnvClick('BROKER_LIVE')}
-            className={`px-2.5 py-1.5 min-h-[36px] rounded-lg flex items-center gap-1 text-zinc-500 hover:text-rose-400 transition-colors opacity-80 whitespace-nowrap`}
+            className={`px-3 py-2 min-h-[44px] rounded-lg flex items-center gap-1 text-zinc-500 hover:text-rose-400 transition-colors opacity-80 whitespace-nowrap`}
             title="حساب واقعی Live (پیش‌فرض مسدود تا تایید مالک)"
           >
             <Lock className="w-3.5 h-3.5" />

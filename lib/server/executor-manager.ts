@@ -10,6 +10,8 @@
  * - هیچ تصاحب خودکاری صرفاً با قطع هارت‌بیت مجاز نیست (No Heartbeat-Only Takeover).
  */
 
+import { PersistentStore } from './storage/persistent-store';
+
 export interface ExecutorState {
   activeSessionId: string;
   activeDeviceLabel: 'windows' | 'pixel';
@@ -42,7 +44,9 @@ const DEFAULT_STATE: ExecutorState = {
   pendingHandoffTo: null,
 };
 
-const sharedState: ExecutorState = globalForExecutor.executorState ?? { ...DEFAULT_STATE };
+// بارگذاری وضعیت ذخیره‌شده از دیسک در صورت وجود
+const savedExecutor = PersistentStore.getState().executorState;
+const sharedState: ExecutorState = globalForExecutor.executorState ?? (savedExecutor ? { ...savedExecutor } : { ...DEFAULT_STATE });
 
 if (!globalForExecutor.executorState) {
   globalForExecutor.executorState = sharedState;
@@ -51,6 +55,12 @@ if (!globalForExecutor.executorState) {
 export class ExecutorManager {
   private static state: ExecutorState = sharedState;
 
+  private static syncPersistent(): void {
+    PersistentStore.saveState({
+      executorState: { ...this.state },
+    });
+  }
+
   public static resetForTesting(): void {
     this.state.activeSessionId = 'test-windows-session';
     this.state.activeDeviceLabel = 'windows';
@@ -58,6 +68,7 @@ export class ExecutorManager {
     this.state.leaseExpiresAt = Date.now() + 3600000;
     this.state.status = 'ACTIVE';
     this.state.pendingHandoffTo = null;
+    this.syncPersistent();
   }
 
   public static getExecutorState(): ExecutorState {
@@ -91,6 +102,7 @@ export class ExecutorManager {
 
     this.state.leaseExpiresAt = Date.now() + durationMs;
     this.state.status = 'ACTIVE';
+    this.syncPersistent();
     return { renewed: true, expiresAt: this.state.leaseExpiresAt };
   }
 
@@ -115,6 +127,7 @@ export class ExecutorManager {
       deviceLabel: toDevice,
       targetSessionId: toSessionId,
     };
+    this.syncPersistent();
 
     return { initiated: true };
   }
@@ -152,6 +165,7 @@ export class ExecutorManager {
     this.state.leaseExpiresAt = Date.now() + 3600000;
     this.state.status = 'ACTIVE';
     this.state.pendingHandoffTo = null;
+    this.syncPersistent();
 
     return { completed: true, newEpoch: this.state.epoch };
   }
@@ -169,6 +183,7 @@ export class ExecutorManager {
     this.state.leaseExpiresAt = Date.now() + 3600000;
     this.state.status = 'ACTIVE';
     this.state.pendingHandoffTo = null;
+    this.syncPersistent();
 
     return { switched: true, newEpoch: this.state.epoch };
   }

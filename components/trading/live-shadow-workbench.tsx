@@ -330,8 +330,12 @@ export const LiveShadowWorkbench: React.FC = () => {
             <div>
               <div className="flex items-center gap-2">
                 <span className="font-bold text-white text-sm">XAUUSD</span>
-                <span className="text-[10px] px-1.5 py-0.2 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-mono">
-                  {liveQuotes['XAUUSD']?.quality || 'LIVE'}
+                <span className={`text-[10px] px-1.5 py-0.2 rounded font-mono border ${
+                  (liveQuotes['XAUUSD']?.quality || 'SIMULATED') === 'LIVE'
+                    ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
+                    : 'bg-amber-500/10 text-amber-400 border-amber-500/20'
+                }`}>
+                  {liveQuotes['XAUUSD']?.quality || 'SIMULATED'}
                 </span>
               </div>
               <span className="text-[11px] text-slate-400">
@@ -356,8 +360,12 @@ export const LiveShadowWorkbench: React.FC = () => {
             <div>
               <div className="flex items-center gap-2">
                 <span className="font-bold text-white text-sm">EURUSD</span>
-                <span className="text-[10px] px-1.5 py-0.2 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-mono">
-                  {liveQuotes['EURUSD']?.quality || 'LIVE'}
+                <span className={`text-[10px] px-1.5 py-0.2 rounded font-mono border ${
+                  (liveQuotes['EURUSD']?.quality || 'SIMULATED') === 'LIVE'
+                    ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
+                    : 'bg-amber-500/10 text-amber-400 border-amber-500/20'
+                }`}>
+                  {liveQuotes['EURUSD']?.quality || 'SIMULATED'}
                 </span>
               </div>
               <span className="text-[11px] text-slate-400">
