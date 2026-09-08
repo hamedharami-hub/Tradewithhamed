@@ -2,6 +2,7 @@ import { calculateWilderATR } from '../atr';
 import { detectSwingPoints } from '../swings';
 import { calculateDeterministicRisk } from '../risk-calculator';
 import { Candle } from '../../contracts/market';
+import { SimulatedBroker } from '../simulated-broker';
 
 export function runAllCoreTests(): {
   name: string;
@@ -102,6 +103,74 @@ export function runAllCoreTests(): {
     });
   } catch (e) {
     results.push({ name: 'Broker Commission Deduction in Risk/Reward', passed: false, details: (e as Error).message });
+  }
+
+  // تست ۵: پالایش ورودی و مسدودسازی NaN یا مقادیر منفی/معکوس در محاسبه ریسک
+  try {
+    const nanRisk = calculateDeterministicRisk({
+      symbol: 'XAUUSD',
+      direction: 'BUY',
+      entryPrice: NaN,
+      stopLossPrice: 2645.0,
+      takeProfitPrice: 2665.0,
+      accountEquity: 10000,
+    });
+
+    const invertedRisk = calculateDeterministicRisk({
+      symbol: 'XAUUSD',
+      direction: 'BUY',
+      entryPrice: 2650.0,
+      stopLossPrice: 2660.0, // حد ضرر بالاتر از ورود برای BUY (نامعتبر)
+      takeProfitPrice: 2640.0,
+      accountEquity: 10000,
+    });
+
+    const passed = !nanRisk.isValid && !invertedRisk.isValid && nanRisk.adjustedVolumeLots === 0;
+    results.push({
+      name: 'Strict Risk Calculator Input Sanitization (NaN & Direction Guard)',
+      passed,
+      details: passed
+        ? 'ورودی‌های نامعتبر، مقادیر NaN و جهات معکوس حد ضرر با موفقیت مسدود و حجم به صفر تنظیم شد.'
+        : 'خطا: سیستم ورودی‌های نامعتبر را مسدود نکرد.',
+    });
+  } catch (e) {
+    results.push({ name: 'Strict Risk Calculator Input Sanitization', passed: false, details: (e as Error).message });
+  }
+
+  // تست ۶: مصونیت از شمارش دوبل اکوئیتی پس از بستن پوزیشن در شبیه‌ساز بروکر
+  try {
+    const testBroker = new SimulatedBroker(10000);
+
+    // باز کردن پوزیشن خرید و تست رسیدن به TP
+    testBroker.createMarketBracketOrder('XAUUSD', 'BUY', 0.1, 2650.0, 2640.0, 2660.0);
+    
+    // کندل بسته‌کننده حد سود
+    testBroker.onNewCandle({
+      timestamp: Date.now(),
+      open: 2650.0,
+      high: 2662.0,
+      low: 2649.0,
+      close: 2661.0,
+      volume: 50,
+      isClosed: true,
+    }, 'XAUUSD');
+
+    const brokerState = testBroker.getState();
+    const openPos = brokerState.positions.filter(p => p.isOpen);
+    const expectedUnrealized = openPos.reduce((sum, p) => sum + p.unrealizedPnl, 0);
+    const expectedEquity = Number((brokerState.accountBalance + expectedUnrealized).toFixed(2));
+
+    const noDoubleCount = brokerState.accountEquity === expectedEquity && openPos.length === 0;
+
+    results.push({
+      name: 'Equity Accounting Double-Counting Immunity',
+      passed: noDoubleCount,
+      details: noDoubleCount
+        ? `اکوئیتی حساب ($${brokerState.accountEquity}) دقیقاً با موجودی پس از خروج ($${brokerState.accountBalance}) برابر است و شمارش دوبل رخ نداد.`
+        : `خطای شمارش دوبل: موجودی=${brokerState.accountBalance}، اکوئیتی=${brokerState.accountEquity}`,
+    });
+  } catch (e) {
+    results.push({ name: 'Equity Accounting Double-Counting Immunity', passed: false, details: (e as Error).message });
   }
 
   return results;

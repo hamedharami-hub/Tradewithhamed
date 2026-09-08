@@ -51,5 +51,5 @@ export interface CTraderLiveQuote {
   ask: number;
   spreadPips: number;
   timestamp: number;
-  quality: 'LIVE' | 'STALE' | 'UNKNOWN';
+  quality: 'LIVE' | 'STALE' | 'UNKNOWN' | 'SIMULATED';
 }

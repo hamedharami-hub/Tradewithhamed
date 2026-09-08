@@ -1,4 +1,4 @@
-﻿// components/trading/signal-alert-modal.tsx
+// components/trading/signal-alert-modal.tsx
 // مرکز مدیریت و اعلان‌های هوشمند چندتایم‌فریمه
 // ۱۰۰٪ آفلاین با تست صدای سینت‌سایزر Web Audio API و پایش حدنصاب شورا و مونت‌کارلو
 
@@ -34,15 +34,21 @@ export const SignalAlertModal: React.FC<SignalAlertModalProps> = ({
 
   useEffect(() => {
     if (!isOpen) return;
-    setAlerts(SignalAlertDispatcher.getAlerts());
-    setConfig(SignalAlertDispatcher.getConfig());
+    const updateState = () => {
+      setAlerts(SignalAlertDispatcher.getAlerts());
+      setConfig(SignalAlertDispatcher.getConfig());
+    };
+    const id = requestAnimationFrame(updateState);
 
     // سابسکرایب به رویدادهای زنده
     const unsubscribe = SignalAlertDispatcher.subscribe(() => {
       setAlerts(SignalAlertDispatcher.getAlerts());
     });
 
-    return () => unsubscribe();
+    return () => {
+      cancelAnimationFrame(id);
+      unsubscribe();
+    };
   }, [isOpen]);
 
   const handleUpdateConfig = (newVal: Partial<AlertDispatcherConfig>) => {

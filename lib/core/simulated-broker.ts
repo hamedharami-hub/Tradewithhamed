@@ -83,18 +83,10 @@ export class SimulatedBroker {
 
     // ۲. به‌روزرسانی پوزیشن‌های باز و بررسی برخورد با حد ضرر یا سود
     const openPositions = this.positions.filter(p => p.symbol === symbol && p.isOpen);
-    let totalUnrealized = 0;
 
     for (const pos of openPositions) {
       pos.currentPrice = candle.close;
       const contractSize = symbol === 'XAUUSD' ? 100 : 100000;
-      const priceDiff =
-        pos.direction === 'BUY'
-          ? candle.close - pos.entryPrice
-          : pos.entryPrice - candle.close;
-
-      pos.unrealizedPnl = Number((pos.volumeLots * priceDiff * contractSize - pos.commissionPaid).toFixed(2));
-      totalUnrealized += pos.unrealizedPnl;
 
       // بررسی حد ضرر
       const slHit =
@@ -111,8 +103,32 @@ export class SimulatedBroker {
             ? pos.stopLoss - pos.entryPrice
             : pos.entryPrice - pos.stopLoss;
         pos.realizedPnl = Number((pos.volumeLots * lossDiff * contractSize - pos.commissionPaid).toFixed(2));
-        this.balance += pos.realizedPnl;
+        pos.unrealizedPnl = 0;
+        this.balance = Number((this.balance + pos.realizedPnl).toFixed(2));
         continue;
+      }
+
+      // بررسی خروج پله‌ای ۵۰٪ در ۱.۲R و انتقال خودکار حد ضرر به نقطه ورود (Breakeven)
+      const riskDistance = Math.abs(pos.entryPrice - pos.stopLoss);
+      const isBuy = pos.direction === 'BUY';
+      const partialTarget = isBuy ? pos.entryPrice + 1.2 * riskDistance : pos.entryPrice - 1.2 * riskDistance;
+      const canPartialClose = (!pos.partialCloseCount || pos.partialCloseCount === 0) && riskDistance > 0;
+
+      if (canPartialClose) {
+        const hitPartial = isBuy ? candle.high >= partialTarget : candle.low <= partialTarget;
+        if (hitPartial) {
+          const closedLots = Number((pos.volumeLots * 0.5).toFixed(2));
+          if (closedLots > 0) {
+            const priceDiffAtTarget = isBuy ? partialTarget - pos.entryPrice : pos.entryPrice - partialTarget;
+            const partialRealized = Number((closedLots * priceDiffAtTarget * contractSize).toFixed(2));
+            pos.volumeLots = Number((pos.volumeLots - closedLots).toFixed(2));
+            pos.realizedPnl = Number((pos.realizedPnl + partialRealized).toFixed(2));
+            pos.partialCloseCount = (pos.partialCloseCount || 0) + 1;
+            pos.isBreakevenActive = true;
+            pos.stopLoss = pos.entryPrice;
+            this.balance = Number((this.balance + partialRealized).toFixed(2));
+          }
+        }
       }
 
       // بررسی حد سود
@@ -130,11 +146,23 @@ export class SimulatedBroker {
             ? pos.takeProfit - pos.entryPrice
             : pos.entryPrice - pos.takeProfit;
         pos.realizedPnl = Number((pos.volumeLots * winDiff * contractSize - pos.commissionPaid).toFixed(2));
-        this.balance += pos.realizedPnl;
+        pos.unrealizedPnl = 0;
+        this.balance = Number((this.balance + pos.realizedPnl).toFixed(2));
         continue;
       }
+
+      // اگر پوزیشن همچنان باز است، سود/زیان شناور را محاسبه کن
+      const priceDiff =
+        pos.direction === 'BUY'
+          ? candle.close - pos.entryPrice
+          : pos.entryPrice - candle.close;
+
+      pos.unrealizedPnl = Number((pos.volumeLots * priceDiff * contractSize - pos.commissionPaid).toFixed(2));
     }
 
+    // محاسبه دقیق و یکپارچه اکوئیتی تنها از روی پوزیشن‌هایی که حقیقتاً باز هستند
+    const stillOpen = this.positions.filter(p => p.isOpen);
+    const totalUnrealized = stillOpen.reduce((sum, p) => sum + p.unrealizedPnl, 0);
     this.equity = Number((this.balance + totalUnrealized).toFixed(2));
   }
 
@@ -220,7 +248,12 @@ export class SimulatedBroker {
       pos.isBreakevenActive = true;
     }
 
-    this.equity = Number((this.balance + (pos.unrealizedPnl || 0)).toFixed(2));
+    // به‌روزرسانی سود شناور با حجم باقی‌مانده پس از بستن پله‌ای
+    pos.unrealizedPnl = Number((pos.volumeLots * priceDiff * specSize).toFixed(2));
+
+    const stillOpen = this.positions.filter(p => p.isOpen);
+    const totalUnrealized = stillOpen.reduce((sum, p) => sum + p.unrealizedPnl, 0);
+    this.equity = Number((this.balance + totalUnrealized).toFixed(2));
 
     return {
       success: true,

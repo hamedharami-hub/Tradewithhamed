@@ -1,7 +1,9 @@
 // Service Worker for Hamed Trading Lab PWA
 // Provides 100% offline functionality, asset caching, and fast app-shell loading on Windows and Mobile
 
-const CACHE_NAME = 'hamed-trading-lab-v1';
+const CACHE_NAME = 'hamed-trading-lab-v2';
+const PRESERVED_CACHE_PREFIXES = ['webllm', 'transformers', 'onnx', 'huggingface', 'wllama', 'model'];
+
 const STATIC_ASSETS = [
   '/',
   '/manifest.webmanifest',
@@ -27,7 +29,12 @@ self.addEventListener('activate', event => {
     caches.keys().then(cacheNames => {
       return Promise.all(
         cacheNames
-          .filter(name => name !== CACHE_NAME)
+          .filter(name => {
+            if (name === CACHE_NAME) return false;
+            // حفاظت از کش‌های وزن مدل‌های هوش مصنوعی آفلاین (WebLLM / Transformers / ONNX)
+            const isModelCache = PRESERVED_CACHE_PREFIXES.some(p => name.toLowerCase().includes(p));
+            return !isModelCache;
+          })
           .map(name => caches.delete(name))
       );
     }).then(() => self.clients.claim())
@@ -42,6 +49,11 @@ self.addEventListener('fetch', event => {
 
   // Skip chrome extension and internal requests
   if (url.protocol !== 'http:' && url.protocol !== 'https:') return;
+
+  // تمام اندپوینت‌های /api به طور قطعی از کش مستثنی شده و مستقیماً به شبکه ارسال می‌شوند (Network Only)
+  if (url.pathname.startsWith('/api/')) {
+    return;
+  }
 
   // Stale-While-Revalidate strategy for static and app pages
   event.respondWith(

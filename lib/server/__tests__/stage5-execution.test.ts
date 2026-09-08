@@ -31,6 +31,9 @@ export async function runStage5ExecutionTests(): Promise<{
       stopLossPrice: 2645.0,
       takeProfitPrice: 2665.0,
       userConfirmationTimestamp: Date.now(),
+      executorSessionId: 'test-windows-session',
+      executorEpoch: 1,
+      deviceLabel: 'windows',
     };
 
     const res1 = await CTraderOMS.submitOrder(req1);
@@ -64,6 +67,9 @@ export async function runStage5ExecutionTests(): Promise<{
       stopLossPrice: 2645.0,
       takeProfitPrice: 2665.0,
       userConfirmationTimestamp: Date.now(),
+      executorSessionId: 'test-windows-session',
+      executorEpoch: 1,
+      deviceLabel: 'windows',
     };
 
     const resDup = await CTraderOMS.submitOrder(reqDuplicate);
@@ -97,6 +103,9 @@ export async function runStage5ExecutionTests(): Promise<{
       stopLossPrice: 2645.0,
       takeProfitPrice: 2665.0,
       userConfirmationTimestamp: Date.now(),
+      executorSessionId: 'test-windows-session',
+      executorEpoch: 1,
+      deviceLabel: 'windows',
     };
 
     const resTimeout = await CTraderOMS.submitOrder(reqTimeout, { simulateTimeout: true });
@@ -129,6 +138,9 @@ export async function runStage5ExecutionTests(): Promise<{
       stopLossPrice: 1.088,
       takeProfitPrice: 1.078,
       userConfirmationTimestamp: Date.now(),
+      executorSessionId: 'test-windows-session',
+      executorEpoch: 1,
+      deviceLabel: 'windows',
     };
 
     const resBlind = await CTraderOMS.submitOrder(reqBlindRetry);

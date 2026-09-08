@@ -395,10 +395,10 @@ export const OfflineAIManagerModal: React.FC<OfflineAIManagerModalProps> = ({
             <Sparkles className="w-4 h-4 text-cyan-400 mt-0.5 shrink-0" />
             <div>
               <span className="font-bold text-white block mb-0.5">
-                انعطاف‌پذیری سخت‌افزاری: آزادی کامل انتخاب مدل‌های قدرتمند و ۱۴ میلیاردی
+                راهنمای سخت‌افزار: انتخاب مدل‌های چگال استدلال و گزینه‌های سنگین
               </span>
               <span>
-                بر روی دستگاه‌های قدرتمند همراه نظیر <strong className="text-cyan-300">Google Pixel 9 Pro Fold (۱۶ گیگابایت رم)</strong>، تبلت‌ها و لپ‌تاپ‌های <strong className="text-purple-300">Snapdragon X Plus</strong>، هیچ محدودیتی در انتخاب وجود ندارد؛ می‌توانید آزادانه از مدل‌های کم‌حجم با چگالی استدلال بالا (Phi-4-mini و Llama-3.2) تا ابرقدرت‌های ۱۴ میلیاردی (DeepSeek-R1 14B) را کاملاً آفلاین در مرورگر اجرا کنید.
+                بر روی دستگاه‌های قدرتمند نظیر <strong className="text-cyan-300">Google Pixel 9 Pro Fold (۱۶ گیگابایت رم)</strong>، تبلت‌ها و لپ‌تاپ‌های <strong className="text-purple-300">Snapdragon X Plus</strong>، مدل‌های بهینه و چگال با بالاترین راندمان استدلال (Phi-4-mini، Llama-3.2 و Qwen2.5-7B) مستقیماً و به صورت ۱۰۰٪ آفلاین در WebGPU مرورگر اجرا می‌شوند. مدل‌های سنگین‌تر ۱۴ میلیاردی به عنوان معماری‌های تکمیلی برای سناریوهای سرور استنتاج محلی در نظر گرفته شده‌اند.
               </span>
             </div>
           </div>

@@ -56,13 +56,17 @@ export class MonteCarloSimulator {
       stopLossPrice: number;
     }
   ): MonteCarloSimulationResult {
+    const isForex = partialConfig.initialPrice < 10;
+    const digits = isForex ? 5 : 2;
+    const defaultVol = isForex ? 0.08 : 0.16;
+
     const config: MonteCarloSimulationConfig = {
       iterations: partialConfig.iterations || 1000,
       steps: partialConfig.steps || 50,
       initialPrice: partialConfig.initialPrice,
       targetPrice: partialConfig.targetPrice,
       stopLossPrice: partialConfig.stopLossPrice,
-      annualizedVolatility: partialConfig.annualizedVolatility || 0.16, // نوسان‌پذیری متعارف طلا
+      annualizedVolatility: partialConfig.annualizedVolatility || defaultVol,
       drift: partialConfig.drift !== undefined ? partialConfig.drift : 0.02,
       seed: partialConfig.seed,
     };
@@ -147,17 +151,17 @@ export class MonteCarloSimulator {
       else neitherCount++;
     }
 
-    // محاسبه صدک‌های مخروط برای هر گام
+    // محاسبه صدک‌های مخروط برای هر گام با دقت اعشاری کالیبره‌شده برای نماد
     const percentileCone: PercentileStepPoint[] = [];
     for (let step = 0; step <= config.steps; step++) {
       const sortedPrices = [...stepMatrix[step]].sort((a, b) => a - b);
       percentileCone.push({
         step,
-        p5: Number(this.getPercentile(sortedPrices, 5).toFixed(2)),
-        p25: Number(this.getPercentile(sortedPrices, 25).toFixed(2)),
-        p50: Number(this.getPercentile(sortedPrices, 50).toFixed(2)),
-        p75: Number(this.getPercentile(sortedPrices, 75).toFixed(2)),
-        p95: Number(this.getPercentile(sortedPrices, 95).toFixed(2)),
+        p5: Number(this.getPercentile(sortedPrices, 5).toFixed(digits)),
+        p25: Number(this.getPercentile(sortedPrices, 25).toFixed(digits)),
+        p50: Number(this.getPercentile(sortedPrices, 50).toFixed(digits)),
+        p75: Number(this.getPercentile(sortedPrices, 75).toFixed(digits)),
+        p95: Number(this.getPercentile(sortedPrices, 95).toFixed(digits)),
       });
     }
 
@@ -179,17 +183,31 @@ export class MonteCarloSimulator {
       : var95Return;
     const cvar95Percent = Number((Math.abs(Math.min(0, cvarAvg)) * 100).toFixed(2));
 
-    // احتمال خرابی/ابطال بر مبنای لمس استاپ یا افت بیش از ۳.۵ برابر ریسک
-    const riskOfRuin = Number(((slFirstCount / config.iterations) * 100).toFixed(1));
+    // تفکیک قطعی استاپ معامله از احتمال نابودی کل حساب (Account Ruin Decoupling)
+    // با ریسک ۰.۲۵٪ در هر معامله، برای نابودی ۲۰٪ سرمایه به ۸۰ استاپ خالص متوالی نیاز است
+    const pWin = tpFirstCount / Math.max(1, tpFirstCount + slFirstCount);
+    const pLoss = 1 - pWin;
+    const priceDistTarget = Math.abs(config.targetPrice - config.initialPrice);
+    const priceDistStop = Math.max(1e-5, Math.abs(config.initialPrice - config.stopLossPrice));
+    const winLossRatio = priceDistTarget / priceDistStop;
+    
+    let computedRuin = 0;
+    if (pWin * winLossRatio > pLoss && pLoss > 0) {
+      const qOverP = pLoss / (pWin * winLossRatio);
+      computedRuin = Math.min(100, Math.pow(qOverP, 80) * 100);
+    } else if (pLoss >= pWin) {
+      computedRuin = Math.min(100, (pLoss / Math.max(0.01, pWin)) * 15);
+    }
+    const riskOfRuin = Number(computedRuin.toFixed(1));
     const medianFinalPrice = percentileCone[percentileCone.length - 1].p50;
 
     const isTradeViable = probabilityOfProfit >= 50 && probabilityOfProfit > probabilityOfStopLoss;
 
     let persianRiskAssessment = '';
     if (probabilityOfProfit >= 65) {
-      persianRiskAssessment = `وضعیت بسیار مطلوب: احتمال لمس حد سود (${probabilityOfProfit}٪) با غلبه قاطع بر حد ضرر (${probabilityOfStopLoss}٪). حداکثر افت مورد انتظار در طول مسیر ${expectedMaxDrawdownPercent}٪ است.`;
+      persianRiskAssessment = `وضعیت بسیار مطلوب: احتمال لمس حد سود (${probabilityOfProfit}٪) با غلبه قاطع بر حد ضرر (${probabilityOfStopLoss}٪). حداکثر افت مورد انتظار در طول مسیر ${expectedMaxDrawdownPercent}٪ است. ریسک نابودی حساب: ${riskOfRuin}٪.`;
     } else if (probabilityOfProfit >= 50) {
-      persianRiskAssessment = `وضعیت متعادل و قابل قبول: برتری آماری حد سود (${probabilityOfProfit}٪ در برابر ${probabilityOfStopLoss}٪ استاپ). ارزش در معرض ریسک ۹۵٪ برابر با ${var95Percent}٪ است.`;
+      persianRiskAssessment = `وضعیت متعادل و قابل قبول: برتری آماری حد سود (${probabilityOfProfit}٪ در برابر ${probabilityOfStopLoss}٪ استاپ). ارزش در معرض ریسک ۹۵٪ برابر با ${var95Percent}٪ است. ریسک نابودی حساب: ${riskOfRuin}٪.`;
     } else {
       persianRiskAssessment = `هشدار عدم توجیه آماری: احتمال لمس استاپ (${probabilityOfStopLoss}٪) از حد سود پیشی گرفته یا برابر است. توصیه به پرهیز از معامله مستقیم تا تثبیت ساختار.`;
     }

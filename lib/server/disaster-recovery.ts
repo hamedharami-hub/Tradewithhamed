@@ -3,6 +3,7 @@ import {
   DisasterRecoverySnapshot,
   DisasterRecoveryRestoreResult,
 } from '../contracts/security';
+import { TransactionalOutboxRecord } from '../contracts/execution';
 import { CTraderOMS } from './ctrader-oms';
 import { JournalService } from './journal-service';
 
@@ -32,19 +33,14 @@ export class DisasterRecoveryEngine {
       generatedAt: Date.now(),
       omsState: {
         recordsCount: outboxRecords.length,
-        records: outboxRecords.map(r => ({
-          intentId: r.intentId,
-          idempotencyKey: r.idempotencyKey,
-          symbol: r.symbol,
-          state: r.state,
-          createdAt: r.createdAt,
-          brokerOrderId: r.brokerOrderId,
-        })),
+        records: outboxRecords.map(r => ({ ...r })),
         idempotencyKeys: idempotencyEntries,
       },
       journalState: {
         positionsCount: positions.length,
         auditLogsCount: logs.length,
+        positions: positions.map(p => ({ ...p })),
+        auditLogs: logs.map(l => ({ ...l })),
         statistics: {
           totalTrades: statistics.totalTrades,
           winRatePercent: statistics.winRatePercent,
@@ -116,27 +112,34 @@ export class DisasterRecoveryEngine {
       };
     }
 
-    // بازگردانی رکوردهای OMS با تبدیل خودکار وضعیت SUBMITTING به UNKNOWN_RECONCILE_REQUIRED
-    const outboxRecordsToRestore = (snapshot.omsState?.records || []).map(r => ({
+    // بازگردانی رکوردهای OMS با حفظ کامل فیلدهای واقعی و تبدیل خودکار SUBMITTING به UNKNOWN_RECONCILE_REQUIRED
+    const outboxRecordsToRestore: TransactionalOutboxRecord[] = (snapshot.omsState?.records || []).map((r: any) => ({
       intentId: r.intentId,
-      correlationId: `CORR-RESTORED-${r.intentId}`,
-      causationId: `CAUSE-RESTORED-${r.intentId}`,
+      correlationId: r.correlationId || `CORR-RESTORED-${r.intentId}`,
+      causationId: r.causationId || `CAUSE-RESTORED-${r.intentId}`,
       idempotencyKey: r.idempotencyKey,
-      symbol: (r.symbol || 'XAUUSD') as 'XAUUSD' | 'EURUSD',
-      orderType: 'LIMIT' as const,
-      direction: 'BUY' as const,
-      volumeLots: 0.05,
-      limitPrice: 2640.0,
-      stopLossPrice: 2635.0,
-      takeProfitPrice: 2655.0,
+      symbol: (r.symbol || 'XAUUSD') as any,
+      orderType: (r.orderType || 'LIMIT') as any,
+      direction: (r.direction || 'BUY') as any,
+      volumeLots: typeof r.volumeLots === 'number' ? r.volumeLots : 0.01,
+      limitPrice: typeof r.limitPrice === 'number' ? r.limitPrice : 0,
+      stopLossPrice: typeof r.stopLossPrice === 'number' ? r.stopLossPrice : 0,
+      takeProfitPrice: typeof r.takeProfitPrice === 'number' ? r.takeProfitPrice : 0,
       state: r.state as any,
       createdAt: r.createdAt || Date.now(),
-      submittedAt: r.createdAt || Date.now(),
+      submittedAt: r.submittedAt || r.createdAt || Date.now(),
+      acknowledgedAt: r.acknowledgedAt,
+      reconciledAt: r.reconciledAt,
       brokerOrderId: r.brokerOrderId,
-      isBrokerStopLossConfirmed: true,
-      isBrokerTakeProfitConfirmed: true,
-      accountType: 'DEMO' as const,
-      accountMaskedId: 'DEMO-****5678',
+      brokerPositionId: r.brokerPositionId,
+      brokerDealId: r.brokerDealId,
+      brokerError: r.brokerError,
+      isBrokerStopLossConfirmed: r.isBrokerStopLossConfirmed ?? true,
+      isBrokerTakeProfitConfirmed: r.isBrokerTakeProfitConfirmed ?? true,
+      accountType: r.accountType || 'DEMO',
+      accountMaskedId: r.accountMaskedId || 'DEMO-****5678',
+      executorEpoch: r.executorEpoch,
+      deviceLabel: r.deviceLabel,
     }));
 
     const omsRestoreResult = CTraderOMS.restoreRecords(
@@ -144,12 +147,23 @@ export class DisasterRecoveryEngine {
       snapshot.omsState?.idempotencyKeys
     );
 
+    // بازگردانی پوزیشن‌های ژورنال
+    let restoredPositionsCount = 0;
+    if (snapshot.journalState?.positions && Array.isArray(snapshot.journalState.positions)) {
+      restoredPositionsCount = JournalService.restorePositions(
+        snapshot.journalState.positions,
+        snapshot.journalState.auditLogs
+      );
+    } else {
+      restoredPositionsCount = snapshot.journalState?.positionsCount || 0;
+    }
+
     return {
       success: true,
       schemaVersion: snapshot.schemaVersion,
       checksumVerified: true,
       restoredRecordsCount: omsRestoreResult.restoredCount,
-      restoredPositionsCount: snapshot.journalState?.positionsCount || 0,
+      restoredPositionsCount,
       ordersMovedToReconcile: omsRestoreResult.movedToReconcile,
       message: `بازیابی اضطراری با موفقیت انجام شد: ${omsRestoreResult.restoredCount} رکورد OMS بازیابی شد (${omsRestoreResult.movedToReconcile} سفارش معلق به بازتطبیق اجباری منتقل گردید).`,
     };
@@ -169,6 +183,11 @@ export class DisasterRecoveryEngine {
         intentId: inFlightIntentId,
         idempotencyKey: `IDEMP-${inFlightIntentId}`,
         symbol: 'XAUUSD',
+        direction: 'SELL' as const,
+        volumeLots: 0.02,
+        limitPrice: 2630.0,
+        stopLossPrice: 2635.0,
+        takeProfitPrice: 2620.0,
         state: 'SUBMITTING',
         createdAt: Date.now(),
       },

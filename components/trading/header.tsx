@@ -212,56 +212,56 @@ export const Header: React.FC<HeaderProps> = ({
         </div>
 
         {/* بخش انتخاب ۴ محیط اختصاصی پلن نسخه ۴.۰ حامد */}
-        <div className="flex items-center gap-1.5 bg-[#161a24] p-1 rounded-xl border border-[#262e3e] text-[11px]">
+        <div className="flex items-center gap-1.5 bg-[#161a24] p-1 rounded-xl border border-[#262e3e] text-[11px] overflow-x-auto max-w-full py-1.5">
           <button
             type="button"
             onClick={() => handleEnvClick('PAPER_REPLAY')}
-            className={`px-2 py-1 rounded-lg flex items-center gap-1 transition-colors ${
+            className={`px-2.5 py-1.5 min-h-[36px] rounded-lg flex items-center gap-1 transition-colors whitespace-nowrap ${
               currentEnvironment === 'PAPER_REPLAY'
                 ? 'bg-amber-950 text-amber-300 font-bold border border-amber-800'
                 : 'text-zinc-400 hover:text-zinc-200'
             }`}
             title="بک‌تست و بازپخش تاریخی با ساعت مجازی و شبیه‌ساز محلی"
           >
-            <FileSpreadsheet className="w-3 h-3" />
+            <FileSpreadsheet className="w-3.5 h-3.5" />
             <span>Paper Replay</span>
           </button>
 
           <button
             type="button"
             onClick={() => handleEnvClick('PAPER_LIVE')}
-            className={`px-2 py-1 rounded-lg flex items-center gap-1 transition-colors ${
+            className={`px-2.5 py-1.5 min-h-[36px] rounded-lg flex items-center gap-1 transition-colors whitespace-nowrap ${
               currentEnvironment === 'PAPER_LIVE'
                 ? 'bg-cyan-950 text-cyan-300 font-bold border border-cyan-800'
                 : 'text-zinc-400 hover:text-zinc-200'
             }`}
             title="قیمت زنده با شبیه‌ساز محلی (بدون دسترسی به ثبت سفارش بروکر)"
           >
-            <Radio className="w-3 h-3" />
+            <Radio className="w-3.5 h-3.5" />
             <span>Paper Live</span>
           </button>
 
           <button
             type="button"
             onClick={() => handleEnvClick('BROKER_DEMO')}
-            className={`px-2 py-1 rounded-lg flex items-center gap-1 transition-colors ${
+            className={`px-2.5 py-1.5 min-h-[36px] rounded-lg flex items-center gap-1 transition-colors whitespace-nowrap ${
               currentEnvironment === 'BROKER_DEMO'
                 ? 'bg-emerald-950 text-emerald-300 font-bold border border-emerald-800'
                 : 'text-zinc-400 hover:text-zinc-200'
             }`}
             title="حساب دمو cTrader با تایید صریح دستی حامد"
           >
-            <ShieldCheck className="w-3 h-3" />
+            <ShieldCheck className="w-3.5 h-3.5" />
             <span>cTrader Demo</span>
           </button>
 
           <button
             type="button"
             onClick={() => handleEnvClick('BROKER_LIVE')}
-            className={`px-2 py-1 rounded-lg flex items-center gap-1 text-zinc-500 hover:text-rose-400 transition-colors opacity-80`}
+            className={`px-2.5 py-1.5 min-h-[36px] rounded-lg flex items-center gap-1 text-zinc-500 hover:text-rose-400 transition-colors opacity-80 whitespace-nowrap`}
             title="حساب واقعی Live (پیش‌فرض مسدود تا تایید مالک)"
           >
-            <Lock className="w-3 h-3" />
+            <Lock className="w-3.5 h-3.5" />
             <span>Live (مسدود)</span>
           </button>
         </div>

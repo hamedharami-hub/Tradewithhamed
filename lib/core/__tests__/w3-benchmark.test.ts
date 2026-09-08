@@ -99,10 +99,14 @@ export function runW3BenchmarkEvaluationSuite(modelId = 'qwen3.5-0.8b-mlc'): W3B
         };
       }
     } else if (testCase.category === 'EXPIRY_AMBIGUITY') {
-      testPassed = res.finalDecision === 'NO_TRADE';
-    } else {
-      // PERSIAN_COMPREHENSION & SNAPSHOT_GROUNDING
-      testPassed = res.finalDecision === 'TRADE_ALLOWED' || res.finalDecision === 'NO_TRADE';
+      const effectiveStatus = res.criticReview.status === 'REJECT' ? 'REJECT' : res.analystReview.status;
+      testPassed = effectiveStatus === testCase.expectedStatus && res.finalDecision === 'NO_TRADE';
+    } else if (testCase.category === 'PERSIAN_COMPREHENSION') {
+      testPassed = res.analystReview.status === testCase.expectedStatus;
+    } else if (testCase.category === 'SNAPSHOT_GROUNDING') {
+      const statusMatches = res.analystReview.status === testCase.expectedStatus;
+      const noHallucination = !res.hallucinatedEvidenceDetected;
+      testPassed = statusMatches && noHallucination;
     }
 
     if (testPassed) {

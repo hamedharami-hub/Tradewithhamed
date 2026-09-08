@@ -126,9 +126,16 @@ export class ExecutorManager {
     toSessionId: string,
     targetDevice: 'windows' | 'pixel'
   ): { completed: boolean; newEpoch: number; reason?: string } {
+    if (!this.state.pendingHandoffTo) {
+      return {
+        completed: false,
+        newEpoch: this.state.epoch,
+        reason: 'NO_PENDING_HANDOFF_INITIATED: هیچ فرآیند واگذاری در جریان نیست.',
+      };
+    }
+
     if (
-      this.state.pendingHandoffTo &&
-      this.state.pendingHandoffTo.targetSessionId !== toSessionId &&
+      this.state.pendingHandoffTo.targetSessionId !== toSessionId ||
       this.state.pendingHandoffTo.deviceLabel !== targetDevice
     ) {
       return {
@@ -176,8 +183,18 @@ export class ExecutorManager {
   ): ExecutorValidationResult {
     const current = this.state;
 
+    // الزامی بودن شناسه نشست و ایپاک برای جلوگیری از دور زدن اعتبارسنجی
+    if (!sessionId || epoch === undefined) {
+      return {
+        authorized: false,
+        reason: 'MISSING_EXECUTOR_CREDENTIALS: شناسه نشست (sessionId) و کد ایپاک (epoch) برای ارسال سفارش الزامی است.',
+        currentEpoch: current.epoch,
+        activeDevice: current.activeDeviceLabel,
+      };
+    }
+
     // ۱. بررسی تطابق Epoch
-    if (epoch !== undefined && epoch !== current.epoch) {
+    if (epoch !== current.epoch) {
       return {
         authorized: false,
         reason: `STALE_EPOCH_REJECTED: سفارش با ایپاک ${epoch} ارسال شده است، اما ایپاک جاری سرور ${current.epoch} است (تغییر مجری صورت گرفته).`,
@@ -187,7 +204,7 @@ export class ExecutorManager {
     }
 
     // ۲. بررسی تطابق شناسه نشست و برچسب دستگاه
-    if (sessionId && sessionId !== current.activeSessionId) {
+    if (sessionId !== current.activeSessionId) {
       return {
         authorized: false,
         reason: `DEVICE_NOT_AUTHORIZED_EXECUTOR: دستگاه ${deviceLabel || 'ناشناس'} مجری منتخب نیست. دستگاه مجری فعال: ${current.activeDeviceLabel}.`,

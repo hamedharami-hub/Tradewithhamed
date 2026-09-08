@@ -37,25 +37,42 @@ export interface EncryptedTokenPayload {
   createdAt: number;
 }
 
+import { TradePosition, JournalAuditEvent } from './journal';
+import { TransactionalOutboxRecord } from './execution';
+
 export interface DisasterRecoverySnapshot {
   schemaVersion: 'v1.0-DR';
   generatedAt: number;
   checksum: string; // SHA-256 digest
   omsState: {
     recordsCount: number;
-    records: Array<{
+    records: Array<TransactionalOutboxRecord | {
       intentId: string;
+      correlationId?: string;
+      causationId?: string;
       idempotencyKey: string;
       symbol: string;
+      orderType?: string;
+      direction?: string;
+      volumeLots?: number;
+      limitPrice?: number;
+      stopLossPrice?: number;
+      takeProfitPrice?: number;
       state: string;
       createdAt: number;
       brokerOrderId?: string;
+      isBrokerStopLossConfirmed?: boolean;
+      isBrokerTakeProfitConfirmed?: boolean;
+      accountType?: string;
+      accountMaskedId?: string;
     }>;
     idempotencyKeys: Array<[string, string]>;
   };
   journalState: {
     positionsCount: number;
     auditLogsCount: number;
+    positions?: TradePosition[];
+    auditLogs?: JournalAuditEvent[];
     statistics: {
       totalTrades: number;
       winRatePercent: number;

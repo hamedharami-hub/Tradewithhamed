@@ -49,6 +49,7 @@ import { MultiStyleBacktestModal } from '@/components/trading/multi-style-backte
 import { SignalAlertModal } from '@/components/trading/signal-alert-modal';
 import { SignalAlertDispatcher } from '@/lib/core/signal-alert-dispatcher';
 import { MonteCarloSimulator } from '@/lib/core/monte-carlo-simulator';
+import { TimeframeResampler } from '@/lib/core/timeframe-resampler';
 import { MultiTimeframeLevel, PercentileStepPoint } from '@/lib/contracts/monte-carlo';
 import { ShieldCheck, AlertCircle, X } from 'lucide-react';
 
@@ -170,24 +171,11 @@ export default function TradingLabPage() {
     );
   }, [replayState.visibleCandles, symbol]);
 
-  // سطوح کلان چند تایم‌فریمه برای نمایش مستقیم روی نمودار (Phase 6)
+  // سطوح کلان چند تایم‌فریمه از تجمیع و بازنمونه‌گیری کندل‌های واقعی
   const macroLevels: MultiTimeframeLevel[] = useMemo(() => {
-    if (symbol === 'XAUUSD') {
-      return [
-        { id: 'pdh', labelFa: 'سقف روز قبل (PDH)', labelEn: 'PDH', price: Number((currentCandlePrice + 12.5).toFixed(1)), timeframe: 'H4', type: 'PDH', color: '#ef4444' },
-        { id: 'asia_h', labelFa: 'سقف آسیا (Asia H)', labelEn: 'Asia High', price: Number((currentCandlePrice + 4.8).toFixed(1)), timeframe: 'M15', type: 'ASIA_HIGH', color: '#f59e0b' },
-        { id: 'asia_l', labelFa: 'کف آسیا (Asia L)', labelEn: 'Asia Low', price: Number((currentCandlePrice - 5.2).toFixed(1)), timeframe: 'M15', type: 'ASIA_LOW', color: '#3b82f6' },
-        { id: 'pdl', labelFa: 'کف روز قبل (PDL)', labelEn: 'PDL', price: Number((currentCandlePrice - 14.0).toFixed(1)), timeframe: 'H4', type: 'PDL', color: '#10b981' },
-      ];
-    } else {
-      return [
-        { id: 'pdh', labelFa: 'سقف روز قبل (PDH)', labelEn: 'PDH', price: Number((currentCandlePrice + 0.0035).toFixed(4)), timeframe: 'H4', type: 'PDH', color: '#ef4444' },
-        { id: 'asia_h', labelFa: 'سقف آسیا (Asia H)', labelEn: 'Asia High', price: Number((currentCandlePrice + 0.0012).toFixed(4)), timeframe: 'M15', type: 'ASIA_HIGH', color: '#f59e0b' },
-        { id: 'asia_l', labelFa: 'کف آسیا (Asia L)', labelEn: 'Asia Low', price: Number((currentCandlePrice - 0.0015).toFixed(4)), timeframe: 'M15', type: 'ASIA_LOW', color: '#3b82f6' },
-        { id: 'pdl', labelFa: 'کف روز قبل (PDL)', labelEn: 'PDL', price: Number((currentCandlePrice - 0.0040).toFixed(4)), timeframe: 'H4', type: 'PDL', color: '#10b981' },
-      ];
-    }
-  }, [symbol, currentCandlePrice]);
+    if (!replayState.visibleCandles || replayState.visibleCandles.length === 0) return [];
+    return TimeframeResampler.extractMultiTimeframeLevels(replayState.visibleCandles, symbol);
+  }, [replayState.visibleCandles, symbol]);
 
   // مخروط صدک‌های استوکاستیک مونت‌کارلو به سمت آینده روی چارت (Phase 6)
   const forwardMonteCarloCone: PercentileStepPoint[] | undefined = useMemo(() => {
@@ -247,10 +235,15 @@ export default function TradingLabPage() {
 
   // همگام‌سازی تعداد هشدارهای خوانده‌نشده
   useEffect(() => {
-    setUnreadAlertsCount(SignalAlertDispatcher.getUnreadCount());
-    return SignalAlertDispatcher.subscribe(() => {
+    const updateCount = () => {
       setUnreadAlertsCount(SignalAlertDispatcher.getUnreadCount());
-    });
+    };
+    const id = requestAnimationFrame(updateCount);
+    const unsubscribe = SignalAlertDispatcher.subscribe(updateCount);
+    return () => {
+      cancelAnimationFrame(id);
+      unsubscribe();
+    };
   }, []);
 
   // ارزیابی خودکار شرایط بازار و صدور هوشمند هشدار
@@ -268,7 +261,7 @@ export default function TradingLabPage() {
       councilResult: multiAgentResult,
     });
   }, [
-    replayState.visibleCandles.length,
+    replayState.visibleCandles,
     replayState.activeCandidate,
     replayState.marketRegime,
     multiAgentResult,

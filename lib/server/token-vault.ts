@@ -12,10 +12,18 @@ export class TokenVault {
   private static readonly AUTH_TAG_LENGTH = 16; // ۱۶ بایت استاندارد تگ احراز هویت
 
   /**
-   * استخراج یا ایجاد کلید ۲۵۶ بیتی امن از متغیرهای محیطی یا کلید سخت‌گیرانه سرور
+   * استخراج یا ایجاد کلید ۲۵۶ بیتی امن از متغیرهای محیطی با سیاست شکست-بسته
    */
   private static getMasterKey(): Buffer {
-    const rawKey = process.env.CTRADER_TOKEN_ENCRYPTION_KEY?.trim() || 'Hamed-TradingLab-Demo-Master-Vault-Secret-Seed-2026';
+    const rawKey = process.env.CTRADER_TOKEN_ENCRYPTION_KEY?.trim();
+    if (!rawKey) {
+      if (process.env.NODE_ENV === 'test') {
+        return crypto.createHash('sha256').update('TEST_ONLY_DEV_ENCRYPTION_KEY_NOT_FOR_PRODUCTION').digest();
+      }
+      throw new Error(
+        'CONFIG_FATAL_MISSING_KEY: متغیر محیطی CTRADER_TOKEN_ENCRYPTION_KEY تنظیم نشده است. طبق اصل شکست-بسته (Fail-Closed)، گاوصندوق توکن تا زمان مقداردهی کلید امن مسدود است.'
+      );
+    }
     // استفاده از SHA-256 برای تضمین دقیق ۳۲ بایت (۲۵۶ بیت)
     return crypto.createHash('sha256').update(rawKey).digest();
   }

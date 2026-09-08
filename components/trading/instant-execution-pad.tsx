@@ -4,10 +4,11 @@
 
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { SymbolId, SYMBOL_SPECS } from '@/lib/contracts/market';
 import { StrategyCandidate } from '@/lib/contracts/strategy';
 import { DEFAULT_PARTIAL_TP_CONFIG, PartialTPConfig } from '@/lib/contracts/tactical-cockpit';
+import { calculateDeterministicRisk } from '@/lib/core/risk-calculator';
 import {
   Zap,
   TrendingUp,
@@ -18,6 +19,7 @@ import {
   Crosshair,
   AlertOctagon,
   Sparkles,
+  AlertTriangle,
 } from 'lucide-react';
 
 interface InstantExecutionPadProps {
@@ -53,13 +55,23 @@ export const InstantExecutionPad: React.FC<InstantExecutionPadProps> = React.mem
   const spec = SYMBOL_SPECS[symbol];
   const atr = Math.max(currentAtr, symbol === 'XAUUSD' ? 1.5 : 0.001);
   const slDist = atr * 1.2;
+  const tpDist = slDist * 2.0;
 
-  // محاسبه لات تخمینی در زمان واقعی
-  const riskDollars = (accountEquity * selectedRisk) / 100;
-  const estimatedLots = Math.max(
-    spec.minLots,
-    Math.min(spec.maxLots, Number((riskDollars / (slDist * spec.contractSize)).toFixed(2)))
-  );
+  // محاسبه مستقیم با ماشین حساب ریسک قطعی با سقف ۰٫۲۵٪ و گردکردن رو به پایین
+  const riskPreview = useMemo(() => {
+    return calculateDeterministicRisk({
+      symbol,
+      direction: 'BUY',
+      entryPrice: currentPrice,
+      stopLossPrice: Number((currentPrice - slDist).toFixed(symbol === 'XAUUSD' ? 2 : 5)),
+      takeProfitPrice: Number((currentPrice + tpDist).toFixed(symbol === 'XAUUSD' ? 2 : 5)),
+      accountEquity,
+      riskPercentage: selectedRisk,
+    });
+  }, [symbol, currentPrice, slDist, tpDist, accountEquity, selectedRisk]);
+
+  const estimatedLots = riskPreview.adjustedVolumeLots;
+  const isCapitalSufficient = riskPreview.isValid && estimatedLots >= spec.minLots;
 
   const partialConfig: PartialTPConfig = {
     ...DEFAULT_PARTIAL_TP_CONFIG,
@@ -145,7 +157,7 @@ export const InstantExecutionPad: React.FC<InstantExecutionPadProps> = React.mem
             <span>ریسک در معامله:</span>
           </div>
           <div className="flex items-center gap-1">
-            {[0.1, 0.25, 0.5, 1.0].map(r => (
+            {[0.05, 0.1, 0.2, 0.25].map(r => (
               <button
                 key={r}
                 type="button"
@@ -182,13 +194,26 @@ export const InstantExecutionPad: React.FC<InstantExecutionPadProps> = React.mem
         </div>
       </div>
 
+      {/* هشدار عدم کفایت سرمایه در صورت کمتر بودن لات از حداقل مجاز */}
+      {!isCapitalSufficient && (
+        <div className="mb-3 p-2.5 rounded-xl bg-amber-950/40 border border-amber-500/40 text-amber-300 text-xs flex items-center gap-2">
+          <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
+          <span>
+            {riskPreview.explanation || 'سرمایه حساب برای معامله با سقف ریسک ۰٫۲۵٪ و حداقل لات بروکر (۰٫۰۱) کافی نیست.'}
+          </span>
+        </div>
+      )}
+
       {/* کلیدهای بزرگ ترید ۱-کلیکی (خرید و فروش فوری) */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         {/* کلید خرید ۱-کلیکی BUY */}
         <button
           type="button"
+          disabled={!isCapitalSufficient}
           onClick={() => onExecuteInstantOrder('BUY', selectedRisk, false, partialConfig)}
-          className="p-3 bg-gradient-to-r from-emerald-950 to-[#102920] hover:from-emerald-900 hover:to-[#15382b] border border-emerald-600/80 rounded-xl flex items-center justify-between transition-all group shadow-sm active:scale-[0.99]"
+          className={`p-3 bg-gradient-to-r from-emerald-950 to-[#102920] hover:from-emerald-900 hover:to-[#15382b] border border-emerald-600/80 rounded-xl flex items-center justify-between transition-all group shadow-sm active:scale-[0.99] ${
+            !isCapitalSufficient ? 'opacity-50 cursor-not-allowed pointer-events-none' : ''
+          }`}
         >
           <div className="flex items-center gap-2.5">
             <div className="p-2 bg-emerald-500/20 text-emerald-400 rounded-lg group-hover:bg-emerald-500/30 transition-colors">
@@ -213,8 +238,11 @@ export const InstantExecutionPad: React.FC<InstantExecutionPadProps> = React.mem
         {/* کلید فروش ۱-کلیکی SELL */}
         <button
           type="button"
+          disabled={!isCapitalSufficient}
           onClick={() => onExecuteInstantOrder('SELL', selectedRisk, false, partialConfig)}
-          className="p-3 bg-gradient-to-r from-rose-950 to-[#291216] hover:from-rose-900 hover:to-[#38151c] border border-rose-600/80 rounded-xl flex items-center justify-between transition-all group shadow-sm active:scale-[0.99]"
+          className={`p-3 bg-gradient-to-r from-rose-950 to-[#291216] hover:from-rose-900 hover:to-[#38151c] border border-rose-600/80 rounded-xl flex items-center justify-between transition-all group shadow-sm active:scale-[0.99] ${
+            !isCapitalSufficient ? 'opacity-50 cursor-not-allowed pointer-events-none' : ''
+          }`}
         >
           <div className="flex items-center gap-2.5">
             <div className="p-2 bg-rose-500/20 text-rose-400 rounded-lg group-hover:bg-rose-500/30 transition-colors">
@@ -249,8 +277,11 @@ export const InstantExecutionPad: React.FC<InstantExecutionPadProps> = React.mem
           </div>
           <button
             type="button"
+            disabled={!isCapitalSufficient}
             onClick={() => onExecuteInstantOrder(activeCandidate.direction, selectedRisk, true, partialConfig)}
-            className="px-3 py-1.5 bg-cyan-950/80 hover:bg-cyan-900 border border-cyan-600 text-cyan-200 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors shadow-sm"
+            className={`px-3 py-1.5 bg-cyan-950/80 hover:bg-cyan-900 border border-cyan-600 text-cyan-200 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors shadow-sm ${
+              !isCapitalSufficient ? 'opacity-50 cursor-not-allowed pointer-events-none' : ''
+            }`}
           >
             <Crosshair className="w-3.5 h-3.5 text-cyan-400" />
             <span>اجرای فوری ستاپ با سطوح دقیق هوش مصنوعی</span>

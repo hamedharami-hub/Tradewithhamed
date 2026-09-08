@@ -215,6 +215,146 @@ export async function runStage8SecurityDRTests(): Promise<Stage8TestResult[]> {
     });
   }
 
+  // ۶. آزمون وفاداری کامل داده‌های اسنپ‌شات در بازیابی اضطراری (Snapshot Fidelity & Journal Restoration)
+  try {
+    CTraderOMS.resetStateForTesting();
+    JournalService.resetForTesting();
+
+    // ایجاد اسنپ‌شات با یک سفارش صریح SELL برای EURUSD
+    const sampleRecord: any = {
+      intentId: 'INT-FIDELITY-001',
+      correlationId: 'CORR-FIDELITY-001',
+      causationId: 'CAUSE-FIDELITY-001',
+      idempotencyKey: 'IDEMP-FIDELITY-001',
+      symbol: 'EURUSD',
+      orderType: 'LIMIT',
+      direction: 'SELL',
+      volumeLots: 0.02,
+      limitPrice: 1.0850,
+      stopLossPrice: 1.0880,
+      takeProfitPrice: 1.0780,
+      state: 'ACKNOWLEDGED',
+      createdAt: Date.now(),
+      brokerOrderId: 'CT-ORD-FIDELITY-99',
+      isBrokerStopLossConfirmed: true,
+      isBrokerTakeProfitConfirmed: true,
+      accountType: 'DEMO',
+      accountMaskedId: 'DEMO-****5678',
+    };
+
+    const snapshotPayload: any = {
+      schemaVersion: DisasterRecoveryEngine.SCHEMA_VERSION,
+      generatedAt: Date.now(),
+      omsState: {
+        recordsCount: 1,
+        records: [sampleRecord],
+        idempotencyKeys: [['IDEMP-FIDELITY-001', 'INT-FIDELITY-001']],
+      },
+      journalState: {
+        positionsCount: 1,
+        auditLogsCount: 1,
+        positions: [
+          {
+            positionId: 'POS-FIDELITY-01',
+            intentId: 'INT-FIDELITY-001',
+            correlationId: 'CORR-FIDELITY-001',
+            causationId: 'CAUSE-FIDELITY-001',
+            symbol: 'EURUSD',
+            direction: 'SELL',
+            volumeLots: 0.02,
+            entryPrice: 1.0850,
+            stopLossPrice: 1.0880,
+            takeProfitPrice: 1.0780,
+            status: 'CLOSED_PROFIT',
+            openedAt: Date.now() - 60000,
+            closedAt: Date.now(),
+            exitPrice: 1.0780,
+            exitReason: 'TP_HIT',
+            realizedGrossPnL: 14.0,
+            brokerCommission: 0.12,
+            realizedNetPnL: 13.88,
+            realizedRMultiple: 2.33,
+            plannedRiskAmount: 6.0,
+          },
+        ],
+        auditLogs: [],
+        statistics: { totalTrades: 1, winRatePercent: 100, netPnL: 13.88, profitFactor: 10 },
+      },
+      securityAudit: { environment: 'demo', tokenVaultActive: true, zeroSecretsCompliant: true },
+    };
+
+    const checksum = DisasterRecoveryEngine.computePayloadChecksum(snapshotPayload);
+    const validSnapshot = { ...snapshotPayload, checksum };
+
+    const restoreResult = DisasterRecoveryEngine.restoreEmergencySnapshot(validSnapshot);
+    const restoredRecord = CTraderOMS.getRecord('INT-FIDELITY-001');
+    const restoredPositions = JournalService.getAllPositions();
+
+    const isRecordFaithful =
+      restoredRecord !== undefined &&
+      restoredRecord.symbol === 'EURUSD' &&
+      restoredRecord.direction === 'SELL' &&
+      restoredRecord.volumeLots === 0.02 &&
+      restoredRecord.limitPrice === 1.0850 &&
+      restoredRecord.stopLossPrice === 1.0880 &&
+      restoredRecord.takeProfitPrice === 1.0780;
+
+    const isJournalRestored =
+      restoredPositions.length === 1 &&
+      restoredPositions[0].positionId === 'POS-FIDELITY-01' &&
+      restoredPositions[0].symbol === 'EURUSD';
+
+    const pass = restoreResult.success && isRecordFaithful && isJournalRestored;
+
+    results.push({
+      name: 'آزمون ۶: وفاداری کامل داده‌ها در بازیابی اضطراری (بدون تحریف جهت، حجم، نماد یا قیمت)',
+      pass,
+      details: pass
+        ? 'سفارش فروش EURUSD با حجم ۰.۰۲ و سطوح دقیق حد سود/ضرر به همراه پوزیشن ژورنال بدون تغییر بازیابی شد.'
+        : `خطا در وفاداری بازیابی: ${JSON.stringify({ isRecordFaithful, isJournalRestored })}`,
+    });
+  } catch (err) {
+    results.push({
+      name: 'آزمون ۶: وفاداری کامل داده‌ها در بازیابی اضطراری',
+      pass: false,
+      details: `خطا در اجرای آزمون: ${(err as Error).message}`,
+    });
+  }
+
+  // ۷. آزمون الزام اعتبار تک‌مجری و ممانعت از واگذاری نامعتبر (Single Executor Security Enforcement)
+  try {
+    const { ExecutorManager } = await import('../executor-manager');
+    ExecutorManager.resetForTesting();
+
+    // اعتبارسنجی با حذف پارامترها باید مسدود شود (Fail-Closed)
+    const emptyCredsValidation = ExecutorManager.validateExecutor(undefined, undefined);
+    const staleEpochValidation = ExecutorManager.validateExecutor('test-windows-session', 999);
+    
+    // واگذاری بدون آغاز شدن قبلی باید رد شود
+    const uninitiatedHandoff = ExecutorManager.completeHandoff('unauthorized-session', 'pixel');
+
+    const pass =
+      !emptyCredsValidation.authorized &&
+      emptyCredsValidation.reason?.includes('MISSING_EXECUTOR_CREDENTIALS') &&
+      !staleEpochValidation.authorized &&
+      !uninitiatedHandoff.completed &&
+      uninitiatedHandoff.reason?.includes('NO_PENDING_HANDOFF_INITIATED');
+
+    results.push({
+      name: 'آزمون ۷: الزام قطعی شناسه‌های تک‌مجری و ممانعت از واگذاری نامعتبر',
+      pass: !!pass,
+      details: pass
+        ? 'ارسال سفارش بدون اعتبار سنجی یا با ایپاک منسوخ مسدود شد و تصاحب بدون آغاز واگذاری رد گردید.'
+        : `خطا در آزمون اعتبارسنجی تک‌مجری: ${JSON.stringify({ emptyCredsValidation, uninitiatedHandoff })}`,
+    });
+  } catch (err) {
+    results.push({
+      name: 'آزمون ۷: الزام قطعی شناسه‌های تک‌مجری',
+      pass: false,
+      details: `خطا در اجرای آزمون: ${(err as Error).message}`,
+    });
+  }
+
   return results.map(r => ({
     name: r.name,
     passed: Boolean(r.pass ?? r.passed),

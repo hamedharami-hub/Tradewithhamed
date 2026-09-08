@@ -10,6 +10,49 @@ import { RiskCalculationInput, RiskPreviewResult } from '../contracts/risk';
  */
 export function calculateDeterministicRisk(input: RiskCalculationInput): RiskPreviewResult {
   const meta = SYMBOL_SPECS[input.symbol];
+  if (!meta) {
+    return {
+      symbol: input.symbol,
+      rawVolumeLots: 0,
+      adjustedVolumeLots: 0,
+      plannedRiskAmount: 0,
+      plannedRiskPercent: 0,
+      rewardAmount: 0,
+      grossRiskRewardRatio: 0,
+      netRiskRewardRatio: 0,
+      commissionEstimated: 0,
+      isValid: false,
+      explanation: `نماد معاملاتی ناشناخته است: ${input.symbol}`,
+    };
+  }
+
+  // اعتبارسنجی سخت‌گیرانه برای ممانعت از نفوذ مقادیر NaN یا بی‌نهایت
+  if (
+    !Number.isFinite(input.entryPrice) ||
+    !Number.isFinite(input.stopLossPrice) ||
+    !Number.isFinite(input.takeProfitPrice) ||
+    !Number.isFinite(input.accountEquity) ||
+    (input.riskPercentage !== undefined && !Number.isFinite(input.riskPercentage)) ||
+    input.accountEquity <= 0 ||
+    input.entryPrice <= 0 ||
+    input.stopLossPrice <= 0 ||
+    input.takeProfitPrice <= 0
+  ) {
+    return {
+      symbol: input.symbol,
+      rawVolumeLots: 0,
+      adjustedVolumeLots: 0,
+      plannedRiskAmount: 0,
+      plannedRiskPercent: 0,
+      rewardAmount: 0,
+      grossRiskRewardRatio: 0,
+      netRiskRewardRatio: 0,
+      commissionEstimated: 0,
+      isValid: false,
+      explanation: 'خطای اعتبارسنجی: مقادیر ورودی قیمت، سرمایه یا ریسک نامعتبر یا غیرعددی (NaN) هستند.',
+    };
+  }
+
   const maxRiskPercent = input.riskPercentage ? Math.min(input.riskPercentage, 0.25) : 0.25;
   const maxDollarRisk = (input.accountEquity * maxRiskPercent) / 100;
 
@@ -28,7 +71,40 @@ export function calculateDeterministicRisk(input: RiskCalculationInput): RiskPre
       netRiskRewardRatio: 0,
       commissionEstimated: 0,
       isValid: false,
-      explanation: 'فاصله حد ضرر یا حد سود نامعتبر است.',
+      explanation: 'فاصله حد ضرر یا حد سود نامعتبر است (صفر یا منفی).',
+    };
+  }
+
+  // بررسی صحت جهت استاپ و تارگت
+  if (input.direction === 'BUY' && (input.stopLossPrice >= input.entryPrice || input.takeProfitPrice <= input.entryPrice)) {
+    return {
+      symbol: input.symbol,
+      rawVolumeLots: 0,
+      adjustedVolumeLots: 0,
+      plannedRiskAmount: 0,
+      plannedRiskPercent: 0,
+      rewardAmount: 0,
+      grossRiskRewardRatio: 0,
+      netRiskRewardRatio: 0,
+      commissionEstimated: 0,
+      isValid: false,
+      explanation: 'در معامله خرید، حد ضرر باید پایین‌تر و حد سود بالاتر از قیمت ورود باشد.',
+    };
+  }
+
+  if (input.direction === 'SELL' && (input.stopLossPrice <= input.entryPrice || input.takeProfitPrice >= input.entryPrice)) {
+    return {
+      symbol: input.symbol,
+      rawVolumeLots: 0,
+      adjustedVolumeLots: 0,
+      plannedRiskAmount: 0,
+      plannedRiskPercent: 0,
+      rewardAmount: 0,
+      grossRiskRewardRatio: 0,
+      netRiskRewardRatio: 0,
+      commissionEstimated: 0,
+      isValid: false,
+      explanation: 'در معامله فروش، حد ضرر باید بالاتر و حد سود پایین‌تر از قیمت ورود باشد.',
     };
   }
 

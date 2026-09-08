@@ -59,6 +59,14 @@ export class MultiStyleBacktester {
     ];
 
     let activePos: ActivePosition | null = null;
+    let pendingSignal: {
+      candidate: any;
+      regime: any;
+      councilScore: number;
+      mcProb: number;
+      volumeLots: number;
+      priceDistance: number;
+    } | null = null;
     const tradeReturns: number[] = [];
 
     const startIdx = Math.min(20, Math.floor(candles.length / 4));
@@ -66,6 +74,41 @@ export class MultiStyleBacktester {
     for (let i = startIdx; i < candles.length; i++) {
       const currentCandle = candles[i];
       const slice = candles.slice(0, i + 1);
+
+      // الف. اجرای سیگنال معلق حاصل از کندل قبلی در ابتدای کندل جاری (حذف قطعی سوگیری نگاه به آینده - Zero Lookahead)
+      if (pendingSignal && !activePos) {
+        const isBuy = pendingSignal.candidate.direction === 'BUY';
+        const executedEntry = isBuy
+          ? currentCandle.open + (config.slippagePips * pipSize)
+          : currentCandle.open - (config.slippagePips * pipSize);
+
+        const partialTpDist = pendingSignal.priceDistance * 1.2;
+        const partialTpPrice = isBuy
+          ? executedEntry + partialTpDist
+          : executedEntry - partialTpDist;
+
+        activePos = {
+          tradeId: 'BT-' + pendingSignal.candidate.id + '-' + currentCandle.timestamp,
+          candidateId: pendingSignal.candidate.id,
+          symbol: config.symbol,
+          style: pendingSignal.candidate.style || 'SCALP_M1_M5',
+          regime: pendingSignal.regime,
+          direction: pendingSignal.candidate.direction,
+          entryIndex: i,
+          entryTimestamp: currentCandle.timestamp,
+          entryPrice: executedEntry,
+          currentStopLossPrice: pendingSignal.candidate.stopLossPrice,
+          initialStopLossPrice: pendingSignal.candidate.stopLossPrice,
+          fullTakeProfitPrice: pendingSignal.candidate.takeProfitPrice,
+          partialTpPrice,
+          totalVolumeLots: pendingSignal.volumeLots,
+          remainingVolumeLots: pendingSignal.volumeLots,
+          isPartialClosed: false,
+          alphaConsensusScore: pendingSignal.councilScore,
+          monteCarloTpProbability: pendingSignal.mcProb,
+        };
+        pendingSignal = null;
+      }
 
       // ۱. بررسی و به‌روزرسانی پوزیشن فعال در صورت وجود
       if (activePos) {
@@ -189,8 +232,8 @@ export class MultiStyleBacktester {
         }
       }
 
-      // ۲. بررسی فرصت ورود جدید (در صورت عدم وجود پوزیشن باز)
-      if (!activePos) {
+      // ۲. بررسی فرصت ورود جدید برای کندل بعدی (در صورت عدم وجود پوزیشن باز یا سیگنال معلق)
+      if (!activePos && !pendingSignal) {
         const evalRes = MultiStyleEngine.evaluate(slice, config.symbol, config.style);
         const regimeAnalysis = evalRes.regime;
         const candidate = evalRes.candidate;
@@ -223,35 +266,14 @@ export class MultiStyleBacktester {
               const rawVolume = priceDistance > 0 ? dollarRisk / (priceDistance * contractMultiplier) : 0.01;
               const volumeLots = Math.max(0.01, Number(rawVolume.toFixed(2)));
 
-              const isBuy = candidate.direction === 'BUY';
-              const executedEntry = isBuy
-                ? candidate.entryPrice + (config.slippagePips * pipSize)
-                : candidate.entryPrice - (config.slippagePips * pipSize);
-
-              const partialTpDist = priceDistance * 1.2;
-              const partialTpPrice = isBuy
-                ? executedEntry + partialTpDist
-                : executedEntry - partialTpDist;
-
-              activePos = {
-                tradeId: 'BT-' + candidate.id + '-' + currentCandle.timestamp,
-                candidateId: candidate.id,
-                symbol: config.symbol,
-                style: candidate.style || 'SCALP_M1_M5',
+              // ذخیره سیگنال به عنوان معلق جهت اجرای بدون بایاس در باز شدن کندل بعدی (Open of bar i+1)
+              pendingSignal = {
+                candidate,
                 regime: regimeAnalysis.regime,
-                direction: candidate.direction,
-                entryIndex: i,
-                entryTimestamp: currentCandle.timestamp,
-                entryPrice: executedEntry,
-                currentStopLossPrice: candidate.stopLossPrice,
-                initialStopLossPrice: candidate.stopLossPrice,
-                fullTakeProfitPrice: candidate.takeProfitPrice,
-                partialTpPrice,
-                totalVolumeLots: volumeLots,
-                remainingVolumeLots: volumeLots,
-                isPartialClosed: false,
-                alphaConsensusScore: councilScore,
-                monteCarloTpProbability: mcRes.probabilityHittingTarget,
+                councilScore,
+                mcProb: mcRes.probabilityHittingTarget,
+                volumeLots,
+                priceDistance,
               };
             }
           }

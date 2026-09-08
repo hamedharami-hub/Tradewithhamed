@@ -21,11 +21,22 @@ import { runMonteCarloTestSuite } from '@/lib/core/__tests__/monte-carlo.test';
 import { runSignalAlertsTestSuite } from '@/lib/core/__tests__/signal-alerts.test';
 import { runMultiStyleBacktesterTestSuite } from '@/lib/core/__tests__/multi-style-backtester.test';
 import { runPhase6TestSuite } from '@/lib/core/__tests__/phase6-apex-synthesis.test';
+import { CTraderOMS } from '@/lib/server/ctrader-oms';
+import { JournalService } from '@/lib/server/journal-service';
+import { ExecutorManager } from '@/lib/server/executor-manager';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
 export async function GET() {
+  // ثبت وضعیت فعال سرور جهت ایزولاسیون تست‌ها و جلوگیری از دستکاری وضعیت زنده
+  const savedOMS = CTraderOMS.getAllRecords();
+  const savedIdemp = CTraderOMS.getIdempotencyEntries();
+  const savedPositions = JournalService.getAllPositions();
+  const savedLogs = JournalService.getAuditLogs();
+  const savedExecutor = ExecutorManager.getExecutorState();
+  const savedKillSwitch = CTraderOMS.isKillNewEntriesActive();
+
   try {
     const coreResults = runAllCoreTests();
     const ctraderResults = runAllCTraderSecurityTests();
@@ -153,5 +164,11 @@ export async function GET() {
       },
       { status: 500 }
     );
+  } finally {
+    // بازیابی قطعی وضعیت برنامه پس از پایان تست‌ها جهت ایزولاسیون کامل تست از محیط ران‌تایم زنده
+    CTraderOMS.restoreRecords(savedOMS, savedIdemp);
+    JournalService.restorePositions(savedPositions, savedLogs);
+    CTraderOMS.setKillNewEntries(savedKillSwitch);
+    ExecutorManager.forceSwitchExecutor(savedExecutor.activeDeviceLabel, savedExecutor.activeSessionId);
   }
 }

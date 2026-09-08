@@ -13,7 +13,7 @@ import { CTraderLiveQuote, CTraderSymbolSpecs } from '../contracts/ctrader';
 export interface MarketFeedStatus {
   isConnected: boolean;
   isStale: boolean;
-  dataMode: 'LIVE' | 'STALE' | 'UNKNOWN';
+  dataMode: 'LIVE' | 'STALE' | 'UNKNOWN' | 'SIMULATED';
   lastHeartbeatTimestamp: number;
   lastQuoteTimestamp: number;
   latencyMs: number;
@@ -54,6 +54,7 @@ export class LiveMarketFeed {
   private lastHeartbeatTimestamp: number = Date.now();
   private maxStaleThresholdMs: number = 4000;
   private isSimulatedLiveActive: boolean = true;
+  private hasRealConnection: boolean = false;
   private timer: NodeJS.Timeout | null = null;
 
   // قیمت‌های پایه پیش‌فرض
@@ -85,7 +86,7 @@ export class LiveMarketFeed {
         ask: Number((price + spread / 2).toFixed(sym === 'XAUUSD' ? 2 : 5)),
         spreadPips,
         timestamp: now,
-        quality: 'LIVE',
+        quality: 'SIMULATED',
       });
     }
   }
@@ -123,7 +124,7 @@ export class LiveMarketFeed {
           ask,
           spreadPips,
           timestamp: now,
-          quality: 'LIVE',
+          quality: this.hasRealConnection ? 'LIVE' : 'SIMULATED',
         });
       }
     }, 1000);
@@ -142,7 +143,7 @@ export class LiveMarketFeed {
 
     return {
       ...quote,
-      quality: isStale ? 'STALE' : 'LIVE',
+      quality: isStale ? 'STALE' : (this.hasRealConnection ? 'LIVE' : 'SIMULATED'),
     };
   }
 
@@ -162,6 +163,7 @@ export class LiveMarketFeed {
    * تزریق دستی داده زنده از سرور cTrader (هنگام اتصال واقعی پروتوباف)
    */
   public injectLiveQuote(quote: CTraderLiveQuote): void {
+    this.hasRealConnection = true;
     this.quotes.set(quote.symbol.toUpperCase(), {
       ...quote,
       timestamp: quote.timestamp || Date.now(),
@@ -179,7 +181,7 @@ export class LiveMarketFeed {
     const isConnected = delaySinceHeartbeat < 15000;
     const isStale = delaySinceHeartbeat > this.maxStaleThresholdMs;
 
-    let dataMode: 'LIVE' | 'STALE' | 'UNKNOWN' = 'LIVE';
+    let dataMode: 'LIVE' | 'STALE' | 'UNKNOWN' | 'SIMULATED' = this.hasRealConnection ? 'LIVE' : 'SIMULATED';
     if (!isConnected) {
       dataMode = 'UNKNOWN';
     } else if (isStale) {
