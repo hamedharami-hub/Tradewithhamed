@@ -28,12 +28,13 @@ import {
   DisciplineScorecard,
   AlphaFrictionAttribution,
   SessionTimeDistribution,
+  AICouncilAttributionReport,
   DEFAULT_W5_TRADES,
 } from '@/lib/contracts/w5-journal-analytics';
 import { PostTradeAnalyticsEngine } from '@/lib/core/post-trade-analytics';
 import { runW5AcceptanceSuite, W5AcceptanceTestResult } from '@/lib/core/__tests__/w5-acceptance.test';
 
-type SubTab = 'ALPHA' | 'BEHAVIORAL' | 'EXCURSION' | 'TIME' | 'TESTS';
+type SubTab = 'ALPHA' | 'BEHAVIORAL' | 'EXCURSION' | 'TIME' | 'AI_ATTRIBUTION' | 'TESTS';
 
 export function JournalWorkbenchW5() {
   const [subTab, setSubTab] = useState<SubTab>('ALPHA');
@@ -146,6 +147,11 @@ export function JournalWorkbenchW5() {
   // توزیع زمانی و نشست‌ها
   const timeDistribution: SessionTimeDistribution = useMemo(() => {
     return PostTradeAnalyticsEngine.calculateSessionDistribution(filteredTrades);
+  }, [filteredTrades]);
+
+  // انطباق شورای هوش مصنوعی و رژیم‌ها (Phase 6 Apex Synthesis)
+  const aiAttribution: AICouncilAttributionReport = useMemo(() => {
+    return PostTradeAnalyticsEngine.calculateAICouncilAttribution(filteredTrades);
   }, [filteredTrades]);
 
   // اجرای آزمون‌های گیت پذیرش W5
@@ -265,6 +271,18 @@ export function JournalWorkbenchW5() {
           >
             <Clock className="w-3.5 h-3.5" />
             <span>ماتریس زمانی و نشست‌ها</span>
+          </button>
+
+          <button
+            onClick={() => setSubTab('AI_ATTRIBUTION')}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl transition-all ${
+              subTab === 'AI_ATTRIBUTION'
+                ? 'bg-fuchsia-500/20 text-fuchsia-300 border border-fuchsia-500/40 font-medium'
+                : 'bg-slate-800/40 text-slate-400 hover:text-slate-200 border border-slate-800'
+            }`}
+          >
+            <Sparkles className="w-3.5 h-3.5" />
+            <span>انطباق شورای هوش و رژیم‌ها</span>
           </button>
 
           <button
@@ -703,7 +721,260 @@ export function JournalWorkbenchW5() {
         </div>
       )}
 
-      {/* ۵. تب آزمون‌های گیت پذیرش W5 */}
+      {/* ۵. تب انطباق شورای هوش مصنوعی و رژیم‌های بازار (Phase 6 Apex Synthesis) */}
+      {subTab === 'AI_ATTRIBUTION' && (
+        <div className="space-y-4">
+          {/* بنر سربرگ شورا */}
+          <div className="bg-gradient-to-r from-fuchsia-950/40 via-purple-950/20 to-slate-900 border border-fuchsia-500/30 rounded-2xl p-4 sm:p-5">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-fuchsia-500/10 border border-fuchsia-500/30 flex items-center justify-center text-fuchsia-400 shrink-0">
+                  <Sparkles className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-semibold text-slate-100">
+                    ماتریس انطباق شورای هوش مصنوعی و رژیم‌های بازار
+                  </h3>
+                  <p className="text-xs text-slate-400 mt-0.5">
+                    بررسی تفکیکی عملکرد بر اساس اجماع مدل‌های آفلاین (Phi-4, DeepSeek, Qwen)، استراتژی معاملاتی و خروج مرحله‌ای
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2 self-end sm:self-center">
+                <span className="px-3 py-1 rounded-xl bg-fuchsia-500/20 text-fuchsia-300 border border-fuchsia-500/40 text-xs font-mono font-bold">
+                  {aiAttribution.totalTrades} معامله ثبت‌شده
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* کارت‌های سطوح اجماع هوش مصنوعی (Consensus Tiers) */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            {/* اجماع بالا */}
+            <div className="bg-slate-900/70 border border-emerald-500/30 rounded-2xl p-4 space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-semibold text-emerald-400 flex items-center gap-1.5">
+                  <CheckCircle2 className="w-3.5 h-3.5" />
+                  اجماع قوی (≥۷۵٪)
+                </span>
+                <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300">
+                  {aiAttribution.byConsensusTier.highConsensus.tradesCount} معامله
+                </span>
+              </div>
+              <div className="flex items-baseline justify-between pt-1">
+                <span className="text-xs text-slate-400">نرخ برد (Win Rate):</span>
+                <span className="text-lg font-bold font-mono text-emerald-300">
+                  {aiAttribution.byConsensusTier.highConsensus.winRate}%
+                </span>
+              </div>
+              <div className="flex items-baseline justify-between">
+                <span className="text-xs text-slate-400">سود خالص کل:</span>
+                <span className="text-sm font-bold font-mono text-emerald-400" dir="ltr">
+                  +${aiAttribution.byConsensusTier.highConsensus.netProfit.toFixed(2)}
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-400 pt-1 border-t border-slate-800">
+                همگرایی کامل شورا همراه با حداقل خطای روانشناختی
+              </p>
+            </div>
+
+            {/* اجماع متوسط */}
+            <div className="bg-slate-900/70 border border-amber-500/30 rounded-2xl p-4 space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-semibold text-amber-400 flex items-center gap-1.5">
+                  <Activity className="w-3.5 h-3.5" />
+                  اجماع متوسط (۶۰-۷۴٪)
+                </span>
+                <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300">
+                  {aiAttribution.byConsensusTier.moderateConsensus.tradesCount} معامله
+                </span>
+              </div>
+              <div className="flex items-baseline justify-between pt-1">
+                <span className="text-xs text-slate-400">نرخ برد (Win Rate):</span>
+                <span className="text-lg font-bold font-mono text-amber-300">
+                  {aiAttribution.byConsensusTier.moderateConsensus.winRate}%
+                </span>
+              </div>
+              <div className="flex items-baseline justify-between">
+                <span className="text-xs text-slate-400">سود خالص کل:</span>
+                <span className="text-sm font-bold font-mono text-amber-400" dir="ltr">
+                  +${aiAttribution.byConsensusTier.moderateConsensus.netProfit.toFixed(2)}
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-400 pt-1 border-t border-slate-800">
+                نیازمند تاییدیه کندلی جهت ورود مطمئن
+              </p>
+            </div>
+
+            {/* اجماع پایین یا وتو */}
+            <div className="bg-slate-900/70 border border-rose-500/30 rounded-2xl p-4 space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-semibold text-rose-400 flex items-center gap-1.5">
+                  <AlertTriangle className="w-3.5 h-3.5" />
+                  اجماع پایین (&lt;۶۰٪)
+                </span>
+                <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-rose-500/20 text-rose-300">
+                  {aiAttribution.byConsensusTier.lowConsensus.tradesCount} معامله
+                </span>
+              </div>
+              <div className="flex items-baseline justify-between pt-1">
+                <span className="text-xs text-slate-400">نرخ برد (Win Rate):</span>
+                <span className="text-lg font-bold font-mono text-rose-300">
+                  {aiAttribution.byConsensusTier.lowConsensus.winRate}%
+                </span>
+              </div>
+              <div className="flex items-baseline justify-between">
+                <span className="text-xs text-slate-400">سود خالص کل:</span>
+                <span className="text-sm font-bold font-mono text-rose-400" dir="ltr">
+                  ${aiAttribution.byConsensusTier.lowConsensus.netProfit.toFixed(2)}
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-400 pt-1 border-t border-slate-800">
+                عدم انطباق آرا؛ مشمول فیلتر خودکار گارد شورا
+              </p>
+            </div>
+          </div>
+
+          {/* تفکیک عملکرد بر اساس سبک‌های معاملاتی و رژیم‌های بازار */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            {/* سبک‌های معاملاتی */}
+            <div className="bg-slate-900/70 border border-slate-800 rounded-2xl p-4 space-y-3">
+              <div className="flex items-center gap-2">
+                <Target className="w-4 h-4 text-cyan-400" />
+                <h4 className="text-xs font-semibold text-slate-200">
+                  تفکیک بازدهی بر اساس سبک معاملاتی (Multi-Style Engine)
+                </h4>
+              </div>
+              <div className="space-y-2">
+                {Object.entries(aiAttribution.byStyle).map(([styleKey, metrics]) => {
+                  const styleTitles: Record<string, string> = {
+                    SCALP_M1_M5: 'اسکلپ سریع (M1-M5)',
+                    SMC_INTRADAY: 'اسمارت مانی درون‌روز (SMC)',
+                    SWING_MACRO: 'سوینگ کلان پیوت (Macro)',
+                    MEAN_REVERSION: 'بازگشت به میانگین باندها',
+                    UNKNOWN: 'نامشخص / ترکیبی',
+                  };
+                  const isProfit = metrics.netProfit >= 0;
+                  return (
+                    <div
+                      key={styleKey}
+                      className="p-2.5 rounded-xl bg-slate-800/40 border border-slate-800 flex items-center justify-between text-xs"
+                    >
+                      <div>
+                        <span className="font-semibold text-slate-200 block">
+                          {styleTitles[styleKey] || styleKey}
+                        </span>
+                        <span className="text-[10px] text-slate-400">
+                          {metrics.tradesCount} معامله • نرخ برد: {metrics.winRate}%
+                        </span>
+                      </div>
+                      <div className="text-left font-mono" dir="ltr">
+                        <span className={`font-bold ${isProfit ? 'text-emerald-400' : 'text-rose-400'}`}>
+                          {isProfit ? '+' : ''}${metrics.netProfit.toFixed(2)}
+                        </span>
+                        <span className="text-[11px] text-slate-400 block">
+                          {metrics.netR >= 0 ? '+' : ''}{metrics.netR.toFixed(1)}R
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* رژیم‌های پنج‌گانه بازار */}
+            <div className="bg-slate-900/70 border border-slate-800 rounded-2xl p-4 space-y-3">
+              <div className="flex items-center gap-2">
+                <Brain className="w-4 h-4 text-indigo-400" />
+                <h4 className="text-xs font-semibold text-slate-200">
+                  تفکیک بازدهی بر اساس رژیم‌های بازار (Market Regimes)
+                </h4>
+              </div>
+              <div className="space-y-2">
+                {Object.entries(aiAttribution.byRegime).map(([regimeKey, metrics]) => {
+                  const regimeTitles: Record<string, string> = {
+                    TRENDING_BULLISH: 'روند صعودی پرقدرت',
+                    TRENDING_BEARISH: 'روند نزولی پرقدرت',
+                    CHOPPY_RANGING: 'رنج متراکم و چاپی',
+                    HIGH_VOL_NEWS: 'نوسان شدید اخبار (CPI/FOMC)',
+                    COMPRESSION: 'انقباض و فشردگی دامنه نوسان',
+                    UNKNOWN: 'نامشخص',
+                  };
+                  const isProfit = metrics.netProfit >= 0;
+                  return (
+                    <div
+                      key={regimeKey}
+                      className="p-2.5 rounded-xl bg-slate-800/40 border border-slate-800 flex items-center justify-between text-xs"
+                    >
+                      <div>
+                        <span className="font-semibold text-slate-200 block">
+                          {regimeTitles[regimeKey] || regimeKey}
+                        </span>
+                        <span className="text-[10px] text-slate-400">
+                          {metrics.tradesCount} معامله • نرخ برد: {metrics.winRate}%
+                        </span>
+                      </div>
+                      <div className="text-left font-mono" dir="ltr">
+                        <span className={`font-bold ${isProfit ? 'text-emerald-400' : 'text-rose-400'}`}>
+                          {isProfit ? '+' : ''}${metrics.netProfit.toFixed(2)}
+                        </span>
+                        <span className="text-[11px] text-slate-400 block">
+                          {metrics.netR >= 0 ? '+' : ''}{metrics.netR.toFixed(1)}R
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+
+          {/* تاثیر سیو سود ۵۰٪ در ۱.۲R و تریلینگ استاپ */}
+          <div className="bg-slate-900/70 border border-slate-800 rounded-2xl p-4">
+            <div className="flex items-center gap-2 mb-3">
+              <Zap className="w-4 h-4 text-amber-400" />
+              <h4 className="text-xs font-semibold text-slate-200">
+                ارزیابی اثر تاکتیکی سیو سود پارشال ۵۰٪ در ۱.۲R و ریسک‌فری خودکار
+              </h4>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+              <div className="p-3 rounded-xl bg-emerald-950/20 border border-emerald-500/30">
+                <div className="flex items-center justify-between">
+                  <span className="font-semibold text-emerald-300">معاملات با سیو سود پارشال:</span>
+                  <span className="font-mono text-emerald-400 font-bold">{aiAttribution.partialTpImpact.partialTpCount} معامله</span>
+                </div>
+                <div className="flex justify-between mt-2 text-slate-300">
+                  <span>نرخ برد تجمیعی:</span>
+                  <span className="font-mono font-bold text-emerald-400">{aiAttribution.partialTpImpact.partialTpWinRate}%</span>
+                </div>
+                <div className="flex justify-between mt-1 text-slate-300">
+                  <span>سود دلاری خالص:</span>
+                  <span className="font-mono font-bold text-emerald-400" dir="ltr">+${aiAttribution.partialTpImpact.partialTpNetProfit.toFixed(2)}</span>
+                </div>
+              </div>
+
+              <div className="p-3 rounded-xl bg-slate-800/40 border border-slate-800">
+                <div className="flex items-center justify-between">
+                  <span className="font-semibold text-slate-300">معاملات تک‌مرحله‌ای استاندارد:</span>
+                  <span className="font-mono text-slate-400 font-bold">{aiAttribution.partialTpImpact.standardCount} معامله</span>
+                </div>
+                <div className="flex justify-between mt-2 text-slate-400">
+                  <span>نرخ برد تجمیعی:</span>
+                  <span className="font-mono font-bold text-slate-300">{aiAttribution.partialTpImpact.standardWinRate}%</span>
+                </div>
+                <div className="flex justify-between mt-1 text-slate-400">
+                  <span>سود دلاری خالص:</span>
+                  <span className="font-mono font-bold" dir="ltr">
+                    ${aiAttribution.partialTpImpact.standardNetProfit.toFixed(2)}
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ۶. تب آزمون‌های گیت پذیرش W5 */}
       {subTab === 'TESTS' && (
         <div className="bg-slate-900/70 border border-slate-800 rounded-2xl p-4 space-y-3">
           <div className="flex items-center justify-between">

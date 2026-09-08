@@ -20,6 +20,7 @@ import { runMultiAgentCouncilTestSuite } from '@/lib/core/__tests__/multi-agent-
 import { runMonteCarloTestSuite } from '@/lib/core/__tests__/monte-carlo.test';
 import { runSignalAlertsTestSuite } from '@/lib/core/__tests__/signal-alerts.test';
 import { runMultiStyleBacktesterTestSuite } from '@/lib/core/__tests__/multi-style-backtester.test';
+import { runPhase6TestSuite } from '@/lib/core/__tests__/phase6-apex-synthesis.test';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -95,6 +96,9 @@ export async function GET() {
     // نتایج آزمون‌های موتور جامع بک‌تست تاریخی چند سبکه و خروج پله‌ای (Multi-Style Historical Backtester)
     const backtesterResults = runMultiStyleBacktesterTestSuite();
 
+    // نتایج آزمون‌های جامع سنتز اوج و انطباق شورای هوش مصنوعی (Phase 6: The Apex Synthesis)
+    const phase6Results = runPhase6TestSuite();
+
     const combined = [
       ...coreResults,
       ...ctraderResults,
@@ -117,6 +121,7 @@ export async function GET() {
       ...monteCarloResults,
       ...signalAlertResults,
       ...backtesterResults,
+      ...phase6Results,
     ];
     const allPassed = combined.every(t => t.passed);
 

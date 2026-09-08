@@ -9,6 +9,7 @@ import {
   BehavioralAuditFlag,
   DisciplineScorecard,
   SessionTimeDistribution,
+  AICouncilAttributionReport,
 } from '../contracts/w5-journal-analytics';
 
 export class PostTradeAnalyticsEngine {
@@ -487,6 +488,125 @@ export class PostTradeAnalyticsEngine {
       dayOfWeekEdge,
       bestTradingWindowFa,
       worstTradingWindowFa,
+    };
+  }
+
+  /**
+   * ارزیابی و انطباق عملکرد شورای هوش مصنوعی، سبک‌های معاملاتی، رژیم بازار و سیو سود پارشال (Phase 6 Apex Synthesis)
+   */
+  public static calculateAICouncilAttribution(trades: TradeLifecycleRecord[]): AICouncilAttributionReport {
+    const byStyle: Record<string, { tradesCount: number; wins: number; winRate: number; netProfit: number; netR: number }> = {};
+    const byRegime: Record<string, { tradesCount: number; wins: number; winRate: number; netProfit: number; netR: number }> = {};
+
+    let highTrades = 0, highWins = 0, highProfit = 0;
+    let modTrades = 0, modWins = 0, modProfit = 0;
+    let lowTrades = 0, lowWins = 0, lowProfit = 0;
+
+    let partialTpCount = 0, partialTpWins = 0, partialTpNetProfit = 0;
+    let standardCount = 0, standardWins = 0, standardNetProfit = 0;
+
+    for (const t of trades) {
+      const style = t.tradingStyleUsed || 'UNKNOWN';
+      const regime = t.marketRegimeAtEntry || 'UNKNOWN';
+      const isWin = t.realizedNetPnL > 0;
+
+      // Style
+      if (!byStyle[style]) {
+        byStyle[style] = { tradesCount: 0, wins: 0, winRate: 0, netProfit: 0, netR: 0 };
+      }
+      byStyle[style].tradesCount++;
+      if (isWin) byStyle[style].wins++;
+      byStyle[style].netProfit += t.realizedNetPnL;
+      byStyle[style].netR += t.realizedRMultiple;
+
+      // Regime
+      if (!byRegime[regime]) {
+        byRegime[regime] = { tradesCount: 0, wins: 0, winRate: 0, netProfit: 0, netR: 0 };
+      }
+      byRegime[regime].tradesCount++;
+      if (isWin) byRegime[regime].wins++;
+      byRegime[regime].netProfit += t.realizedNetPnL;
+      byRegime[regime].netR += t.realizedRMultiple;
+
+      // Consensus tier
+      const score = t.alphaConsensusScore ?? 0;
+      if (score >= 75) {
+        highTrades++;
+        if (isWin) highWins++;
+        highProfit += t.realizedNetPnL;
+      } else if (score >= 60) {
+        modTrades++;
+        if (isWin) modWins++;
+        modProfit += t.realizedNetPnL;
+      } else {
+        lowTrades++;
+        if (isWin) lowWins++;
+        lowProfit += t.realizedNetPnL;
+      }
+
+      // Partial TP impact
+      if (t.partialTpExecuted) {
+        partialTpCount++;
+        if (isWin) partialTpWins++;
+        partialTpNetProfit += t.realizedNetPnL;
+      } else {
+        standardCount++;
+        if (isWin) standardWins++;
+        standardNetProfit += t.realizedNetPnL;
+      }
+    }
+
+    // Format style map
+    const formattedStyle: Record<string, { tradesCount: number; winRate: number; netProfit: number; netR: number }> = {};
+    for (const [key, val] of Object.entries(byStyle)) {
+      formattedStyle[key] = {
+        tradesCount: val.tradesCount,
+        winRate: Number(((val.wins / val.tradesCount) * 100).toFixed(1)),
+        netProfit: Number(val.netProfit.toFixed(2)),
+        netR: Number(val.netR.toFixed(2)),
+      };
+    }
+
+    // Format regime map
+    const formattedRegime: Record<string, { tradesCount: number; winRate: number; netProfit: number; netR: number }> = {};
+    for (const [key, val] of Object.entries(byRegime)) {
+      formattedRegime[key] = {
+        tradesCount: val.tradesCount,
+        winRate: Number(((val.wins / val.tradesCount) * 100).toFixed(1)),
+        netProfit: Number(val.netProfit.toFixed(2)),
+        netR: Number(val.netR.toFixed(2)),
+      };
+    }
+
+    return {
+      totalTrades: trades.length,
+      byStyle: formattedStyle,
+      byRegime: formattedRegime,
+      byConsensusTier: {
+        highConsensus: {
+          tradesCount: highTrades,
+          winRate: highTrades > 0 ? Number(((highWins / highTrades) * 100).toFixed(1)) : 0,
+          netProfit: Number(highProfit.toFixed(2)),
+        },
+        moderateConsensus: {
+          tradesCount: modTrades,
+          winRate: modTrades > 0 ? Number(((modWins / modTrades) * 100).toFixed(1)) : 0,
+          netProfit: Number(modProfit.toFixed(2)),
+        },
+        lowConsensus: {
+          tradesCount: lowTrades,
+          winRate: lowTrades > 0 ? Number(((lowWins / lowTrades) * 100).toFixed(1)) : 0,
+          netProfit: Number(lowProfit.toFixed(2)),
+        },
+      },
+      partialTpImpact: {
+        partialTpCount,
+        partialTpWinRate: partialTpCount > 0 ? Number(((partialTpWins / partialTpCount) * 100).toFixed(1)) : 0,
+        partialTpNetProfit: Number(partialTpNetProfit.toFixed(2)),
+        standardCount,
+        standardWinRate: standardCount > 0 ? Number(((standardWins / standardCount) * 100).toFixed(1)) : 0,
+        standardNetProfit: Number(standardNetProfit.toFixed(2)),
+      },
     };
   }
 }

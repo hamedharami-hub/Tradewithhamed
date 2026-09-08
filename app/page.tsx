@@ -48,6 +48,8 @@ import { MonteCarloModal } from '@/components/trading/monte-carlo-modal';
 import { MultiStyleBacktestModal } from '@/components/trading/multi-style-backtest-modal';
 import { SignalAlertModal } from '@/components/trading/signal-alert-modal';
 import { SignalAlertDispatcher } from '@/lib/core/signal-alert-dispatcher';
+import { MonteCarloSimulator } from '@/lib/core/monte-carlo-simulator';
+import { MultiTimeframeLevel, PercentileStepPoint } from '@/lib/contracts/monte-carlo';
 import { ShieldCheck, AlertCircle, X } from 'lucide-react';
 
 const broker = new SimulatedBroker(10000);
@@ -81,6 +83,7 @@ export default function TradingLabPage() {
   const [isBacktestModalOpen, setIsBacktestModalOpen] = useState(false);
   const [isAlertModalOpen, setIsAlertModalOpen] = useState(false);
   const [unreadAlertsCount, setUnreadAlertsCount] = useState(0);
+  const [syncedCrosshairPrice, setSyncedCrosshairPrice] = useState<number | null>(null);
   const [multiAgentConfig, setMultiAgentConfig] = useState<MultiAgentConfiguration>(() =>
     MultiAgentOrchestrator.loadConfiguration()
   );
@@ -159,6 +162,48 @@ export default function TradingLabPage() {
     const found = TRADING_STYLES.find(s => s.id === multiAgentConfig.activeTradingStyle);
     return found ? found.badgeFa : 'سبک S0';
   }, [multiAgentConfig.activeTradingStyle]);
+
+  const currentCandlePrice = useMemo(() => {
+    return (
+      replayState.visibleCandles[replayState.visibleCandles.length - 1]?.close ||
+      (symbol === 'XAUUSD' ? 2650 : 1.085)
+    );
+  }, [replayState.visibleCandles, symbol]);
+
+  // سطوح کلان چند تایم‌فریمه برای نمایش مستقیم روی نمودار (Phase 6)
+  const macroLevels: MultiTimeframeLevel[] = useMemo(() => {
+    if (symbol === 'XAUUSD') {
+      return [
+        { id: 'pdh', labelFa: 'سقف روز قبل (PDH)', labelEn: 'PDH', price: Number((currentCandlePrice + 12.5).toFixed(1)), timeframe: 'H4', type: 'PDH', color: '#ef4444' },
+        { id: 'asia_h', labelFa: 'سقف آسیا (Asia H)', labelEn: 'Asia High', price: Number((currentCandlePrice + 4.8).toFixed(1)), timeframe: 'M15', type: 'ASIA_HIGH', color: '#f59e0b' },
+        { id: 'asia_l', labelFa: 'کف آسیا (Asia L)', labelEn: 'Asia Low', price: Number((currentCandlePrice - 5.2).toFixed(1)), timeframe: 'M15', type: 'ASIA_LOW', color: '#3b82f6' },
+        { id: 'pdl', labelFa: 'کف روز قبل (PDL)', labelEn: 'PDL', price: Number((currentCandlePrice - 14.0).toFixed(1)), timeframe: 'H4', type: 'PDL', color: '#10b981' },
+      ];
+    } else {
+      return [
+        { id: 'pdh', labelFa: 'سقف روز قبل (PDH)', labelEn: 'PDH', price: Number((currentCandlePrice + 0.0035).toFixed(4)), timeframe: 'H4', type: 'PDH', color: '#ef4444' },
+        { id: 'asia_h', labelFa: 'سقف آسیا (Asia H)', labelEn: 'Asia High', price: Number((currentCandlePrice + 0.0012).toFixed(4)), timeframe: 'M15', type: 'ASIA_HIGH', color: '#f59e0b' },
+        { id: 'asia_l', labelFa: 'کف آسیا (Asia L)', labelEn: 'Asia Low', price: Number((currentCandlePrice - 0.0015).toFixed(4)), timeframe: 'M15', type: 'ASIA_LOW', color: '#3b82f6' },
+        { id: 'pdl', labelFa: 'کف روز قبل (PDL)', labelEn: 'PDL', price: Number((currentCandlePrice - 0.0040).toFixed(4)), timeframe: 'H4', type: 'PDL', color: '#10b981' },
+      ];
+    }
+  }, [symbol, currentCandlePrice]);
+
+  // مخروط صدک‌های استوکاستیک مونت‌کارلو به سمت آینده روی چارت (Phase 6)
+  const forwardMonteCarloCone: PercentileStepPoint[] | undefined = useMemo(() => {
+    if (!currentCandlePrice) return undefined;
+    const targetOffset = symbol === 'XAUUSD' ? 15 : 0.003;
+    const slOffset = symbol === 'XAUUSD' ? 6 : 0.0012;
+    const sim = MonteCarloSimulator.runSimulation({
+      iterations: 200,
+      steps: 20,
+      initialPrice: currentCandlePrice,
+      targetPrice: currentCandlePrice + targetOffset,
+      stopLossPrice: currentCandlePrice - slOffset,
+      seed: 42,
+    });
+    return sim.percentileCone;
+  }, [currentCandlePrice, symbol]);
 
   const handleSaveMultiAgentConfig = (newConfig: MultiAgentConfiguration) => {
     setMultiAgentConfig(newConfig);
@@ -571,6 +616,11 @@ export default function TradingLabPage() {
                   symbol={symbol}
                   candles={replayState.visibleCandles}
                   activeCandidate={replayState.activeCandidate}
+                  multiTimeframeLevels={macroLevels}
+                  monteCarloCone={forwardMonteCarloCone}
+                  isCrosshairSynced={true}
+                  crosshairPrice={syncedCrosshairPrice}
+                  onCrosshairChange={(price) => setSyncedCrosshairPrice(price)}
                 />
                 <MultiTimeframeSyncView
                   symbol={symbol}

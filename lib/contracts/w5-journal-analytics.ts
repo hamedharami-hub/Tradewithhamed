@@ -4,6 +4,7 @@
 
 import { SymbolId } from './market';
 import { TradeDirection } from './journal';
+import { MarketRegimeType, TradingStyleType } from './regimes';
 
 /**
  * رکورد کامل چرخه حیات معامله در ژورنال خودکار W5
@@ -45,6 +46,14 @@ export interface TradeLifecycleRecord {
   setupGrade?: 'A+' | 'A' | 'B' | 'C';
   traderNotesFa?: string;
   behavioralTags?: string[];
+
+  // برچسب‌های هوش مصنوعی و سبک‌های معاملاتی فاز ۱ تا ۵ (AI Council & Regime Attribution)
+  marketRegimeAtEntry?: MarketRegimeType;
+  tradingStyleUsed?: TradingStyleType;
+  alphaConsensusScore?: number;
+  councilQuorumReached?: boolean;
+  monteCarloWinProb?: number;
+  partialTpExecuted?: boolean;
 }
 
 /**
@@ -164,6 +173,12 @@ export const DEFAULT_W5_TRADES: TradeLifecycleRecord[] = [
     exitEfficiencyPercent: 96.8,
     setupGrade: 'A+',
     traderNotesFa: 'جاروب نقدینگی کف آسیا با تایید کندل تهاجمی ۵ دقیقه‌ای و خروج در سقف FVG ۴ ساعته.',
+    marketRegimeAtEntry: 'COMPRESSION',
+    tradingStyleUsed: 'SMC_INTRADAY',
+    alphaConsensusScore: 88.0,
+    councilQuorumReached: true,
+    monteCarloWinProb: 74.5,
+    partialTpExecuted: true,
   },
   {
     tradeId: 'TR-102',
@@ -195,6 +210,12 @@ export const DEFAULT_W5_TRADES: TradeLifecycleRecord[] = [
     exitEfficiencyPercent: 0,
     setupGrade: 'B',
     traderNotesFa: 'شکست سقف ساختار قبل از زمان بهینه سشن. خروج با حد ضرر استاندارد بدون دستکاری.',
+    marketRegimeAtEntry: 'CHOPPY_RANGING',
+    tradingStyleUsed: 'MEAN_REVERSION',
+    alphaConsensusScore: 52.0,
+    councilQuorumReached: false,
+    monteCarloWinProb: 41.0,
+    partialTpExecuted: false,
   },
   {
     tradeId: 'TR-103',
@@ -226,6 +247,12 @@ export const DEFAULT_W5_TRADES: TradeLifecycleRecord[] = [
     exitEfficiencyPercent: 98.7,
     setupGrade: 'A',
     traderNotesFa: 'ورود مجدد پس از اصلاح سالم در نشست لندن. انضباط کامل در حفظ حد سود.',
+    marketRegimeAtEntry: 'TRENDING_BULLISH',
+    tradingStyleUsed: 'SWING_MACRO',
+    alphaConsensusScore: 82.0,
+    councilQuorumReached: true,
+    monteCarloWinProb: 68.0,
+    partialTpExecuted: true,
   },
   {
     tradeId: 'TR-104',
@@ -254,8 +281,33 @@ export const DEFAULT_W5_TRADES: TradeLifecycleRecord[] = [
     maxAdverseExcursionDollar: 3.6,
     maxFavorableExcursionPips: 150.0,
     maxFavorableExcursionDollar: 45.0,
-    exitEfficiencyPercent: 40.0,
+    exitEfficiencyPercent: 88.5,
     setupGrade: 'B',
     traderNotesFa: 'خروج دستی قبل از تارگت به علت انتشار خبر نوسانی FOMC.',
+    marketRegimeAtEntry: 'HIGH_VOL_NEWS',
+    tradingStyleUsed: 'SCALP_M1_M5',
+    alphaConsensusScore: 78.5,
+    councilQuorumReached: true,
+    monteCarloWinProb: 64,
+    partialTpExecuted: true,
   },
 ];
+
+export interface AICouncilAttributionReport {
+  totalTrades: number;
+  byStyle: Record<string, { tradesCount: number; winRate: number; netProfit: number; netR: number }>;
+  byRegime: Record<string, { tradesCount: number; winRate: number; netProfit: number; netR: number }>;
+  byConsensusTier: {
+    highConsensus: { tradesCount: number; winRate: number; netProfit: number };
+    moderateConsensus: { tradesCount: number; winRate: number; netProfit: number };
+    lowConsensus: { tradesCount: number; winRate: number; netProfit: number };
+  };
+  partialTpImpact: {
+    partialTpCount: number;
+    partialTpWinRate: number;
+    partialTpNetProfit: number;
+    standardCount: number;
+    standardWinRate: number;
+    standardNetProfit: number;
+  };
+}

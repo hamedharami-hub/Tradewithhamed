@@ -2,7 +2,7 @@
 // آزمون‌های جامع دیسپچر هشدارهای خودکار چندتایم‌فریمه و سیستم اعلان‌های هوشمند
 
 import { SignalAlertDispatcher } from '../signal-alert-dispatcher';
-import { SignalAlert } from '../../contracts/alerts';
+import { SignalAlert, DEFAULT_ALERT_DISPATCHER_CONFIG } from '../../contracts/alerts';
 import { StrategyCandidate } from '../../contracts/strategy';
 import { MarketRegimeAnalysis } from '../../contracts/regimes';
 import { MultiAgentPipelineResult, DEFAULT_MULTI_AGENT_CONFIG } from '../../contracts/multi-agent-system';
@@ -20,6 +20,7 @@ export function runSignalAlertsTestSuite(): TestResultItem[] {
 
   // ریست وضعیت برای شروع تست‌ها
   SignalAlertDispatcher.clearAlerts();
+  SignalAlertDispatcher.updateConfig(DEFAULT_ALERT_DISPATCHER_CONFIG);
 
   // ۱. بررسی تنظیمات پیش‌فرض و به‌روزرسانی پیکربندی
   try {
@@ -53,6 +54,7 @@ export function runSignalAlertsTestSuite(): TestResultItem[] {
   // ۲. آزمون ثبت، شمارش خوانده‌نشده، خوانده‌شدن همه و کول‌داون ضد اسپم
   try {
     SignalAlertDispatcher.clearAlerts();
+    SignalAlertDispatcher.updateConfig({ cooldownMs: 60000 });
 
     const sampleAlert: SignalAlert = {
       id: 'TEST-ALERT-01',
@@ -252,6 +254,9 @@ export function runSignalAlertsTestSuite(): TestResultItem[] {
       details: (err as Error).message,
     });
   }
+
+  SignalAlertDispatcher.clearAlerts();
+  SignalAlertDispatcher.updateConfig(DEFAULT_ALERT_DISPATCHER_CONFIG);
 
   return results;
 }
