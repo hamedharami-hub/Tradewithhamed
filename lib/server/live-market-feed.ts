@@ -69,7 +69,10 @@ export class LiveMarketFeed {
   }
 
   public static getInstance(): LiveMarketFeed {
-    if (!globalForFeed.marketFeedInstance) {
+    if (!globalForFeed.marketFeedInstance || typeof (globalForFeed.marketFeedInstance as any).resetForTesting !== 'function') {
+      if (globalForFeed.marketFeedInstance) {
+        globalForFeed.marketFeedInstance.stop();
+      }
       globalForFeed.marketFeedInstance = new LiveMarketFeed();
     }
     return globalForFeed.marketFeedInstance;
@@ -164,11 +167,30 @@ export class LiveMarketFeed {
    */
   public injectLiveQuote(quote: CTraderLiveQuote): void {
     this.hasRealConnection = true;
-    this.quotes.set(quote.symbol.toUpperCase(), {
+    this.isSimulatedLiveActive = false; // توقف گام تصادفی شبیه‌ساز برای جلوگیری از پولوشن داده زنده
+    const sym = quote.symbol.toUpperCase();
+    this.currentBasePrices[sym] = (quote.bid + quote.ask) / 2;
+
+    this.quotes.set(sym, {
       ...quote,
+      symbol: sym,
       timestamp: quote.timestamp || Date.now(),
       quality: 'LIVE',
     });
+    this.lastHeartbeatTimestamp = Date.now();
+  }
+
+  /**
+   * بازنشانی فید به حالت اولیه جهت ایزولاسیون کامل تست‌ها
+   */
+  public resetForTesting(): void {
+    this.hasRealConnection = false;
+    this.isSimulatedLiveActive = true;
+    this.currentBasePrices = {
+      XAUUSD: 2652.45,
+      EURUSD: 1.08465,
+    };
+    this.initializeQuotes();
     this.lastHeartbeatTimestamp = Date.now();
   }
 

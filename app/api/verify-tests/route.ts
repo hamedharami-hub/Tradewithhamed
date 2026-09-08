@@ -38,6 +38,7 @@ export async function GET() {
   const savedKillSwitch = CTraderOMS.isKillNewEntriesActive();
 
   try {
+    CTraderOMS.setIsTestRunning(true);
     const coreResults = runAllCoreTests();
     const ctraderResults = runAllCTraderSecurityTests();
     const stage4Results = runStage4ShadowTests();
@@ -169,6 +170,6 @@ export async function GET() {
     CTraderOMS.restoreRecords(savedOMS, savedIdemp);
     JournalService.restorePositions(savedPositions, savedLogs);
     CTraderOMS.setKillNewEntries(savedKillSwitch);
-    ExecutorManager.forceSwitchExecutor(savedExecutor.activeDeviceLabel, savedExecutor.activeSessionId);
+    ExecutorManager.restoreState(savedExecutor);
   }
 }

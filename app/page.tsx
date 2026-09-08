@@ -455,6 +455,19 @@ export default function TradingLabPage() {
     const intentId = `INTENT-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
     const idempotencyKey = `IDEMP-${intentId}`;
 
+    let activeSession = 'default-windows-session';
+    let activeEpoch = 1;
+    let activeDevice: 'windows' | 'pixel' = 'windows';
+
+    try {
+      const execRes = await fetch('/api/executor').then(r => r.json()).catch(() => null);
+      if (execRes?.state) {
+        activeSession = execRes.state.activeSessionId;
+        activeEpoch = execRes.state.epoch;
+        activeDevice = execRes.state.activeDeviceLabel;
+      }
+    } catch {}
+
     try {
       const res = await fetch('/api/orders/submit', {
         method: 'POST',
@@ -469,6 +482,10 @@ export default function TradingLabPage() {
           stopLossPrice: replayState.activeCandidate.stopLossPrice,
           takeProfitPrice: replayState.activeCandidate.takeProfitPrice,
           userConfirmationTimestamp: Date.now(),
+          environment: currentEnvironment,
+          executorSessionId: activeSession,
+          executorEpoch: activeEpoch,
+          deviceLabel: activeDevice,
           simulateTimeout: options?.simulateTimeout,
           simulateRejection: options?.simulateRejection,
         }),
@@ -520,7 +537,7 @@ export default function TradingLabPage() {
   ).length;
 
   return (
-    <main className="min-h-screen bg-[#101217] text-[#e3e8f2] flex flex-col font-sans selection:bg-cyan-600 selection:text-white">
+    <main className="min-h-screen max-w-full overflow-x-hidden bg-[#101217] text-[#e3e8f2] flex flex-col font-sans selection:bg-cyan-600 selection:text-white">
       {/* سربرگ استاندارد متریال ۳ با نشان دائمی DEMO */}
       <Header
         dataMode="REPLAYED"
@@ -539,7 +556,7 @@ export default function TradingLabPage() {
         unreadAlertsCount={unreadAlertsCount}
       />
 
-      <div className={`w-full mx-auto p-3 sm:p-4 md:p-5 space-y-4 transition-all duration-300 ${
+      <div className={`w-full max-w-full overflow-x-hidden mx-auto p-3 sm:p-4 md:p-5 space-y-4 transition-all duration-300 ${
         viewMode === 'mobile'
           ? 'max-w-md'
           : viewMode === 'windows'
@@ -633,7 +650,14 @@ export default function TradingLabPage() {
                     replayState.visibleCandles[replayState.visibleCandles.length - 1]?.close ||
                     (symbol === 'XAUUSD' ? 2050 : 1.085)
                   }
-                  macroTrend="BULLISH"
+                  macroTrend={
+                    replayState.marketRegime?.regime === 'TRENDING_BULLISH'
+                      ? 'BULLISH'
+                      : replayState.marketRegime?.regime === 'TRENDING_BEARISH'
+                      ? 'BEARISH'
+                      : 'RANGING'
+                  }
+                  macroLevels={macroLevels}
                   onOpenMonteCarlo={() => setIsMonteCarloModalOpen(true)}
                   onOpenBacktest={() => setIsBacktestModalOpen(true)}
                   onOpenAlerts={() => setIsAlertModalOpen(true)}

@@ -41,30 +41,51 @@ export async function runW4OnlineExecutionTests(): Promise<W4TestResult[]> {
   // [GATE A]: اتصال داده زنده و PAPER_LIVE
   // ==========================================
 
-  // تست ۱: صحت مظنه قیمت‌های زنده و اسپرد
+  // تست ۱: صحت مظنه قیمت‌های زنده، اسپرد و تفکیک کیفیت SIMULATED از LIVE
   try {
     const feed = LiveMarketFeed.getInstance();
-    const xauQuote = feed.getQuote('XAUUSD');
-    const eurQuote = feed.getQuote('EURUSD');
+    feed.resetForTesting();
+    const xauSimQuote = feed.getQuote('XAUUSD');
+    const eurSimQuote = feed.getQuote('EURUSD');
 
-    const passed = Boolean(
-      xauQuote &&
-      eurQuote &&
-      xauQuote.bid > 0 &&
-      xauQuote.ask > xauQuote.bid &&
-      xauQuote.spreadPips > 0 &&
-      xauQuote.quality === 'LIVE' &&
-      eurQuote.bid > 0 &&
-      eurQuote.ask > eurQuote.bid
+    // ارزیابی اولیه: بدون اتصال زنده، کیفیت باید صادقانه SIMULATED باشد
+    const simQualityOk = Boolean(
+      xauSimQuote &&
+      eurSimQuote &&
+      xauSimQuote.bid > 0 &&
+      xauSimQuote.ask > xauSimQuote.bid &&
+      xauSimQuote.spreadPips > 0 &&
+      xauSimQuote.quality === 'SIMULATED' &&
+      eurSimQuote.bid > 0 &&
+      eurSimQuote.ask > eurSimQuote.bid
     );
+
+    // ارزیابی ثانویه: پس از تزریق مظنه واقعی، کیفیت باید به LIVE تغییر کرده و قیمت پولوت نشود
+    feed.injectLiveQuote({
+      symbol: 'XAUUSD',
+      bid: 2685.20,
+      ask: 2685.45,
+      spreadPips: 2.5,
+      timestamp: Date.now(),
+      quality: 'LIVE',
+    });
+
+    const xauLiveQuote = feed.getQuote('XAUUSD');
+    const liveQualityOk = Boolean(
+      xauLiveQuote &&
+      xauLiveQuote.quality === 'LIVE' &&
+      xauLiveQuote.bid === 2685.20
+    );
+
+    const passed = simQualityOk && liveQualityOk;
 
     results.push({
       gate: 'Gate A',
       name: 'Gate A1: Live Market Quotes & Dynamic Spread Verification',
       passed,
       details: passed
-        ? `مظنه‌های زنده با موفقیت دریافت شدند: XAUUSD (Bid: ${xauQuote?.bid}, Ask: ${xauQuote?.ask}, Spread: ${xauQuote?.spreadPips} pips) و EURUSD.`
-        : 'خطا: مظنه‌های قیمت زنده معتبر نبودند.',
+        ? `مظنه‌ها با موفقیت بررسی شدند: تفکیک دقیق کیفیت SIMULATED و LIVE تایید شد (Bid: ${xauLiveQuote?.bid}, Spread: ${xauLiveQuote?.spreadPips} pips).`
+        : 'خطا: مظنه‌های قیمت زنده یا اعتبارسنجی کیفیت نامعتبر بودند.',
     });
   } catch (e) {
     results.push({

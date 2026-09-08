@@ -54,6 +54,16 @@ export class PersistentStore {
     try {
       if (!fs.existsSync(this.storageDir)) {
         fs.mkdirSync(this.storageDir, { recursive: true });
+      } else {
+        // پاکسازی فایل‌های موقت باقیمانده از قبل
+        try {
+          const files = fs.readdirSync(this.storageDir);
+          for (const f of files) {
+            if (f.includes('.tmp.')) {
+              try { fs.unlinkSync(path.join(this.storageDir, f)); } catch {}
+            }
+          }
+        } catch {}
       }
 
       if (fs.existsSync(this.storageFile)) {
@@ -109,9 +119,21 @@ export class PersistentStore {
         fs.mkdirSync(this.storageDir, { recursive: true });
       }
 
-      const tmpFile = `${this.storageFile}.tmp.${Date.now()}`;
+      const tmpFile = `${this.storageFile}.tmp.${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
       fs.writeFileSync(tmpFile, JSON.stringify(this.memoryCache, null, 2), 'utf-8');
-      fs.renameSync(tmpFile, this.storageFile);
+
+      try {
+        fs.copyFileSync(tmpFile, this.storageFile);
+        try {
+          fs.unlinkSync(tmpFile);
+        } catch {}
+      } catch {
+        // Fallback for direct write
+        fs.writeFileSync(this.storageFile, JSON.stringify(this.memoryCache, null, 2), 'utf-8');
+        try {
+          if (fs.existsSync(tmpFile)) fs.unlinkSync(tmpFile);
+        } catch {}
+      }
     } catch (err) {
       console.error('[PersistentStore] Error writing state to file:', err);
     }

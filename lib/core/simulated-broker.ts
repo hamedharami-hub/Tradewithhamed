@@ -15,9 +15,16 @@ export class SimulatedBroker {
   private orders: SimulatedOrder[] = [];
   private positions: SimulatedPosition[] = [];
 
-  constructor(initialBalance = 10000) {
+  private enablePartialTp: boolean = true;
+
+  constructor(initialBalance = 10000, enablePartialTp = true) {
     this.balance = initialBalance;
     this.equity = initialBalance;
+    this.enablePartialTp = enablePartialTp;
+  }
+
+  public setEnablePartialTp(enabled: boolean): void {
+    this.enablePartialTp = enabled;
   }
 
   public getState(): BrokerState {
@@ -102,9 +109,11 @@ export class SimulatedBroker {
           pos.direction === 'BUY'
             ? pos.stopLoss - pos.entryPrice
             : pos.entryPrice - pos.stopLoss;
-        pos.realizedPnl = Number((pos.volumeLots * lossDiff * contractSize - pos.commissionPaid).toFixed(2));
+        const remainingCommission = (pos.partialCloseCount && pos.partialCloseCount > 0) ? 0 : pos.commissionPaid;
+        const slicePnl = Number((pos.volumeLots * lossDiff * contractSize - remainingCommission).toFixed(2));
+        pos.realizedPnl = Number((pos.realizedPnl + slicePnl).toFixed(2));
         pos.unrealizedPnl = 0;
-        this.balance = Number((this.balance + pos.realizedPnl).toFixed(2));
+        this.balance = Number((this.balance + slicePnl).toFixed(2));
         continue;
       }
 
@@ -112,13 +121,13 @@ export class SimulatedBroker {
       const riskDistance = Math.abs(pos.entryPrice - pos.stopLoss);
       const isBuy = pos.direction === 'BUY';
       const partialTarget = isBuy ? pos.entryPrice + 1.2 * riskDistance : pos.entryPrice - 1.2 * riskDistance;
-      const canPartialClose = (!pos.partialCloseCount || pos.partialCloseCount === 0) && riskDistance > 0;
+      const canPartialClose = this.enablePartialTp && (!pos.partialCloseCount || pos.partialCloseCount === 0) && riskDistance > 0 && pos.volumeLots >= 0.02;
 
       if (canPartialClose) {
         const hitPartial = isBuy ? candle.high >= partialTarget : candle.low <= partialTarget;
         if (hitPartial) {
           const closedLots = Number((pos.volumeLots * 0.5).toFixed(2));
-          if (closedLots > 0) {
+          if (closedLots >= 0.01) {
             const priceDiffAtTarget = isBuy ? partialTarget - pos.entryPrice : pos.entryPrice - partialTarget;
             const partialRealized = Number((closedLots * priceDiffAtTarget * contractSize).toFixed(2));
             pos.volumeLots = Number((pos.volumeLots - closedLots).toFixed(2));
@@ -127,6 +136,14 @@ export class SimulatedBroker {
             pos.isBreakevenActive = true;
             pos.stopLoss = pos.entryPrice;
             this.balance = Number((this.balance + partialRealized).toFixed(2));
+
+            if (pos.volumeLots <= 0) {
+              pos.isOpen = false;
+              pos.closedAt = candle.timestamp;
+              pos.closeReason = 'TP';
+              pos.unrealizedPnl = 0;
+              continue;
+            }
           }
         }
       }
@@ -145,9 +162,11 @@ export class SimulatedBroker {
           pos.direction === 'BUY'
             ? pos.takeProfit - pos.entryPrice
             : pos.entryPrice - pos.takeProfit;
-        pos.realizedPnl = Number((pos.volumeLots * winDiff * contractSize - pos.commissionPaid).toFixed(2));
+        const remainingCommission = (pos.partialCloseCount && pos.partialCloseCount > 0) ? 0 : pos.commissionPaid;
+        const slicePnl = Number((pos.volumeLots * winDiff * contractSize - remainingCommission).toFixed(2));
+        pos.realizedPnl = Number((pos.realizedPnl + slicePnl).toFixed(2));
         pos.unrealizedPnl = 0;
-        this.balance = Number((this.balance + pos.realizedPnl).toFixed(2));
+        this.balance = Number((this.balance + slicePnl).toFixed(2));
         continue;
       }
 
@@ -229,8 +248,16 @@ export class SimulatedBroker {
     const pos = this.positions.find(p => p.id === positionId && p.isOpen);
     if (!pos) return { success: false, realizedPnl: 0, remainingLots: 0 };
 
+    if (!this.enablePartialTp || pos.volumeLots < 0.02) {
+      return { success: false, realizedPnl: 0, remainingLots: pos.volumeLots };
+    }
+
     const specSize = pos.symbol === 'XAUUSD' ? 100 : 100000;
     const closedVolume = Number((pos.volumeLots * closeRatio).toFixed(2));
+    if (closedVolume < 0.01) {
+      return { success: false, realizedPnl: 0, remainingLots: pos.volumeLots };
+    }
+
     const priceDiff =
       pos.direction === 'BUY'
         ? pos.currentPrice - pos.entryPrice
@@ -239,7 +266,7 @@ export class SimulatedBroker {
     const partialPnl = Number((closedVolume * priceDiff * specSize).toFixed(2));
     pos.volumeLots = Number((pos.volumeLots - closedVolume).toFixed(2));
     pos.realizedPnl = Number((pos.realizedPnl + partialPnl).toFixed(2));
-    this.balance += partialPnl;
+    this.balance = Number((this.balance + partialPnl).toFixed(2));
 
     pos.partialCloseCount = (pos.partialCloseCount || 0) + 1;
 
@@ -248,8 +275,15 @@ export class SimulatedBroker {
       pos.isBreakevenActive = true;
     }
 
-    // به‌روزرسانی سود شناور با حجم باقی‌مانده پس از بستن پله‌ای
-    pos.unrealizedPnl = Number((pos.volumeLots * priceDiff * specSize).toFixed(2));
+    if (pos.volumeLots <= 0) {
+      pos.isOpen = false;
+      pos.closedAt = Date.now();
+      pos.closeReason = 'TP';
+      pos.unrealizedPnl = 0;
+    } else {
+      // به‌روزرسانی سود شناور با حجم باقی‌مانده پس از بستن پله‌ای
+      pos.unrealizedPnl = Number((pos.volumeLots * priceDiff * specSize).toFixed(2));
+    }
 
     const stillOpen = this.positions.filter(p => p.isOpen);
     const totalUnrealized = stillOpen.reduce((sum, p) => sum + p.unrealizedPnl, 0);
@@ -286,7 +320,8 @@ export class SimulatedBroker {
         ? finalPrice - pos.entryPrice
         : pos.entryPrice - finalPrice;
 
-    const pnl = Number((pos.volumeLots * priceDiff * contractSize - pos.commissionPaid).toFixed(2));
+    const remainingCommission = (pos.partialCloseCount && pos.partialCloseCount > 0) ? 0 : pos.commissionPaid;
+    const pnl = Number((pos.volumeLots * priceDiff * contractSize - remainingCommission).toFixed(2));
     pos.realizedPnl = Number((pos.realizedPnl + pnl).toFixed(2));
     pos.unrealizedPnl = 0;
     this.balance = Number((this.balance + pnl).toFixed(2));
@@ -330,7 +365,8 @@ export class SimulatedBroker {
           ? pos.currentPrice - pos.entryPrice
           : pos.entryPrice - pos.currentPrice;
 
-      const pnl = Number((pos.volumeLots * priceDiff * contractSize - pos.commissionPaid).toFixed(2));
+      const remainingCommission = (pos.partialCloseCount && pos.partialCloseCount > 0) ? 0 : pos.commissionPaid;
+      const pnl = Number((pos.volumeLots * priceDiff * contractSize - remainingCommission).toFixed(2));
       pos.realizedPnl = Number((pos.realizedPnl + pnl).toFixed(2));
       pos.unrealizedPnl = 0;
       this.balance = Number((this.balance + pnl).toFixed(2));

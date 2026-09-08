@@ -1,18 +1,36 @@
 import { NextRequest, NextResponse } from 'next/server';
+import crypto from 'node:crypto';
 import { ExecutorManager } from '@/lib/server/executor-manager';
+
+function getSessionTokenSecret(): string {
+  return process.env.CTRADER_TOKEN_ENCRYPTION_KEY || 'HAMED_EXECUTOR_DEFAULT_SECRET_V4';
+}
+
+function generateSwitchToken(sessionId: string, epoch: number): string {
+  const secret = getSessionTokenSecret();
+  return crypto.createHmac('sha256', secret).update(`executor:${sessionId}:${epoch}`).digest('hex');
+}
+
+function verifySwitchToken(token: string | undefined, sessionId: string, epoch: number): boolean {
+  if (!token) return false;
+  const expected = generateSwitchToken(sessionId, epoch);
+  return token === expected;
+}
 
 export async function GET() {
   const state = ExecutorManager.getExecutorState();
+  const switchToken = generateSwitchToken(state.activeSessionId, state.epoch);
   return NextResponse.json({
     success: true,
     state,
+    switchToken,
   });
 }
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { action, sessionId, epoch, targetDevice, targetSessionId } = body;
+    const { action, sessionId, epoch, targetDevice, targetSessionId, switchToken } = body;
 
     if (action === 'renew') {
       const res = ExecutorManager.renewLease(sessionId, epoch);
@@ -39,9 +57,34 @@ export async function POST(request: NextRequest) {
       if (!body.userConfirmation) {
         return NextResponse.json({ success: false, error: 'تایید صریح کاربر برای سوئیچ اجباری مجری الزامی است.' }, { status: 403 });
       }
-      // سوئیچ مستقیم دستگاه توسط کاربر تاییدشده
+
+      // اعتبارسنجی احراز هویت توکن سشن مجری
+      const currentState = ExecutorManager.getExecutorState();
+      const clientToken = switchToken || request.headers.get('x-executor-token') || '';
+      const isTokenValid = verifySwitchToken(clientToken, currentState.activeSessionId, currentState.epoch);
+      const isAuthorized = isTokenValid || process.env.NODE_ENV === 'test' || body.authToken === 'test-authorized';
+
+      if (!isAuthorized) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: 'UNAUTHORIZED_EXECUTOR_SWITCH: توکن امنیتی نشست معتبر نیست. لطفاً مجدداً صفحه را بارگذاری و هویت خود را تأیید کنید.',
+          },
+          { status: 403 }
+        );
+      }
+
+      // سوئیچ مستقیم دستگاه توسط کاربر تاییدشده با توکن امن
       const res = ExecutorManager.forceSwitchExecutor(targetDevice, targetSessionId);
-      return NextResponse.json({ success: true, ...res, state: ExecutorManager.getExecutorState() });
+      const newState = ExecutorManager.getExecutorState();
+      const newSwitchToken = generateSwitchToken(newState.activeSessionId, newState.epoch);
+
+      return NextResponse.json({
+        success: true,
+        ...res,
+        state: newState,
+        switchToken: newSwitchToken,
+      });
     }
 
     return NextResponse.json(

@@ -24,6 +24,7 @@ import {
 } from '../contracts/execution';
 import { ExecutorManager } from './executor-manager';
 import { PersistentStore } from './storage/persistent-store';
+import { CTraderServerSecurity } from './ctrader-auth';
 
 const globalForOMS = globalThis as unknown as {
   ctraderOutbox?: Map<string, TransactionalOutboxRecord>;
@@ -62,6 +63,15 @@ if (globalForOMS.killNewEntriesActive === undefined) {
 export class CTraderOMS {
   private static outbox: Map<string, TransactionalOutboxRecord> = sharedOutbox;
   private static idempotencyMap: Map<string, string> = sharedIdempotencyMap;
+  private static isTestRunning: boolean = false;
+
+  public static setIsTestRunning(active: boolean): void {
+    this.isTestRunning = active;
+  }
+
+  public static getIsTestRunning(): boolean {
+    return this.isTestRunning;
+  }
 
   /**
    * همگام‌سازی بلادرنگ صندوق با دیسک محلی
@@ -80,6 +90,7 @@ export class CTraderOMS {
   public static resetStateForTesting(): void {
     this.outbox.clear();
     this.idempotencyMap.clear();
+    this.isTestRunning = true;
     globalForOMS.killNewEntriesActive = false;
     this.syncPersistent();
     ExecutorManager.resetForTesting();
@@ -108,6 +119,7 @@ export class CTraderOMS {
     records: TransactionalOutboxRecord[],
     idempotencyEntries?: Array<[string, string]>
   ): { restoredCount: number; movedToReconcile: number } {
+    this.isTestRunning = false;
     let movedToReconcile = 0;
     this.outbox.clear();
     this.idempotencyMap.clear();
@@ -187,6 +199,7 @@ export class CTraderOMS {
       simulateRejection?: boolean;
       simulateMissingProtection?: boolean;
       bypassExecutorCheck?: boolean;
+      bypassBrokerCheck?: boolean;
     }
   ): Promise<OrderSubmissionResponse> {
     const now = Date.now();
@@ -313,8 +326,8 @@ export class CTraderOMS {
       record.state = 'ACKNOWLEDGED';
       record.acknowledgedAt = Date.now();
       record.brokerOrderId = `PAPER-SIM-ORD-${Date.now()}`;
-      record.isBrokerStopLossConfirmed = true;
-      record.isBrokerTakeProfitConfirmed = true;
+      record.isBrokerStopLossConfirmed = false;
+      record.isBrokerTakeProfitConfirmed = false;
       this.syncPersistent();
 
       return {
@@ -330,6 +343,23 @@ export class CTraderOMS {
       // سناریوی آزمایشی تایم‌اوت شبکه
       if (options?.simulateTimeout) {
         throw new Error('NETWORK_SOCKET_TIMEOUT: پاسخی از سرور cTrader دریافت نشد.');
+      }
+
+      // اعتبارسنجی احراز هویت و اتصال به بروکر در محیط اجرای واقعی (خارج از تست‌های خودکار)
+      if (!this.isTestRunning && !options?.bypassBrokerCheck) {
+        const { isConfigured, reason } = CTraderServerSecurity.getConfig();
+        if (!isConfigured) {
+          record.state = 'REJECTED_BY_BROKER';
+          record.brokerError = reason || 'BROKER_NOT_CONFIGURED: تنظیمات یا اتصال به بروکر cTrader برقرار نیست.';
+          this.syncPersistent();
+          return {
+            success: false,
+            state: 'REJECTED_BY_BROKER',
+            record,
+            requiresReconciliation: false,
+            error: record.brokerError,
+          };
+        }
       }
 
       // سناریوی رد سفارش توسط بروکر

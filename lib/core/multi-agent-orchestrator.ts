@@ -190,7 +190,15 @@ export class MultiAgentOrchestrator {
     }
 
     const hasSweep = !!candidate.evidenceIds.sweepId;
-    const hasFvg = !!candidate.evidenceIds.fvgId || true;
+    const hasFvg = !!candidate.evidenceIds.fvgId;
+    const hasContext = !!candidate.evidenceIds.contextSwingId || !!candidate.evidenceIds.bosId;
+
+    const isStyleEvidenceValid =
+      style === 'S0_SWEEP_FVG'
+        ? hasSweep && hasFvg
+        : style === 'BOS_ORDER_BLOCK'
+        ? hasContext || hasSweep
+        : hasSweep || hasContext || hasFvg;
 
     const bullets: string[] = [];
     if (style === 'S0_SWEEP_FVG') {
@@ -211,8 +219,8 @@ export class MultiAgentOrchestrator {
       engineId: engine.id,
       engineNameFa: engine.nameFa,
       engineType: engine.type,
-      verdict: hasSweep && hasFvg ? 'APPROVED' : 'REJECTED',
-      verdictTitleFa: hasSweep && hasFvg ? 'ستاپ کشف شد' : 'شواهد ناکافی',
+      verdict: isStyleEvidenceValid ? 'APPROVED' : 'REJECTED',
+      verdictTitleFa: isStyleEvidenceValid ? 'ستاپ کشف شد' : 'شواهد ناکافی',
       confidence: 0.95,
       tradingStyleUsed: style,
       summaryFa: `کاندیدای ${candidate.direction === 'BUY' ? 'خرید (BUY)' : 'فروش (SELL)'} با مشخصات هندسی کامل شناسایی شد.`,

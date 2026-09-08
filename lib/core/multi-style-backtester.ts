@@ -35,6 +35,7 @@ interface ActivePosition {
   totalVolumeLots: number;
   remainingVolumeLots: number;
   isPartialClosed: boolean;
+  realizedSlicePnl?: number;
   alphaConsensusScore: number;
   monteCarloTpProbability: number;
 }
@@ -139,9 +140,14 @@ export class MultiStyleBacktester {
             const diffPrice = isBuy
               ? activePos.partialTpPrice - activePos.entryPrice
               : activePos.entryPrice - activePos.partialTpPrice;
-            const partialDollar = diffPrice * closedLots * contractMultiplier;
+            const partialGross = diffPrice * closedLots * contractMultiplier;
+            const commissionPerLot = config.commissionPerLotRoundTrip ?? 6.0;
+            const partialCommission = closedLots * commissionPerLot;
+            const partialSpread = (config.spreadPips * pipSize) * closedLots * contractMultiplier;
+            const partialNet = partialGross - partialCommission - partialSpread;
 
-            currentCash += partialDollar;
+            currentCash += partialNet;
+            activePos.realizedSlicePnl = partialNet;
             activePos.remainingVolumeLots = activePos.totalVolumeLots - closedLots;
             activePos.isPartialClosed = true;
 
@@ -175,15 +181,15 @@ export class MultiStyleBacktester {
         if (isFinalExit && exitReason) {
           const exitLots = activePos.remainingVolumeLots;
           const diff = isBuy ? (exitPrice - activePos.entryPrice) : (activePos.entryPrice - exitPrice);
-          const finalSliceDollar = diff * exitLots * contractMultiplier;
+          const finalSliceGross = diff * exitLots * contractMultiplier;
+          const commissionPerLot = config.commissionPerLotRoundTrip ?? 6.0;
+          const finalCommission = exitLots * commissionPerLot;
+          const finalSpread = (config.spreadPips * pipSize) * exitLots * contractMultiplier;
+          const finalNet = finalSliceGross - finalCommission - finalSpread;
 
-          currentCash += finalSliceDollar;
+          currentCash += finalNet;
 
-          const totalPnlDollar = isBuy
-            ? ((exitPrice - activePos.entryPrice) * activePos.remainingVolumeLots +
-               (activePos.isPartialClosed ? (activePos.partialTpPrice - activePos.entryPrice) * (activePos.totalVolumeLots * 0.5) : 0)) * contractMultiplier
-            : ((activePos.entryPrice - exitPrice) * activePos.remainingVolumeLots +
-               (activePos.isPartialClosed ? (activePos.entryPrice - activePos.partialTpPrice) * (activePos.totalVolumeLots * 0.5) : 0)) * contractMultiplier;
+          const totalPnlDollar = (activePos.isPartialClosed ? (activePos.realizedSlicePnl || 0) : 0) + finalNet;
 
           const pnlPercent = (totalPnlDollar / currentCash) * 100;
           const riskDistance = Math.abs(activePos.entryPrice - activePos.initialStopLossPrice);
@@ -263,8 +269,15 @@ export class MultiStyleBacktester {
             if (mcRes.probabilityHittingTarget >= config.minMonteCarloTpProbability) {
               const dollarRisk = currentCash * (config.riskPerTradePercent / 100);
               const priceDistance = Math.abs(candidate.entryPrice - candidate.stopLossPrice);
-              const rawVolume = priceDistance > 0 ? dollarRisk / (priceDistance * contractMultiplier) : 0.01;
-              const volumeLots = Math.max(0.01, Number(rawVolume.toFixed(2)));
+              const rawVolume = priceDistance > 0 ? dollarRisk / (priceDistance * contractMultiplier) : 0;
+              if (rawVolume < 0.01) {
+                // بودجه ریسک پاسخگوی حداقل حجم معامله (۰.۰۱ لات) نیست؛ جهت حفظ سقف ریسک صرف‌نظر می‌شود
+                continue;
+              }
+              const volumeLots = Number(rawVolume.toFixed(2));
+              if (volumeLots < 0.01) {
+                continue;
+              }
 
               // ذخیره سیگنال به عنوان معلق جهت اجرای بدون بایاس در باز شدن کندل بعدی (Open of bar i+1)
               pendingSignal = {

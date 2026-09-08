@@ -55,6 +55,7 @@ export const LiveShadowWorkbench: React.FC = () => {
     epoch: number;
     activeSessionId: string;
     status: string;
+    switchToken?: string;
   } | null>(null);
   const [isKillNewEntries, setIsKillNewEntries] = useState(false);
 
@@ -74,7 +75,10 @@ export const LiveShadowWorkbench: React.FC = () => {
           setFeedStatus(qRes.feedStatus);
         }
         if (eRes?.state) {
-          setExecutorState(eRes.state);
+          setExecutorState({
+            ...eRes.state,
+            switchToken: eRes.switchToken,
+          });
         }
         if (kRes) {
           setIsKillNewEntries(!!kRes.isKillNewEntriesActive);
@@ -90,41 +94,87 @@ export const LiveShadowWorkbench: React.FC = () => {
     };
   }, []);
 
-  // واگذاری مجری‌گری بین ویندوز و گوشی پیکسل (W4 Gate B)
+  // واگذاری مجری‌گری بین ویندوز و گوشی پیکسل (W4 Gate B) با توکن احراز هویت
   const handleSwitchExecutor = async (targetDevice: 'windows' | 'pixel') => {
     try {
+      let currentSwitchToken = executorState?.switchToken;
+      let activeSession = executorState?.activeSessionId;
+      let activeEpoch = executorState?.epoch;
+
+      if (!currentSwitchToken) {
+        const fresh = await fetch('/api/executor').then(r => r.json()).catch(() => null);
+        if (fresh?.switchToken) {
+          currentSwitchToken = fresh.switchToken;
+          activeSession = fresh.state?.activeSessionId;
+          activeEpoch = fresh.state?.epoch;
+        }
+      }
+
       const res = await fetch('/api/executor', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'x-executor-token': currentSwitchToken || '',
+        },
         body: JSON.stringify({
           action: 'switch',
           targetDevice,
           targetSessionId: `${targetDevice}-session-${Date.now()}`,
+          userConfirmation: true,
+          switchToken: currentSwitchToken,
+          sessionId: activeSession,
+          epoch: activeEpoch,
         }),
       });
       const data = await res.json();
       if (data.success && data.state) {
-        setExecutorState(data.state);
+        setExecutorState({
+          ...data.state,
+          switchToken: data.switchToken,
+        });
         setActionNotice(`مجری‌گری با موفقیت به ${targetDevice === 'windows' ? 'ویندوز' : 'گوشی پیکسل'} منتقل شد (ایپاک: ${data.state.epoch}).`);
+      } else {
+        setActionNotice(`خطای تغییر مجری: ${data.error || 'عملیات رد شد'}`);
       }
     } catch (e) {
       setActionNotice(`خطا در تغییر مجری: ${(e as Error).message}`);
     }
   };
 
-  // فعال/غیرفعال‌سازی سوئیچ اضطراری توقف معاملات جدید (W4 Gate C)
+  // فعال/غیرفعال‌سازی سوئیچ اضطراری توقف معاملات جدید (W4 Gate C) با احراز تک‌مجری
   const handleToggleKillSwitch = async () => {
     try {
+      let activeSession = executorState?.activeSessionId;
+      let activeEpoch = executorState?.epoch;
+      let activeDevice = executorState?.activeDeviceLabel;
+
+      if (!activeSession || activeEpoch === undefined) {
+        const fresh = await fetch('/api/executor').then(r => r.json()).catch(() => null);
+        if (fresh?.state) {
+          activeSession = fresh.state.activeSessionId;
+          activeEpoch = fresh.state.epoch;
+          activeDevice = fresh.state.activeDeviceLabel;
+          setExecutorState({ ...fresh.state, switchToken: fresh.switchToken });
+        }
+      }
+
       const newActive = !isKillNewEntries;
       const res = await fetch('/api/orders/emergency-stop', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ active: newActive }),
+        body: JSON.stringify({
+          active: newActive,
+          sessionId: activeSession,
+          epoch: activeEpoch,
+          deviceLabel: activeDevice,
+        }),
       });
       const data = await res.json();
       if (data.success) {
         setIsKillNewEntries(data.isKillNewEntriesActive);
         setActionNotice(data.message);
+      } else {
+        setActionNotice(`خطا در تنظیم سوئیچ اضطراری: ${data.error || 'دسترسی غیرمجاز (۴۰۳)'}`);
       }
     } catch (e) {
       setActionNotice(`خطا در تنظیم سوئیچ اضطراری: ${(e as Error).message}`);
@@ -406,7 +456,7 @@ export const LiveShadowWorkbench: React.FC = () => {
 
             <button
               onClick={() => handleSwitchExecutor(executorState?.activeDeviceLabel === 'windows' ? 'pixel' : 'windows')}
-              className="text-[10px] px-2 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-cyan-300 border border-cyan-500/30 transition-colors"
+              className="text-[11px] px-3 py-2 min-h-[44px] rounded-xl bg-slate-800 hover:bg-slate-700 text-cyan-300 border border-cyan-500/30 transition-colors flex items-center justify-center font-medium"
               title="واگذاری نوبت مجری‌گری با افزایش اتمیک Epoch"
             >
               واگذاری به {executorState?.activeDeviceLabel === 'windows' ? 'پیکسل' : 'ویندوز'}
@@ -417,13 +467,13 @@ export const LiveShadowWorkbench: React.FC = () => {
             <span className="text-xs text-slate-400">سوئیچ اضطراری:</span>
             <button
               onClick={handleToggleKillSwitch}
-              className={`px-2.5 py-0.5 rounded-lg text-xs font-semibold flex items-center gap-1 transition-colors border ${
+              className={`px-3 py-2 min-h-[44px] rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors border ${
                 isKillNewEntries
                   ? 'bg-rose-950 text-rose-300 border-rose-600 animate-pulse'
                   : 'bg-slate-800 text-slate-400 hover:text-slate-200 border-slate-700'
               }`}
             >
-              <AlertTriangle className="w-3 h-3" />
+              <AlertTriangle className="w-3.5 h-3.5" />
               <span>{isKillNewEntries ? 'ورود جدید مسدود (فعال)' : 'عادی (غیرفعال)'}</span>
             </button>
           </div>

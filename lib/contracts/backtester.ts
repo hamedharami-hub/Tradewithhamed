@@ -1,4 +1,4 @@
-﻿// lib/contracts/backtester.ts
+// lib/contracts/backtester.ts
 // قراردادهای موتور جامع بک‌تست تاریخی چند سبکه و اعتبارسنجی مونت‌کارلو
 // ۱۰۰٪ کلاینت‌ساید و آفلاین بدون وابستگی ابری
 
@@ -17,6 +17,7 @@ export interface BacktestConfig {
   enablePartialTp: boolean; // خروج ۵۰٪ در ۱.۲R و ریسک‌فری خودکار
   spreadPips: number;
   slippagePips: number;
+  commissionPerLotRoundTrip?: number; // e.g. $6.0 / lot round-trip
 }
 
 export const DEFAULT_BACKTEST_CONFIG: BacktestConfig = {
@@ -31,6 +32,7 @@ export const DEFAULT_BACKTEST_CONFIG: BacktestConfig = {
   enablePartialTp: true,
   spreadPips: 1.5,
   slippagePips: 0.2,
+  commissionPerLotRoundTrip: 6.0,
 };
 
 export type BacktestExitReason =

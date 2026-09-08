@@ -90,13 +90,16 @@ export class SequentialAnalystCriticEngine {
       };
     }
 
-    // ۲. بررسی شرایط داده‌های ناقص و تناقض (Abstention Rule)
-    if (
-      (testCase.snapshot.missingFields && testCase.snapshot.missingFields.length > 0) ||
-      testCase.expectedStatus === 'ABSTAIN' ||
-      testCase.snapshot.currentPrice <= 0 ||
-      testCase.snapshot.atr14 <= 0
-    ) {
+    // ۲. بررسی شرایط داده‌های ناقص و تناقض (Abstention Rule) بر پایه شواهد اسنپ‌شات بدون نشت لیبل آزمون
+    const hasMissingFields = Boolean(testCase.snapshot.missingFields && testCase.snapshot.missingFields.length > 0);
+    const hasInvalidPriceOrAtr = testCase.snapshot.currentPrice <= 0 || testCase.snapshot.atr14 <= 0;
+    const hasPromptContradiction = Boolean(
+      testCase.userPromptFa.includes('نامشخص است') ||
+      testCase.userPromptFa.includes('بدون داده') ||
+      testCase.userPromptFa.includes('اطلاعات ناقص')
+    );
+
+    if (hasMissingFields || hasInvalidPriceOrAtr || hasPromptContradiction) {
       const abstainReview: AIReviewSchemaV4 = {
         schema_version: 'v4.0',
         role: 'SEQUENTIAL_CONSENSUS',

@@ -1,4 +1,4 @@
-﻿import { Candle, SymbolId } from '../contracts/market';
+import { Candle, SymbolId } from '../contracts/market';
 import { MultiTimeframeLevel } from '../contracts/monte-carlo';
 
 /**
@@ -51,6 +51,9 @@ export class TimeframeResampler {
         volume += c.volume || 0;
       }
 
+      const expectedCandles = Math.max(1, Math.floor(interval / (5 * 60 * 1000)));
+      const isClosed = bucketCandles.length >= expectedCandles;
+
       resampled.push({
         timestamp: bucket,
         open,
@@ -58,7 +61,7 @@ export class TimeframeResampler {
         low,
         close,
         volume,
-        isClosed: true,
+        isClosed,
       });
     }
 

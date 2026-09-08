@@ -71,6 +71,19 @@ export class ExecutorManager {
     this.syncPersistent();
   }
 
+  /**
+   * بازیابی دقیق و بدون تغییر وضعیت مجری جهت ایزولاسیون تست‌ها و جلوگیری از تغییر ایپاک کاربر
+   */
+  public static restoreState(savedState: ExecutorState): void {
+    this.state.activeSessionId = savedState.activeSessionId;
+    this.state.activeDeviceLabel = savedState.activeDeviceLabel;
+    this.state.epoch = savedState.epoch;
+    this.state.leaseExpiresAt = savedState.leaseExpiresAt;
+    this.state.status = savedState.status;
+    this.state.pendingHandoffTo = savedState.pendingHandoffTo ? { ...savedState.pendingHandoffTo } : null;
+    this.syncPersistent();
+  }
+
   public static getExecutorState(): ExecutorState {
     const now = Date.now();
     const isExpired = now > this.state.leaseExpiresAt;

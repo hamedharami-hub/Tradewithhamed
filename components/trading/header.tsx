@@ -99,7 +99,7 @@ export const Header: React.FC<HeaderProps> = ({
     <header className="w-full bg-[#11141b] border-b border-[#222836] px-4 py-2.5 sticky top-0 z-40 shadow-sm" dir="rtl">
       <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-3">
         {/* نشان برند و وضعیت سیستم */}
-        <div className="flex items-center gap-3 w-full md:w-auto justify-between md:justify-start">
+        <div className="flex flex-wrap items-center gap-2.5 w-full md:w-auto justify-between md:justify-start">
           <div className="flex items-center gap-2.5">
             <div className="p-2 bg-emerald-500/10 rounded-xl border border-emerald-500/20 text-emerald-400">
               <ShieldCheck className="w-5 h-5" />
@@ -121,7 +121,7 @@ export const Header: React.FC<HeaderProps> = ({
               <button
                 type="button"
                 onClick={() => onChangeViewMode('windows')}
-                className={`px-2 py-1 rounded-lg flex items-center gap-1 transition-colors ${
+                className={`px-2.5 py-2 min-h-[44px] rounded-lg flex items-center gap-1 transition-colors ${
                   currentViewMode === 'windows'
                     ? 'bg-[#152535] text-cyan-300 font-bold border border-cyan-800'
                     : 'text-zinc-400 hover:text-zinc-200'
@@ -134,7 +134,7 @@ export const Header: React.FC<HeaderProps> = ({
               <button
                 type="button"
                 onClick={() => onChangeViewMode('mobile')}
-                className={`px-2 py-1 rounded-lg flex items-center gap-1 transition-colors ${
+                className={`px-2.5 py-2 min-h-[44px] rounded-lg flex items-center gap-1 transition-colors ${
                   currentViewMode === 'mobile'
                     ? 'bg-[#2a2016] text-amber-300 font-bold border border-amber-800'
                     : 'text-zinc-400 hover:text-zinc-200'
@@ -152,7 +152,7 @@ export const Header: React.FC<HeaderProps> = ({
             <button
               type="button"
               onClick={onOpenAIModal}
-              className="px-2.5 py-1 rounded-xl bg-cyan-950/60 hover:bg-cyan-900/60 text-cyan-300 border border-cyan-800 flex items-center gap-1.5 transition-colors text-[11px]"
+              className="px-2.5 py-2 min-h-[44px] rounded-xl bg-cyan-950/60 hover:bg-cyan-900/60 text-cyan-300 border border-cyan-800 flex items-center gap-1.5 transition-colors text-[11px]"
               title="مدیریت و دانلود مدل‌های آفلاین مرورگر"
             >
               <Bot className="w-3.5 h-3.5" />
@@ -164,7 +164,7 @@ export const Header: React.FC<HeaderProps> = ({
           {/* نشانگر هوشمند رژیم بازار (Market Regime Badge) */}
           {marketRegime && (
             <div
-              className={`px-2.5 py-1 rounded-xl border flex items-center gap-1.5 transition-all text-[11px] cursor-help ${
+              className={`px-2.5 py-2 min-h-[44px] rounded-xl border flex items-center gap-1.5 transition-all text-[11px] cursor-help ${
                 marketRegime.regime === 'TRENDING_BULLISH'
                   ? 'bg-emerald-950/70 border-emerald-500/60 text-emerald-300'
                   : marketRegime.regime === 'TRENDING_BEARISH'
@@ -212,7 +212,7 @@ export const Header: React.FC<HeaderProps> = ({
         </div>
 
         {/* بخش انتخاب ۴ محیط اختصاصی پلن نسخه ۴.۰ حامد */}
-        <div className="flex items-center gap-1.5 bg-[#161a24] p-1 rounded-xl border border-[#262e3e] text-[11px] overflow-x-auto max-w-full py-1.5">
+        <div className="flex flex-wrap items-center gap-1.5 bg-[#161a24] p-1 rounded-xl border border-[#262e3e] text-[11px] overflow-x-auto max-w-full py-1.5">
           <button
             type="button"
             onClick={() => handleEnvClick('PAPER_REPLAY')}
@@ -267,7 +267,7 @@ export const Header: React.FC<HeaderProps> = ({
         </div>
 
         {/* اطلاعات حساب و وضعیت داده */}
-        <div className="flex items-center gap-2.5 w-full md:w-auto justify-between md:justify-end text-xs">
+        <div className="flex flex-wrap items-center gap-2.5 w-full md:w-auto justify-between md:justify-end text-xs">
           {/* نشان وضعیت محیط جاری */}
           {currentEnvironment === 'PAPER_LIVE' ? (
             <div className="px-2.5 py-1 rounded-full border border-cyan-700 bg-cyan-950 text-cyan-300 text-[10px] font-mono font-bold flex items-center gap-1">
