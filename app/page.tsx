@@ -2,7 +2,6 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { SymbolId } from '@/lib/contracts/market';
-import { StrategyCandidate } from '@/lib/contracts/strategy';
 import { TradingStyleType } from '@/lib/contracts/regimes';
 import { RiskPreviewResult } from '@/lib/contracts/risk';
 import { TransactionalOutboxRecord } from '@/lib/contracts/execution';
@@ -10,13 +9,13 @@ import { SimulatedBroker } from '@/lib/core/simulated-broker';
 import { ReplayEngine, ReplayState } from '@/lib/replay/replay-engine';
 import { calculateDeterministicRisk } from '@/lib/core/risk-calculator';
 import { Header, TradingEnvironment } from '@/components/trading/header';
-import { ChartCanvas } from '@/components/trading/chart-canvas';
+import { AppNavigation, WorkspaceKey } from '@/components/navigation/app-navigation';
+import { TradeWorkspace } from '@/components/workspaces/trade-workspace';
+import { AIHubWorkspace } from '@/components/workspaces/ai-hub-workspace';
+import { AnalyticsWorkspace } from '@/components/workspaces/analytics-workspace';
+import { SystemWorkspace } from '@/components/workspaces/system-workspace';
 import { OrderIntentModal } from '@/components/trading/order-intent-modal';
-import { OutboxExecutionCard } from '@/components/trading/outbox-execution-card';
-import { TestRunnerPanel } from '@/components/trading/test-runner-panel';
-import { JournalWorkbenchW5 } from '@/components/trading/journal-workbench-w5';
 import { OfflineIndicator } from '@/components/trading/offline-indicator';
-import { SecurityDRPanel } from '@/components/trading/security-dr-panel';
 import { ExportImportModal } from '@/components/trading/export-import-modal';
 import { OfflineAIManagerModal } from '@/components/trading/offline-ai-manager-modal';
 import { MultiAgentOrchestratorModal } from '@/components/trading/multi-agent-orchestrator-modal';
@@ -24,17 +23,8 @@ import { MultiAgentOrchestrator } from '@/lib/core/multi-agent-orchestrator';
 import {
   MultiAgentConfiguration,
   TRADING_STYLES,
-  DEFAULT_MULTI_AGENT_CONFIG,
 } from '@/lib/contracts/multi-agent-system';
-import { ResearchWorkbench } from '@/components/trading/research-workbench';
-import { LiveShadowWorkbench } from '@/components/trading/live-shadow-workbench';
-import { RiskGuardianWorkbench } from '@/components/trading/risk-guardian-workbench';
-import { RAGPlaybookWorkbench } from '@/components/trading/rag-playbook-workbench';
 import { AVAILABLE_OFFLINE_MODELS } from '@/lib/ai/browser-offline-ai';
-import { M3Tabs, ActiveTabKey } from '@/components/trading/m3-tabs';
-import { SymbolReplayToolbar } from '@/components/trading/symbol-replay-toolbar';
-import { SetupAnalysisCard } from '@/components/trading/setup-analysis-card';
-import { InstantExecutionPad } from '@/components/trading/instant-execution-pad';
 import { PositionScalingEngine } from '@/lib/core/position-scaling-engine';
 import { PartialTPConfig } from '@/lib/contracts/tactical-cockpit';
 import { PersistenceStorage, AppExportPayloadV1 } from '@/lib/persistence/storage';
@@ -43,7 +33,6 @@ import {
   OfflineAIProfileId,
   OFFLINE_AI_PROFILES,
 } from '@/lib/core/analyst-critic';
-import { MultiTimeframeSyncView } from '@/components/trading/multi-timeframe-sync-view';
 import { MonteCarloModal } from '@/components/trading/monte-carlo-modal';
 import { MultiStyleBacktestModal } from '@/components/trading/multi-style-backtest-modal';
 import { SignalAlertModal } from '@/components/trading/signal-alert-modal';
@@ -51,7 +40,7 @@ import { SignalAlertDispatcher } from '@/lib/core/signal-alert-dispatcher';
 import { MonteCarloSimulator } from '@/lib/core/monte-carlo-simulator';
 import { TimeframeResampler } from '@/lib/core/timeframe-resampler';
 import { MultiTimeframeLevel, PercentileStepPoint } from '@/lib/contracts/monte-carlo';
-import { ShieldCheck, AlertCircle, X } from 'lucide-react';
+import { ShieldCheck, X } from 'lucide-react';
 
 const broker = new SimulatedBroker(10000);
 const replayEngine = new ReplayEngine('XAUUSD', broker);
@@ -59,7 +48,7 @@ const replayEngine = new ReplayEngine('XAUUSD', broker);
 export default function TradingLabPage() {
   const [symbol, setSymbol] = useState<SymbolId>('XAUUSD');
   const [replayState, setReplayState] = useState<ReplayState>(replayEngine.getSnapshot());
-  const [activeTab, setActiveTab] = useState<ActiveTabKey>('chart');
+  const [activeWorkspace, setActiveWorkspace] = useState<WorkspaceKey>('trade');
   const [viewMode, setViewMode] = useState<'auto' | 'mobile' | 'windows'>('auto');
 
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -177,7 +166,7 @@ export default function TradingLabPage() {
     return TimeframeResampler.extractMultiTimeframeLevels(replayState.visibleCandles, symbol);
   }, [replayState.visibleCandles, symbol]);
 
-  // مخروط صدک‌های استوکاستیک مونت‌کارلو به سمت آینده روی چارت (Phase 6)
+  // مخروط صدک‌های استوکاستیک مونت‌کارلو به سمت آینده روی چارت
   const forwardMonteCarloCone: PercentileStepPoint[] | undefined = useMemo(() => {
     if (!currentCandlePrice) return undefined;
     const targetOffset = symbol === 'XAUUSD' ? 15 : 0.003;
@@ -537,8 +526,8 @@ export default function TradingLabPage() {
   ).length;
 
   return (
-    <main className="min-h-screen max-w-full overflow-x-hidden bg-[#101217] text-[#e3e8f2] flex flex-col font-sans selection:bg-cyan-600 selection:text-white">
-      {/* سربرگ استاندارد متریال ۳ با نشان دائمی DEMO */}
+    <main className="min-h-screen max-w-full overflow-x-hidden bg-[var(--bg-canvas)] text-[var(--text-primary)] flex flex-col font-sans selection:bg-cyan-600 selection:text-white transition-colors">
+      {/* سربرگ استاندارد هماهنگ با قالب و نشان وضعیت ۴ گانه */}
       <Header
         dataMode="REPLAYED"
         accountMaskedId={currentEnvironment === 'BROKER_DEMO' ? 'DEMO-****5678' : 'PAPER-****1234'}
@@ -556,192 +545,125 @@ export default function TradingLabPage() {
         unreadAlertsCount={unreadAlertsCount}
       />
 
-      <div className={`w-full max-w-full overflow-x-hidden mx-auto p-3 sm:p-4 md:p-5 space-y-4 transition-all duration-300 ${
-        viewMode === 'mobile'
-          ? 'max-w-md'
-          : viewMode === 'windows'
-          ? 'max-w-[1550px]'
-          : 'max-w-7xl'
-      }`}>
-        {/* پیام‌های سیستمی و اعلانات امنیتی */}
-        {executionMessage && (
-          <div className="p-3 bg-[#17212e] border border-cyan-700/60 rounded-2xl text-xs flex items-center justify-between gap-2 text-cyan-200 shadow-sm" dir="rtl">
-            <div className="flex items-center gap-2">
-              <ShieldCheck className="w-4 h-4 text-cyan-400 shrink-0" />
-              <span>{executionMessage}</span>
-            </div>
-            <button
-              onClick={() => setExecutionMessage(null)}
-              className="text-zinc-400 hover:text-white p-1 rounded-lg"
-              aria-label="بستن پیام"
-            >
-              <X className="w-3.5 h-3.5" />
-            </button>
-          </div>
-        )}
-
-        {/* نوار جابجایی تب‌های متریال ۳ جهت مطالعه خلوت و بدون خستگی چشم */}
-        <M3Tabs
-          activeTab={activeTab}
-          onSelectTab={setActiveTab}
+      {/* بخش اصلی بدنه همراه با سایدبار راست دسکتاپ و ناوبری موبایل */}
+      <div className="flex-1 flex w-full relative" dir="rtl">
+        {/* نوار ناوبری ۴ محیط کاری (سایدبار دسکتاپ و نوار پایینی موبایل) */}
+        <AppNavigation
+          activeWorkspace={activeWorkspace}
+          onSelectWorkspace={setActiveWorkspace}
           hasActiveCandidate={!!replayState.activeCandidate}
           outboxPendingCount={pendingOutboxCount}
+          unreadAlertsCount={unreadAlertsCount}
+          viewMode={viewMode}
         />
 
-        {/* محتوای تب فعال: ساختار تفکیک‌شده و بهینه */}
-        {activeTab === 'chart' && (
-          <div className="space-y-4">
-            {/* نوار ابزار ریپلی و نماد */}
-            <SymbolReplayToolbar
+        {/* محتوای محیط کاری فعال */}
+        <div
+          className={`flex-1 w-full max-w-full overflow-x-hidden p-3 sm:p-4 md:p-5 pb-24 md:pb-8 space-y-4 transition-all duration-300 ${
+            viewMode === 'mobile'
+              ? 'max-w-md mx-auto'
+              : viewMode === 'windows'
+              ? 'max-w-[1550px]'
+              : 'max-w-7xl'
+          }`}
+        >
+          {/* پیام‌های سیستمی و اعلانات امنیتی */}
+          {executionMessage && (
+            <div className="p-3 bg-cyan-500/10 border border-cyan-500/30 rounded-2xl text-xs flex items-center justify-between gap-2 text-cyan-500 shadow-sm" dir="rtl">
+              <div className="flex items-center gap-2">
+                <ShieldCheck className="w-4 h-4 shrink-0" />
+                <span>{executionMessage}</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setExecutionMessage(null)}
+                className="text-[var(--text-muted)] hover:text-[var(--text-primary)] p-1 rounded-lg"
+                aria-label="بستن پیام"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          )}
+
+          {/* محیط کاری ۱: میز معامله و دیده‌بان */}
+          {activeWorkspace === 'trade' && (
+            <TradeWorkspace
               symbol={symbol}
               onSymbolChange={handleSymbolChange}
-              isSessionActive={isSessionActive}
-              onToggleSession={() => setIsSessionActive(!isSessionActive)}
-              sessionSeconds={sessionSeconds}
-              currentStepIndex={replayState.currentStepIndex}
-              totalSteps={replayState.totalSteps}
+              replayState={replayState}
+              onStepForward={handleStepForward}
+              onResetReplay={handleResetReplay}
               isPlaying={isPlaying}
               onTogglePlay={() => setIsPlaying(!isPlaying)}
               speedMs={speedMs}
               onChangeSpeed={setSpeedMs}
-              onStepForward={handleStepForward}
-              onReset={handleResetReplay}
-              onOpenExportModal={() => setIsExportModalOpen(true)}
-              onOpenAIModal={() => setIsAIModalOpen(true)}
-              onOpenMultiAgentModal={() => setIsMultiAgentModalOpen(true)}
-              activeModelNameFa={activeProfile.nameFa}
-              activeTradingStyleBadgeFa={activeTradingStyleBadgeFa}
-              activeStyleFilter={replayState.activeStyleFilter}
-              onChangeStyleFilter={handleStyleFilterChange}
-            />
-
-            {/* کاکپیت تاکتیکی ترید سریع ۱-کلیکی، خروج پله‌ای و Kill-Switch (فاز ۲) */}
-            <InstantExecutionPad
-              symbol={symbol}
-              currentPrice={
-                replayState.visibleCandles[replayState.visibleCandles.length - 1]?.close ||
-                (symbol === 'XAUUSD' ? 2050 : 1.085)
-              }
-              currentAtr={symbol === 'XAUUSD' ? 2.5 : 0.0015}
+              sessionSeconds={sessionSeconds}
+              isSessionActive={isSessionActive}
+              onToggleSession={() => setIsSessionActive(!isSessionActive)}
               accountEquity={brokerState.accountEquity}
-              activeCandidate={replayState.activeCandidate}
+              openPositionsCount={brokerState.positions.filter(p => p.isOpen).length}
+              riskPreview={riskPreview}
+              shadowAnalysis={shadowAnalysis}
+              multiAgentResult={multiAgentResult}
+              isBlocked={isBlocked}
               onExecuteInstantOrder={handleExecuteInstantOrder}
               onPanicKillSwitch={handlePanicKillSwitch}
-              openPositionsCount={brokerState.positions.filter(p => p.isOpen).length}
+              onOpenOrderModal={() => setIsModalOpen(true)}
+              onOpenAIModal={() => setIsAIModalOpen(true)}
+              onOpenMultiAgentModal={() => setIsMultiAgentModalOpen(true)}
+              onOpenExportModal={() => setIsExportModalOpen(true)}
+              activeModelNameFa={activeProfile.nameFa}
+              activeTradingStyleBadgeFa={activeTradingStyleBadgeFa}
+              onChangeStyleFilter={handleStyleFilterChange}
+              syncedCrosshairPrice={syncedCrosshairPrice}
+              setSyncedCrosshairPrice={setSyncedCrosshairPrice}
+              macroLevels={macroLevels}
+              forwardMonteCarloCone={forwardMonteCarloCone}
+              onOpenMonteCarlo={() => setIsMonteCarloModalOpen(true)}
+              onOpenBacktest={() => setIsBacktestModalOpen(true)}
+              onOpenAlerts={() => setIsAlertModalOpen(true)}
+              unreadAlertsCount={unreadAlertsCount}
+              viewMode={viewMode}
             />
+          )}
 
-            {/* چیدمان نمودار و کارت تحلیل ستاپ - دو ستونه از عرض md به بالا برای تاشوی باز و لپ‌تاپ */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              {/* ستون نمودار کندل‌استیک ۵ دقیقه‌ای و دیدبان چندتایم‌فریمه */}
-              <div className="md:col-span-2 space-y-4">
-                <ChartCanvas
-                  symbol={symbol}
-                  candles={replayState.visibleCandles}
-                  activeCandidate={replayState.activeCandidate}
-                  multiTimeframeLevels={macroLevels}
-                  monteCarloCone={forwardMonteCarloCone}
-                  isCrosshairSynced={true}
-                  crosshairPrice={syncedCrosshairPrice}
-                  onCrosshairChange={(price) => setSyncedCrosshairPrice(price)}
-                />
-                <MultiTimeframeSyncView
-                  symbol={symbol}
-                  currentPrice={
-                    replayState.visibleCandles[replayState.visibleCandles.length - 1]?.close ||
-                    (symbol === 'XAUUSD' ? 2050 : 1.085)
-                  }
-                  macroTrend={
-                    replayState.marketRegime?.regime === 'TRENDING_BULLISH'
-                      ? 'BULLISH'
-                      : replayState.marketRegime?.regime === 'TRENDING_BEARISH'
-                      ? 'BEARISH'
-                      : 'RANGING'
-                  }
-                  macroLevels={macroLevels}
-                  onOpenMonteCarlo={() => setIsMonteCarloModalOpen(true)}
-                  onOpenBacktest={() => setIsBacktestModalOpen(true)}
-                  onOpenAlerts={() => setIsAlertModalOpen(true)}
-                  unreadAlertsCount={unreadAlertsCount}
-                />
-              </div>
-
-              {/* ستون کارت ستاپ و تحلیل هوش مصنوعی آفلاین */}
-              <div className="md:col-span-1">
-                <SetupAnalysisCard
-                  candidate={replayState.activeCandidate}
-                  riskPreview={riskPreview}
-                  shadowAnalysis={shadowAnalysis}
-                  multiAgentResult={multiAgentResult}
-                  isBlocked={isBlocked}
-                  onOpenOrderModal={() => setIsModalOpen(true)}
-                  onOpenAIModal={() => setIsAIModalOpen(true)}
-                  onOpenMultiAgentModal={() => setIsMultiAgentModalOpen(true)}
-                />
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* بخش پژوهش، بک‌تست پیشرفته و پیپرتریدینگ W2 */}
-        {activeTab === 'research' && (
-          <div className="space-y-4">
-            <ResearchWorkbench
-              currentCandles={replayState.visibleCandles}
+          {/* محیط کاری ۲: هاب هوش مصنوعی و استراتژی‌ها */}
+          {activeWorkspace === 'ai' && (
+            <AIHubWorkspace
               symbol={symbol}
+              candles={replayState.visibleCandles}
+              macroLevels={macroLevels}
+              syncedCrosshairPrice={syncedCrosshairPrice}
+              setSyncedCrosshairPrice={setSyncedCrosshairPrice}
+              multiAgentConfig={multiAgentConfig}
+              onOpenMultiAgentModal={() => setIsMultiAgentModalOpen(true)}
+              onOpenAIModal={() => setIsAIModalOpen(true)}
+              selectedModelName={activeProfile.nameFa}
             />
-          </div>
-        )}
+          )}
 
-        {/* بخش مدیریت سفارش‌ها و بازتطبیق اجرای سایه W3 */}
-        {activeTab === 'execution' && (
-          <div className="space-y-4">
-            <LiveShadowWorkbench />
-          </div>
-        )}
+          {/* محیط کاری ۳: کارگاه تحلیلی، ریسک و ژورنال */}
+          {activeWorkspace === 'analytics' && (
+            <AnalyticsWorkspace
+              candles={replayState.visibleCandles}
+              symbol={symbol}
+              onOpenMonteCarlo={() => setIsMonteCarloModalOpen(true)}
+              onOpenBacktest={() => setIsBacktestModalOpen(true)}
+            />
+          )}
 
-        {/* بخش محافظ ریسک، سقف زیان و کلیدهای قطع نوسان W4 */}
-        {activeTab === 'guardian' && (
-          <div className="space-y-4">
-            <RiskGuardianWorkbench />
-          </div>
-        )}
-
-        {/* بخش ژورنال خودکار و ممیزی رفتار معاملاتی W5 */}
-        {activeTab === 'journal' && (
-          <div className="space-y-4">
-            <JournalWorkbenchW5 />
-          </div>
-        )}
-
-        {/* بخش کتابچه استراتژی S0 و بازیابی معنایی محلی (Local Semantic RAG) */}
-        {activeTab === 'playbook' && (
-          <div className="space-y-4">
-            <RAGPlaybookWorkbench />
-          </div>
-        )}
-
-        {/* بخش امنیت، بازیابی و صندوق تراکنشی cTrader */}
-        {activeTab === 'security' && (
-          <div className="space-y-4">
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-              <OutboxExecutionCard
-                records={outboxRecords}
-                isBlocked={isBlocked}
-                blockingReason={blockingReason}
-                onReconcile={handleReconcileOrder}
-                onRefreshOutbox={fetchOutbox}
-              />
-              <SecurityDRPanel />
-            </div>
-          </div>
-        )}
-
-        {/* بخش آزمون‌های خودکار و پایش سلامت سیستم */}
-        {activeTab === 'tests' && (
-          <div className="space-y-4">
-            <TestRunnerPanel />
-          </div>
-        )}
+          {/* محیط کاری ۴: مرکز کنترل، امنیت و سلامت سیستم */}
+          {activeWorkspace === 'system' && (
+            <SystemWorkspace
+              outboxRecords={outboxRecords}
+              isBlocked={isBlocked}
+              blockingReason={blockingReason}
+              onReconcileOrder={handleReconcileOrder}
+              onRefreshOutbox={fetchOutbox}
+              onOpenExportModal={() => setIsExportModalOpen(true)}
+            />
+          )}
+        </div>
       </div>
 
       {/* مودال تأیید نهایی ارسال به cTrader Demo (مرحله ۵) */}

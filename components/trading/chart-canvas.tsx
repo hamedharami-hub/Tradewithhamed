@@ -1,13 +1,15 @@
-﻿// components/trading/chart-canvas.tsx
+// components/trading/chart-canvas.tsx
 // بوم پیشرفته رسم نمودار کندل‌استیک ۵ دقیقه‌ای با سطوح همگام چندتایم‌فریمه (MultiTF Levels)،
 // مخروط پیش‌بینی احتمالاتی مونت‌کارلو (Monte Carlo Cone) و کراس‌هیر تعاملی مشترک
+// سازگار کامل با هر دو حالت روز (Light Mode) و شب (Dark Mode)
 
 'use client';
 
-import React, { useRef, useEffect, useState, useMemo } from 'react';
+import React, { useRef, useEffect, useState } from 'react';
 import { Candle, SymbolId } from '@/lib/contracts/market';
 import { StrategyCandidate } from '@/lib/contracts/strategy';
 import { MultiTimeframeLevel, PercentileStepPoint } from '@/lib/contracts/monte-carlo';
+import { useTheme } from '@/context/theme-context';
 
 interface ChartCanvasProps {
   symbol: SymbolId;
@@ -18,6 +20,13 @@ interface ChartCanvasProps {
   isCrosshairSynced?: boolean;
   onCrosshairChange?: (price: number | null, timestamp: number | null) => void;
   crosshairPrice?: number | null;
+  currentPrice?: number;
+  macroTrend?: 'BULLISH' | 'BEARISH' | 'RANGING';
+  macroLevels?: MultiTimeframeLevel[];
+  onOpenMonteCarlo?: () => void;
+  onOpenBacktest?: () => void;
+  onOpenAlerts?: () => void;
+  unreadAlertsCount?: number;
 }
 
 export const ChartCanvas: React.FC<ChartCanvasProps> = ({
@@ -33,6 +42,28 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
   const containerRef = useRef<HTMLDivElement>(null);
   const [containerWidth, setContainerWidth] = useState(600);
   const [hoverState, setHoverState] = useState<{ x: number; y: number; price: number; timestamp?: number } | null>(null);
+  const { actualTheme } = useTheme();
+  const isDark = actualTheme === 'dark';
+
+  // پالت رنگ‌های هماهنگ با قالب فعال
+  const themeColors = {
+    gridLine: isDark ? '#1e293b' : '#e2e8f0',
+    axisText: isDark ? '#64748b' : '#64748b',
+    bullishCandle: isDark ? '#10b981' : '#059669',
+    bearishCandle: isDark ? '#f43f5e' : '#dc2626',
+    entryLine: isDark ? '#38bdf8' : '#0284c7',
+    entryBg: isDark ? '#0c4a6e' : '#0284c7',
+    entryText: '#ffffff',
+    slLine: isDark ? '#f43f5e' : '#dc2626',
+    slBg: isDark ? '#4c0519' : '#dc2626',
+    slText: '#ffffff',
+    tpLine: isDark ? '#10b981' : '#16a34a',
+    tpBg: isDark ? '#022c22' : '#16a34a',
+    tpText: '#ffffff',
+    levelTagBg: isDark ? '#0f172a' : '#ffffff',
+    crosshairLine: isDark ? '#06b6d4' : '#0284c7',
+    crosshairBg: isDark ? '#0e7490' : '#0284c7',
+  };
 
   // ارتفاع ثابت و پایدار نمودار برای جلوگیری کامل از کشیدگی ResizeObserver
   const CHART_TOTAL_HEIGHT = 360;
@@ -56,7 +87,7 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
 
   if (!candles || candles.length === 0) {
     return (
-      <div className="w-full h-[360px] flex items-center justify-center bg-zinc-950 border border-zinc-800 rounded-xl text-zinc-500 text-xs font-sans">
+      <div className="w-full h-[360px] flex items-center justify-center bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-2xl text-[var(--text-muted)] text-xs font-sans">
         در حال بارگذاری کندل‌های بازار...
       </div>
     );
@@ -147,38 +178,38 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
     <div
       id="chart-main-container"
       ref={containerRef}
-      className="w-full h-[360px] bg-zinc-950 border border-zinc-800 rounded-xl p-3 flex flex-col relative overflow-hidden select-none font-sans"
+      className="w-full h-[360px] bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-2xl p-3 flex flex-col relative overflow-hidden select-none font-sans shadow-xs transition-colors"
     >
       {/* سربرگ اطلاعات نماد و وضعیت چندتایم‌فریمه */}
       <div className="flex flex-wrap items-center justify-between mb-1.5 px-1 text-xs shrink-0 gap-2">
         <div className="flex items-center gap-2 font-mono">
-          <span className="font-bold text-zinc-100">{symbol}</span>
-          <span className="text-emerald-400 font-bold">
+          <span className="font-bold text-[var(--text-primary)]">{symbol}</span>
+          <span className="text-emerald-500 font-bold">
             ${lastCandle.close.toFixed(symbol === 'XAUUSD' ? 2 : 5)}
           </span>
 
           <div className="hidden sm:flex items-center gap-1 text-[10px] font-sans">
-            <span className="px-1.5 py-0.5 rounded bg-zinc-900 border border-zinc-800 text-zinc-400">
+            <span className="px-1.5 py-0.5 rounded bg-[var(--bg-canvas)] border border-[var(--border-subtle)] text-[var(--text-muted)]">
               بستر: H1/4H ({activeCandidate ? (activeCandidate.direction === 'BUY' ? 'صعودی' : 'نزولی') : 'خنثی'})
             </span>
-            <span className="px-1.5 py-0.5 rounded bg-zinc-900 border border-zinc-800 text-cyan-400">
+            <span className="px-1.5 py-0.5 rounded bg-[var(--bg-canvas)] border border-[var(--border-subtle)] text-cyan-500 font-bold">
               ورود: 5M
             </span>
             {multiTimeframeLevels.length > 0 && (
-              <span className="px-1.5 py-0.5 rounded bg-cyan-950/70 border border-cyan-800 text-cyan-300 font-mono">
+              <span className="px-1.5 py-0.5 rounded bg-cyan-500/10 border border-cyan-500/20 text-cyan-500 font-mono">
                 {multiTimeframeLevels.length} سطح کلان
               </span>
             )}
           </div>
         </div>
 
-        <div className="text-[11px] text-zinc-400 font-sans flex items-center gap-2">
+        <div className="text-[11px] text-[var(--text-muted)] font-sans flex items-center gap-2">
           {hoverState && (
-            <span className="font-mono text-cyan-400 font-bold bg-[#141b28] px-2 py-0.5 rounded border border-cyan-800">
+            <span className="font-mono text-cyan-500 font-bold bg-[var(--bg-canvas)] px-2 py-0.5 rounded border border-cyan-500/30">
               قیمت: {hoverState.price.toFixed(symbol === 'XAUUSD' ? 2 : 5)}
             </span>
           )}
-          <span>کندل‌های بسته: <strong className="font-mono text-zinc-300">{candles.length}</strong></span>
+          <span>کندل‌ها: <strong className="font-mono text-[var(--text-primary)]">{candles.length}</strong></span>
         </div>
       </div>
 
@@ -199,14 +230,14 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
                 y1={g.y}
                 x2={containerWidth - RIGHT_PRICE_AXIS_WIDTH}
                 y2={g.y}
-                stroke="#1e293b"
+                stroke={themeColors.gridLine}
                 strokeDasharray="2,3"
                 strokeWidth="1"
               />
               <text
                 x={containerWidth - RIGHT_PRICE_AXIS_WIDTH + 8}
                 y={g.y + 4}
-                fill="#64748b"
+                fill={themeColors.axisText}
                 fontSize="10"
                 fontFamily="monospace"
               >
@@ -237,16 +268,16 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
                   y={y - 13}
                   width={85}
                   height={13}
-                  fill="#0f172a"
+                  fill={themeColors.levelTagBg}
                   stroke={lvl.color || '#06b6d4'}
                   strokeWidth="0.8"
                   rx={3}
-                  opacity={0.9}
+                  opacity={0.95}
                 />
                 <text
                   x={containerWidth - RIGHT_PRICE_AXIS_WIDTH - 48}
                   y={y - 3}
-                  fill={lvl.color || '#38bdf8'}
+                  fill={lvl.color || '#0284c7'}
                   fontSize="9"
                   fontFamily="sans-serif"
                   fontWeight="bold"
@@ -288,7 +319,7 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
               <g id="monte-carlo-chart-cone" opacity={0.65}>
                 <polygon points={p5ToP95Points} fill="#a855f7" opacity={0.15} />
                 <polygon points={p25ToP75Points} fill="#a855f7" opacity={0.25} />
-                <polyline points={p50Points} fill="none" stroke="#c084fc" strokeWidth="1.5" strokeDasharray="3,2" />
+                <polyline points={p50Points} fill="none" stroke="#a855f7" strokeWidth="1.5" strokeDasharray="3,2" />
               </g>
             );
           })()}
@@ -303,7 +334,7 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
             const closeY = getY(c.close);
             const bodyTop = Math.min(openY, closeY);
             const bodyHeight = Math.max(1.5, Math.abs(closeY - openY));
-            const color = isUp ? '#10b981' : '#f43f5e';
+            const color = isUp ? themeColors.bullishCandle : themeColors.bearishCandle;
 
             return (
               <g key={c.timestamp || i}>
@@ -339,7 +370,7 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
                 y1={getY(activeCandidate.entryPrice)}
                 x2={containerWidth - RIGHT_PRICE_AXIS_WIDTH}
                 y2={getY(activeCandidate.entryPrice)}
-                stroke="#38bdf8"
+                stroke={themeColors.entryLine}
                 strokeDasharray="4,4"
                 strokeWidth="1.5"
               />
@@ -348,14 +379,14 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
                 y={getClampedLabelY(activeCandidate.entryPrice) - 16}
                 width={120}
                 height={16}
-                fill="#0c4a6e"
+                fill={themeColors.entryBg}
                 rx={3}
-                opacity={0.85}
+                opacity={0.9}
               />
               <text
                 x={16}
                 y={getClampedLabelY(activeCandidate.entryPrice) - 4}
-                fill="#bae6fd"
+                fill={themeColors.entryText}
                 fontSize="10"
                 fontFamily="sans-serif"
                 fontWeight="bold"
@@ -369,7 +400,7 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
                 y1={getY(activeCandidate.stopLossPrice)}
                 x2={containerWidth - RIGHT_PRICE_AXIS_WIDTH}
                 y2={getY(activeCandidate.stopLossPrice)}
-                stroke="#f43f5e"
+                stroke={themeColors.slLine}
                 strokeWidth="1.5"
               />
               <rect
@@ -377,14 +408,14 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
                 y={getClampedLabelY(activeCandidate.stopLossPrice) - 16}
                 width={120}
                 height={16}
-                fill="#4c0519"
+                fill={themeColors.slBg}
                 rx={3}
-                opacity={0.85}
+                opacity={0.9}
               />
               <text
                 x={16}
                 y={getClampedLabelY(activeCandidate.stopLossPrice) - 4}
-                fill="#fda4af"
+                fill={themeColors.slText}
                 fontSize="10"
                 fontFamily="sans-serif"
                 fontWeight="bold"
@@ -398,7 +429,7 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
                 y1={getY(activeCandidate.takeProfitPrice)}
                 x2={containerWidth - RIGHT_PRICE_AXIS_WIDTH}
                 y2={getY(activeCandidate.takeProfitPrice)}
-                stroke="#10b981"
+                stroke={themeColors.tpLine}
                 strokeWidth="1.5"
               />
               <rect
@@ -406,14 +437,14 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
                 y={getClampedLabelY(activeCandidate.takeProfitPrice) - 16}
                 width={120}
                 height={16}
-                fill="#022c22"
+                fill={themeColors.tpBg}
                 rx={3}
-                opacity={0.85}
+                opacity={0.9}
               />
               <text
                 x={16}
                 y={getClampedLabelY(activeCandidate.takeProfitPrice) - 4}
-                fill="#6ee7b7"
+                fill={themeColors.tpText}
                 fontSize="10"
                 fontFamily="sans-serif"
                 fontWeight="bold"
@@ -437,7 +468,7 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
                   y1={activeY}
                   x2={containerWidth - RIGHT_PRICE_AXIS_WIDTH}
                   y2={activeY}
-                  stroke="#06b6d4"
+                  stroke={themeColors.crosshairLine}
                   strokeDasharray="3,3"
                   strokeWidth="1.2"
                   opacity={0.75}
@@ -448,7 +479,7 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
                   y={activeY - 9}
                   width={RIGHT_PRICE_AXIS_WIDTH - 5}
                   height={18}
-                  fill="#0e7490"
+                  fill={themeColors.crosshairBg}
                   rx={3}
                 />
                 <text
@@ -469,7 +500,7 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
                     y1={PLOT_TOP}
                     x2={activeX}
                     y2={PLOT_BOTTOM}
-                    stroke="#06b6d4"
+                    stroke={themeColors.crosshairLine}
                     strokeDasharray="3,3"
                     strokeWidth="1.2"
                     opacity={0.75}

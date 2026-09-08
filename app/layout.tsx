@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from 'next';
 import './globals.css';
 import { PWAProvider } from '@/components/pwa-provider';
+import { ThemeProvider } from '@/context/theme-context';
 
 export const viewport: Viewport = {
   themeColor: '#101217',
@@ -42,11 +43,13 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="fa" dir="rtl">
-      <body suppressHydrationWarning className="bg-[#101217] text-[#e3e8f2] antialiased min-h-screen selection:bg-cyan-600 selection:text-white">
-        <PWAProvider>
-          {children}
-        </PWAProvider>
+    <html lang="fa" dir="rtl" suppressHydrationWarning className="dark">
+      <body suppressHydrationWarning className="bg-[var(--bg-canvas)] text-[var(--text-primary)] antialiased min-h-screen selection:bg-cyan-600 selection:text-white">
+        <ThemeProvider>
+          <PWAProvider>
+            {children}
+          </PWAProvider>
+        </ThemeProvider>
       </body>
     </html>
   );

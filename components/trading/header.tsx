@@ -10,10 +10,8 @@ import {
   AlertTriangle,
   Bot,
   Lock,
-  Globe,
   Radio,
   FileSpreadsheet,
-  Compass,
   TrendingUp,
   TrendingDown,
   Waves,
@@ -23,7 +21,7 @@ import {
 } from 'lucide-react';
 import { PWAInstallButton } from './pwa-install-button';
 import { SystemHealthBadge } from './system-health-badge';
-
+import { ThemeToggle } from '@/components/ui/theme-toggle';
 import { MarketRegimeAnalysis } from '@/lib/contracts/regimes';
 
 export type TradingEnvironment =
@@ -72,16 +70,16 @@ export const Header: React.FC<HeaderProps> = ({
   const getBadgeColor = () => {
     switch (dataMode) {
       case 'LIVE':
-        return 'bg-emerald-950 text-emerald-300 border-emerald-800';
+        return 'bg-emerald-500/10 text-emerald-500 border-emerald-500/30';
       case 'REPLAYED':
-        return 'bg-amber-950 text-amber-300 border-amber-800';
+        return 'bg-amber-500/10 text-amber-500 border-amber-500/30';
       case 'SIMULATED':
-        return 'bg-cyan-950 text-cyan-300 border-cyan-800';
+        return 'bg-cyan-500/10 text-cyan-500 border-cyan-500/30';
       case 'STALE':
       case 'UNKNOWN':
-        return 'bg-rose-950 text-rose-300 border-rose-800';
+        return 'bg-rose-500/10 text-rose-500 border-rose-500/30';
       default:
-        return 'bg-zinc-800 text-zinc-300 border-zinc-700';
+        return 'bg-[var(--bg-surface-raised)] text-[var(--text-secondary)] border-[var(--border-subtle)]';
     }
   };
 
@@ -96,130 +94,135 @@ export const Header: React.FC<HeaderProps> = ({
   };
 
   return (
-    <header className="w-full bg-[#11141b] border-b border-[#222836] px-4 py-2.5 sticky top-0 z-40 shadow-sm" dir="rtl">
+    <header className="w-full bg-[var(--bg-surface)] border-b border-[var(--border-subtle)] px-4 py-2.5 sticky top-0 z-40 shadow-xs transition-colors" dir="rtl">
       <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-3">
-        {/* نشان برند و وضعیت سیستم */}
+        {/* نشان برند و ابزارهای سریع */}
         <div className="flex flex-wrap items-center gap-2.5 w-full md:w-auto justify-between md:justify-start">
           <div className="flex items-center gap-2.5">
-            <div className="p-2 bg-emerald-500/10 rounded-xl border border-emerald-500/20 text-emerald-400">
+            <div className="p-2 bg-emerald-500/10 rounded-xl border border-emerald-500/20 text-emerald-500">
               <ShieldCheck className="w-5 h-5" />
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h1 className="text-sm md:text-base font-bold text-zinc-100">آزمایشگاه معاملاتی حامد</h1>
-                <span className="text-[10px] font-mono text-zinc-400 bg-[#1a202d] px-1.5 py-0.5 rounded border border-[#263042]">
+                <h1 className="text-sm md:text-base font-bold text-[var(--text-primary)]">آزمایشگاه معاملاتی حامد</h1>
+                <span className="text-[10px] font-mono text-[var(--text-muted)] bg-[var(--bg-canvas)] px-1.5 py-0.5 rounded border border-[var(--border-subtle)]">
                   v4.0
                 </span>
               </div>
-              <p className="text-[11px] text-zinc-400">سامانه شخصی تحلیل و معامله با هوش مصنوعی داخل مرورگر WebLLM</p>
+              <p className="text-[11px] text-[var(--text-muted)] hidden sm:block">سامانه شخصی تحلیل و معامله با هوش مصنوعی آفلاین مرورگر WebLLM</p>
             </div>
           </div>
 
-          {/* دکمه انتخاب حالت طراحی: ویندوز دسکتاپ یا موبایل */}
-          {onChangeViewMode && (
-            <div className="flex items-center gap-0.5 bg-[#171b25] p-0.5 rounded-xl border border-[#262f3f] text-[11px]">
+          <div className="flex items-center gap-1.5">
+            {/* انتخاب‌گر قالب روز و شب (Theme Toggle) */}
+            <ThemeToggle />
+
+            {/* دکمه انتخاب حالت طراحی: ویندوز دسکتاپ یا موبایل */}
+            {onChangeViewMode && (
+              <div className="flex items-center gap-0.5 bg-[var(--bg-canvas)] p-0.5 rounded-xl border border-[var(--border-subtle)] text-[11px]">
+                <button
+                  type="button"
+                  onClick={() => onChangeViewMode('windows')}
+                  className={`px-2.5 py-1.5 min-h-[36px] rounded-lg flex items-center gap-1 transition-colors ${
+                    currentViewMode === 'windows'
+                      ? 'bg-cyan-500/10 text-cyan-500 font-bold border border-cyan-500/30'
+                      : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'
+                  }`}
+                  title="نمایش حالت اختصاصی ویندوز (Snapdragon X Plus)"
+                >
+                  <Laptop className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline">ویندوز</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onChangeViewMode('mobile')}
+                  className={`px-2.5 py-1.5 min-h-[36px] rounded-lg flex items-center gap-1 transition-colors ${
+                    currentViewMode === 'mobile'
+                      ? 'bg-amber-500/10 text-amber-500 font-bold border border-amber-500/30'
+                      : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'
+                  }`}
+                  title="نمایش حالت اختصاصی موبایل (Pixel 9 Pro Fold)"
+                >
+                  <Smartphone className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline">موبایل</span>
+                </button>
+              </div>
+            )}
+
+            {/* دکمه باز کردن مرکز مدل هوش مصنوعی */}
+            {onOpenAIModal && (
               <button
                 type="button"
-                onClick={() => onChangeViewMode('windows')}
-                className={`px-2.5 py-2 min-h-[44px] rounded-lg flex items-center gap-1 transition-colors ${
-                  currentViewMode === 'windows'
-                    ? 'bg-[#152535] text-cyan-300 font-bold border border-cyan-800'
-                    : 'text-zinc-400 hover:text-zinc-200'
-                }`}
-                title="نمایش حالت اختصاصی ویندوز (Snapdragon X Plus)"
+                onClick={onOpenAIModal}
+                className="px-2.5 py-1.5 min-h-[36px] rounded-xl bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-500 border border-cyan-500/30 flex items-center gap-1.5 transition-colors text-[11px]"
+                title="مدیریت و دانلود مدل‌های آفلاین مرورگر"
               >
-                <Laptop className="w-3.5 h-3.5" />
-                <span className="hidden sm:inline">ویندوز</span>
+                <Bot className="w-3.5 h-3.5" />
+                <span className="hidden lg:inline">مدل:</span>
+                <span className="font-bold font-mono text-[10px]">{activeModelName || 'Qwen/S0'}</span>
               </button>
+            )}
+
+            {/* نشانگر هوشمند رژیم بازار (Market Regime Badge) */}
+            {marketRegime && (
+              <div
+                className={`px-2.5 py-1.5 min-h-[36px] rounded-xl border flex items-center gap-1.5 transition-all text-[11px] cursor-help ${
+                  marketRegime.regime === 'TRENDING_BULLISH'
+                    ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-500'
+                    : marketRegime.regime === 'TRENDING_BEARISH'
+                    ? 'bg-rose-500/10 border-rose-500/30 text-rose-500'
+                    : marketRegime.regime === 'CHOPPY_RANGING'
+                    ? 'bg-amber-500/10 border-amber-500/30 text-amber-500'
+                    : marketRegime.regime === 'HIGH_VOL_NEWS'
+                    ? 'bg-purple-500/10 border-purple-500/30 text-purple-500 animate-pulse'
+                    : 'bg-sky-500/10 border-sky-500/30 text-sky-500'
+                }`}
+                title={`${marketRegime.headlineFa}\n${marketRegime.summaryFa}\nسبک‌های پیشنهادی: ${marketRegime.recommendedStyles.join(', ')}`}
+              >
+                {marketRegime.regime === 'TRENDING_BULLISH' && <TrendingUp className="w-3.5 h-3.5 text-emerald-500" />}
+                {marketRegime.regime === 'TRENDING_BEARISH' && <TrendingDown className="w-3.5 h-3.5 text-rose-500" />}
+                {marketRegime.regime === 'CHOPPY_RANGING' && <Waves className="w-3.5 h-3.5 text-amber-500" />}
+                {marketRegime.regime === 'HIGH_VOL_NEWS' && <Flame className="w-3.5 h-3.5 text-purple-500" />}
+                {marketRegime.regime === 'COMPRESSION' && <Minimize2 className="w-3.5 h-3.5 text-sky-500" />}
+                <span className="font-bold hidden sm:inline">{marketRegime.headlineFa}</span>
+                <span className="font-mono text-[10px] opacity-80">({marketRegime.confidence}%)</span>
+              </div>
+            )}
+
+            {/* دکمه باز کردن هشدارهای هوشمند */}
+            {onOpenAlertModal && (
               <button
                 type="button"
-                onClick={() => onChangeViewMode('mobile')}
-                className={`px-2.5 py-2 min-h-[44px] rounded-lg flex items-center gap-1 transition-colors ${
-                  currentViewMode === 'mobile'
-                    ? 'bg-[#2a2016] text-amber-300 font-bold border border-amber-800'
-                    : 'text-zinc-400 hover:text-zinc-200'
-                }`}
-                title="نمایش حالت اختصاصی موبایل (Pixel 9 Pro Fold)"
+                onClick={onOpenAlertModal}
+                className="p-2 min-h-[36px] min-w-[36px] justify-center rounded-xl bg-[var(--bg-canvas)] hover:bg-cyan-500/10 text-cyan-500 border border-[var(--border-subtle)] flex items-center gap-1.5 transition-colors text-[11px] relative"
+                title="دیدبان هشدارهای معاملاتی هوشمند و تنظیمات صدا"
               >
-                <Smartphone className="w-3.5 h-3.5" />
-                <span className="hidden sm:inline">موبایل</span>
+                <Bell className="w-4 h-4" />
+                {unreadAlertsCount > 0 && (
+                  <span className="absolute -top-1 -right-1 bg-cyan-500 text-slate-900 text-[9px] font-mono font-black px-1.5 py-0.2 rounded-full shadow-sm">
+                    {unreadAlertsCount}
+                  </span>
+                )}
               </button>
-            </div>
-          )}
+            )}
 
-          {/* دکمه باز کردن مرکز مدل هوش مصنوعی */}
-          {onOpenAIModal && (
-            <button
-              type="button"
-              onClick={onOpenAIModal}
-              className="px-2.5 py-2 min-h-[44px] rounded-xl bg-cyan-950/60 hover:bg-cyan-900/60 text-cyan-300 border border-cyan-800 flex items-center gap-1.5 transition-colors text-[11px]"
-              title="مدیریت و دانلود مدل‌های آفلاین مرورگر"
-            >
-              <Bot className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">مرکز مدل:</span>
-              <span className="font-bold font-mono text-[10px]">{activeModelName || 'Qwen/S0'}</span>
-            </button>
-          )}
+            {/* دکمه نصب PWA */}
+            <PWAInstallButton />
 
-          {/* نشانگر هوشمند رژیم بازار (Market Regime Badge) */}
-          {marketRegime && (
-            <div
-              className={`px-2.5 py-2 min-h-[44px] rounded-xl border flex items-center gap-1.5 transition-all text-[11px] cursor-help ${
-                marketRegime.regime === 'TRENDING_BULLISH'
-                  ? 'bg-emerald-950/70 border-emerald-500/60 text-emerald-300'
-                  : marketRegime.regime === 'TRENDING_BEARISH'
-                  ? 'bg-rose-950/70 border-rose-500/60 text-rose-300'
-                  : marketRegime.regime === 'CHOPPY_RANGING'
-                  ? 'bg-amber-950/70 border-amber-500/60 text-amber-300'
-                  : marketRegime.regime === 'HIGH_VOL_NEWS'
-                  ? 'bg-purple-950/80 border-purple-500 text-purple-200 animate-pulse'
-                  : 'bg-sky-950/70 border-sky-500/60 text-sky-300'
-              }`}
-              title={`${marketRegime.headlineFa}\n${marketRegime.summaryFa}\nسبک‌های پیشنهادی: ${marketRegime.recommendedStyles.join(', ')}`}
-            >
-              {marketRegime.regime === 'TRENDING_BULLISH' && <TrendingUp className="w-3.5 h-3.5 text-emerald-400" />}
-              {marketRegime.regime === 'TRENDING_BEARISH' && <TrendingDown className="w-3.5 h-3.5 text-rose-400" />}
-              {marketRegime.regime === 'CHOPPY_RANGING' && <Waves className="w-3.5 h-3.5 text-amber-400" />}
-              {marketRegime.regime === 'HIGH_VOL_NEWS' && <Flame className="w-3.5 h-3.5 text-purple-400" />}
-              {marketRegime.regime === 'COMPRESSION' && <Minimize2 className="w-3.5 h-3.5 text-sky-400" />}
-              <span className="font-bold">{marketRegime.headlineFa}</span>
-              <span className="font-mono text-[10px] opacity-80">({marketRegime.confidence}%)</span>
-            </div>
-          )}
-
-          {/* دکمه باز کردن هشدارهای هوشمند */}
-          {onOpenAlertModal && (
-            <button
-              type="button"
-              onClick={onOpenAlertModal}
-              className="p-2 min-h-[44px] min-w-[44px] justify-center rounded-xl bg-[#161c28] hover:bg-cyan-950/60 text-cyan-300 border border-cyan-800/60 flex items-center gap-1.5 transition-colors text-[11px] relative"
-              title="دیدبان هشدارهای معاملاتی هوشمند و تنظیمات صدا"
-            >
-              <Bell className="w-4 h-4 text-cyan-400" />
-              {unreadAlertsCount > 0 && (
-                <span className="absolute -top-1 -right-1 bg-cyan-500 text-black text-[9px] font-mono font-black px-1.5 py-0.2 rounded-full border border-[#11141b] shadow-sm">
-                  {unreadAlertsCount}
-                </span>
-              )}
-            </button>
-          )}
-
-          {/* دکمه نصب PWA */}
-          <PWAInstallButton />
-
-          {/* نشان پایش سلامت سرور */}
-          <SystemHealthBadge />
+            {/* نشان پایش سلامت سرور */}
+            <SystemHealthBadge />
+          </div>
         </div>
 
         {/* بخش انتخاب ۴ محیط اختصاصی پلن نسخه ۴.۰ حامد */}
-        <div className="flex flex-wrap items-center gap-1.5 bg-[#161a24] p-1 rounded-xl border border-[#262e3e] text-[11px] overflow-x-auto max-w-full py-1.5">
+        <div className="flex flex-wrap items-center gap-1 bg-[var(--bg-canvas)] p-1 rounded-xl border border-[var(--border-subtle)] text-[11px] overflow-x-auto max-w-full">
           <button
             type="button"
             onClick={() => handleEnvClick('PAPER_REPLAY')}
-            className={`px-3 py-2 min-h-[44px] rounded-lg flex items-center gap-1 transition-colors whitespace-nowrap ${
+            className={`px-2.5 py-1.5 min-h-[34px] rounded-lg flex items-center gap-1 transition-colors whitespace-nowrap ${
               currentEnvironment === 'PAPER_REPLAY'
-                ? 'bg-amber-950 text-amber-300 font-bold border border-amber-800'
-                : 'text-zinc-400 hover:text-zinc-200'
+                ? 'bg-amber-500/15 text-amber-500 font-bold border border-amber-500/30'
+                : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'
             }`}
             title="بک‌تست و بازپخش تاریخی با ساعت مجازی و شبیه‌ساز محلی"
           >
@@ -230,10 +233,10 @@ export const Header: React.FC<HeaderProps> = ({
           <button
             type="button"
             onClick={() => handleEnvClick('PAPER_LIVE')}
-            className={`px-3 py-2 min-h-[44px] rounded-lg flex items-center gap-1 transition-colors whitespace-nowrap ${
+            className={`px-2.5 py-1.5 min-h-[34px] rounded-lg flex items-center gap-1 transition-colors whitespace-nowrap ${
               currentEnvironment === 'PAPER_LIVE'
-                ? 'bg-cyan-950 text-cyan-300 font-bold border border-cyan-800'
-                : 'text-zinc-400 hover:text-zinc-200'
+                ? 'bg-cyan-500/15 text-cyan-500 font-bold border border-cyan-500/30'
+                : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'
             }`}
             title="قیمت زنده با شبیه‌ساز محلی (بدون دسترسی به ثبت سفارش بروکر)"
           >
@@ -244,10 +247,10 @@ export const Header: React.FC<HeaderProps> = ({
           <button
             type="button"
             onClick={() => handleEnvClick('BROKER_DEMO')}
-            className={`px-3 py-2 min-h-[44px] rounded-lg flex items-center gap-1 transition-colors whitespace-nowrap ${
+            className={`px-2.5 py-1.5 min-h-[34px] rounded-lg flex items-center gap-1 transition-colors whitespace-nowrap ${
               currentEnvironment === 'BROKER_DEMO'
-                ? 'bg-emerald-950 text-emerald-300 font-bold border border-emerald-800'
-                : 'text-zinc-400 hover:text-zinc-200'
+                ? 'bg-emerald-500/15 text-emerald-500 font-bold border border-emerald-500/30'
+                : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'
             }`}
             title="حساب دمو cTrader با تایید صریح دستی حامد"
           >
@@ -258,7 +261,7 @@ export const Header: React.FC<HeaderProps> = ({
           <button
             type="button"
             onClick={() => handleEnvClick('BROKER_LIVE')}
-            className={`px-3 py-2 min-h-[44px] rounded-lg flex items-center gap-1 text-zinc-500 hover:text-rose-400 transition-colors opacity-80 whitespace-nowrap`}
+            className="px-2.5 py-1.5 min-h-[34px] rounded-lg flex items-center gap-1 text-[var(--text-muted)] hover:text-rose-500 transition-colors opacity-70 whitespace-nowrap"
             title="حساب واقعی Live (پیش‌فرض مسدود تا تایید مالک)"
           >
             <Lock className="w-3.5 h-3.5" />
@@ -270,13 +273,13 @@ export const Header: React.FC<HeaderProps> = ({
         <div className="flex flex-wrap items-center gap-2.5 w-full md:w-auto justify-between md:justify-end text-xs">
           {/* نشان وضعیت محیط جاری */}
           {currentEnvironment === 'PAPER_LIVE' ? (
-            <div className="px-2.5 py-1 rounded-full border border-cyan-700 bg-cyan-950 text-cyan-300 text-[10px] font-mono font-bold flex items-center gap-1">
+            <div className="px-2.5 py-1 rounded-full border border-cyan-500/30 bg-cyan-500/10 text-cyan-500 text-[10px] font-mono font-bold flex items-center gap-1">
               <Activity className="w-3 h-3 animate-pulse" />
-              <span>LIVE DATA + SIMULATED FILLS</span>
+              <span>LIVE + SIMULATED</span>
             </div>
           ) : currentEnvironment === 'PAPER_REPLAY' ? (
-            <div className="px-2.5 py-1 rounded-full border border-amber-700 bg-amber-950 text-amber-300 text-[10px] font-mono font-bold flex items-center gap-1">
-              <span>VIRTUAL CLOCK / REPLAY</span>
+            <div className="px-2.5 py-1 rounded-full border border-amber-500/30 bg-amber-500/10 text-amber-500 text-[10px] font-mono font-bold flex items-center gap-1">
+              <span>VIRTUAL REPLAY</span>
             </div>
           ) : (
             <div className={`px-2.5 py-1 rounded-full border text-[11px] font-medium flex items-center gap-1.5 ${getBadgeColor()}`}>
@@ -288,20 +291,20 @@ export const Header: React.FC<HeaderProps> = ({
 
           {/* هشدار قفل سراسری در صورت وجود وضعیت UNKNOWN */}
           {isBlocked && (
-            <div className="px-2.5 py-1 rounded-full border border-rose-800/80 bg-rose-950/80 text-rose-300 flex items-center gap-1 animate-pulse text-[11px]">
+            <div className="px-2.5 py-1 rounded-full border border-rose-500/40 bg-rose-500/10 text-rose-500 flex items-center gap-1 animate-pulse text-[11px]">
               <AlertTriangle className="w-3 h-3" />
               <span>قفل ایمنی بازتطبیق</span>
             </div>
           )}
 
           {/* موجودی و اکوئیتی حساب */}
-          <div className="flex items-center gap-3 bg-[#161a24] px-3 py-1.5 rounded-xl border border-[#272f3e]">
+          <div className="flex items-center gap-3 bg-[var(--bg-canvas)] px-3 py-1.5 rounded-xl border border-[var(--border-subtle)]">
             <div className="text-right">
-              <div className="text-[10px] text-zinc-400">
+              <div className="text-[10px] text-[var(--text-muted)]">
                 {currentEnvironment === 'BROKER_DEMO' ? 'حساب دمو:' : 'حساب فرضی:'}{' '}
                 <span dir="ltr" className="font-mono">{accountMaskedId}</span>
               </div>
-              <div dir="ltr" className="text-xs font-mono font-bold text-zinc-100">
+              <div dir="ltr" className="text-xs font-mono font-bold text-[var(--text-primary)]">
                 ${equity.toLocaleString('en-US', { minimumFractionDigits: 2 })}
               </div>
             </div>
@@ -310,7 +313,7 @@ export const Header: React.FC<HeaderProps> = ({
                 type="button"
                 onClick={onRefresh}
                 title="به‌روزرسانی داده‌ها"
-                className="p-1 hover:bg-[#232a39] text-zinc-400 hover:text-zinc-200 rounded-lg transition-colors"
+                className="p-1 hover:bg-[var(--bg-surface-raised)] text-[var(--text-muted)] hover:text-[var(--text-primary)] rounded-lg transition-colors"
               >
                 <RefreshCw className="w-3.5 h-3.5" />
               </button>
@@ -321,24 +324,24 @@ export const Header: React.FC<HeaderProps> = ({
 
       {/* مودال ایمنی و شفاف‌سازی عدم فعال‌سازی حساب واقعی (BROKER_LIVE Gating) */}
       {showLiveBlockedModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4" dir="rtl">
-          <div className="bg-[#141822] border border-[#2a3447] max-w-md w-full rounded-2xl p-5 space-y-4 text-right">
-            <div className="flex items-center gap-3 text-amber-400">
-              <div className="p-2.5 bg-amber-950/80 border border-amber-800 rounded-xl">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4" dir="rtl">
+          <div className="bg-[var(--bg-surface)] border border-[var(--border-strong)] max-w-md w-full rounded-2xl p-5 space-y-4 text-right shadow-2xl">
+            <div className="flex items-center gap-3 text-amber-500">
+              <div className="p-2.5 bg-amber-500/10 border border-amber-500/20 rounded-xl">
                 <Lock className="w-5 h-5" />
               </div>
               <div>
-                <h3 className="font-bold text-sm text-zinc-100">مسیر حساب واقعی (BROKER_LIVE)</h3>
-                <span className="text-[10px] text-amber-300 font-mono">STATUS: BLOCKED BY POLICY</span>
+                <h3 className="font-bold text-sm text-[var(--text-primary)]">مسیر حساب واقعی (BROKER_LIVE)</h3>
+                <span className="text-[10px] text-amber-500 font-mono">STATUS: BLOCKED BY POLICY</span>
               </div>
             </div>
 
-            <p className="text-xs text-zinc-300 leading-relaxed">
-              طبق بخش ۲۲ پلن نسخه ۴.۰ حامد حرمی‌پور، ساختار کد و روت‌های امنیتی حساب واقعی در سورس‌کد پیاده‌سازی شده اما پرچم سروری آن به صورت پیش‌فرض کاملاً غیرفعال (<code className="text-rose-300">LIVE_ACTIVATION_BLOCKER</code>) است.
+            <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
+              طبق بخش ۲۲ پلن نسخه ۴.۰ حامد، ساختار کد و روت‌های امنیتی حساب واقعی در سورس‌کد پیاده‌سازی شده اما پرچم سروری آن به صورت پیش‌فرض کاملاً غیرفعال (<code className="text-rose-500 bg-rose-500/10 px-1 py-0.5 rounded">LIVE_ACTIVATION_BLOCKER</code>) است.
             </p>
 
-            <div className="p-3 bg-[#10131c] rounded-xl border border-[#222938] text-[11px] text-zinc-400 space-y-1.5">
-              <div className="font-bold text-zinc-200">شروط فعال‌سازی پول واقعی:</div>
+            <div className="p-3 bg-[var(--bg-canvas)] rounded-xl border border-[var(--border-subtle)] text-[11px] text-[var(--text-muted)] space-y-1.5">
+              <div className="font-bold text-[var(--text-primary)]">شروط فعال‌سازی پول واقعی:</div>
               <div>۱. پذیرش صریح و کتبی حامد در سامانه</div>
               <div>۲. گذر موفق از تمام آزمون‌های محافظتی دمو و گیت W4</div>
               <div>۳. عدم وجود هرگونه خطای بازتطبیق یا قطعی شبکه</div>
@@ -347,7 +350,7 @@ export const Header: React.FC<HeaderProps> = ({
             <button
               type="button"
               onClick={() => setShowLiveBlockedModal(false)}
-              className="w-full py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 rounded-xl font-bold text-xs transition-colors"
+              className="w-full py-2.5 bg-zinc-800 dark:bg-zinc-700 hover:bg-zinc-700 dark:hover:bg-zinc-600 text-white rounded-xl font-bold text-xs transition-colors"
             >
               متوجه شدم (بازگشت به حساب دمو)
             </button>
