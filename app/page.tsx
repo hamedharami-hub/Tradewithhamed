@@ -45,6 +45,9 @@ import {
 } from '@/lib/core/analyst-critic';
 import { MultiTimeframeSyncView } from '@/components/trading/multi-timeframe-sync-view';
 import { MonteCarloModal } from '@/components/trading/monte-carlo-modal';
+import { MultiStyleBacktestModal } from '@/components/trading/multi-style-backtest-modal';
+import { SignalAlertModal } from '@/components/trading/signal-alert-modal';
+import { SignalAlertDispatcher } from '@/lib/core/signal-alert-dispatcher';
 import { ShieldCheck, AlertCircle, X } from 'lucide-react';
 
 const broker = new SimulatedBroker(10000);
@@ -75,6 +78,9 @@ export default function TradingLabPage() {
   const [isAIModalOpen, setIsAIModalOpen] = useState(false);
   const [isMultiAgentModalOpen, setIsMultiAgentModalOpen] = useState(false);
   const [isMonteCarloModalOpen, setIsMonteCarloModalOpen] = useState(false);
+  const [isBacktestModalOpen, setIsBacktestModalOpen] = useState(false);
+  const [isAlertModalOpen, setIsAlertModalOpen] = useState(false);
+  const [unreadAlertsCount, setUnreadAlertsCount] = useState(0);
   const [multiAgentConfig, setMultiAgentConfig] = useState<MultiAgentConfiguration>(() =>
     MultiAgentOrchestrator.loadConfiguration()
   );
@@ -193,6 +199,36 @@ export default function TradingLabPage() {
       clearInterval(interval);
     };
   }, []);
+
+  // همگام‌سازی تعداد هشدارهای خوانده‌نشده
+  useEffect(() => {
+    setUnreadAlertsCount(SignalAlertDispatcher.getUnreadCount());
+    return SignalAlertDispatcher.subscribe(() => {
+      setUnreadAlertsCount(SignalAlertDispatcher.getUnreadCount());
+    });
+  }, []);
+
+  // ارزیابی خودکار شرایط بازار و صدور هوشمند هشدار
+  useEffect(() => {
+    if (!replayState.visibleCandles || replayState.visibleCandles.length === 0) return;
+    const lastCandle = replayState.visibleCandles[replayState.visibleCandles.length - 1];
+    if (!lastCandle) return;
+
+    SignalAlertDispatcher.evaluateMarketState({
+      symbol,
+      timeframe: '5M',
+      currentPrice: lastCandle.close,
+      regimeAnalysis: replayState.marketRegime,
+      activeCandidate: replayState.activeCandidate,
+      councilResult: multiAgentResult,
+    });
+  }, [
+    replayState.visibleCandles.length,
+    replayState.activeCandidate,
+    replayState.marketRegime,
+    multiAgentResult,
+    symbol,
+  ]);
 
   // زمان‌سنج جلسه کاری
   useEffect(() => {
@@ -449,6 +485,8 @@ export default function TradingLabPage() {
         currentEnvironment={currentEnvironment}
         onChangeEnvironment={setCurrentEnvironment}
         marketRegime={replayState.marketRegime}
+        onOpenAlertModal={() => setIsAlertModalOpen(true)}
+        unreadAlertsCount={unreadAlertsCount}
       />
 
       <div className={`w-full mx-auto p-3 sm:p-4 md:p-5 space-y-4 transition-all duration-300 ${
@@ -542,6 +580,9 @@ export default function TradingLabPage() {
                   }
                   macroTrend="BULLISH"
                   onOpenMonteCarlo={() => setIsMonteCarloModalOpen(true)}
+                  onOpenBacktest={() => setIsBacktestModalOpen(true)}
+                  onOpenAlerts={() => setIsAlertModalOpen(true)}
+                  unreadAlertsCount={unreadAlertsCount}
                 />
               </div>
 
@@ -690,6 +731,23 @@ export default function TradingLabPage() {
           (symbol === 'XAUUSD' ? 2044 : 1.081)
         }
         symbol={symbol}
+      />
+
+      {/* مودال آزمایشگاه جامع بک‌تست تاریخی چند سبکه */}
+      <MultiStyleBacktestModal
+        isOpen={isBacktestModalOpen}
+        onClose={() => setIsBacktestModalOpen(false)}
+        candles={replayState.visibleCandles}
+        symbol={symbol}
+      />
+
+      {/* مرکز دیدبان و مدیریت هشدارهای هوشمند */}
+      <SignalAlertModal
+        isOpen={isAlertModalOpen}
+        onClose={() => {
+          setIsAlertModalOpen(false);
+          setUnreadAlertsCount(SignalAlertDispatcher.getUnreadCount());
+        }}
       />
     </main>
   );

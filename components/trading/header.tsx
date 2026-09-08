@@ -19,6 +19,7 @@ import {
   Waves,
   Flame,
   Minimize2,
+  Bell,
 } from 'lucide-react';
 import { PWAInstallButton } from './pwa-install-button';
 import { SystemHealthBadge } from './system-health-badge';
@@ -45,6 +46,8 @@ interface HeaderProps {
   currentEnvironment?: TradingEnvironment;
   onChangeEnvironment?: (env: TradingEnvironment) => void;
   marketRegime?: MarketRegimeAnalysis;
+  onOpenAlertModal?: () => void;
+  unreadAlertsCount?: number;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -61,6 +64,8 @@ export const Header: React.FC<HeaderProps> = ({
   currentEnvironment = 'BROKER_DEMO',
   onChangeEnvironment,
   marketRegime,
+  onOpenAlertModal,
+  unreadAlertsCount = 0,
 }) => {
   const [showLiveBlockedModal, setShowLiveBlockedModal] = useState(false);
 
@@ -180,6 +185,23 @@ export const Header: React.FC<HeaderProps> = ({
               <span className="font-bold">{marketRegime.headlineFa}</span>
               <span className="font-mono text-[10px] opacity-80">({marketRegime.confidence}%)</span>
             </div>
+          )}
+
+          {/* دکمه باز کردن هشدارهای هوشمند */}
+          {onOpenAlertModal && (
+            <button
+              type="button"
+              onClick={onOpenAlertModal}
+              className="p-2 rounded-xl bg-[#161c28] hover:bg-cyan-950/60 text-cyan-300 border border-cyan-800/60 flex items-center gap-1.5 transition-colors text-[11px] relative"
+              title="دیدبان هشدارهای معاملاتی هوشمند و تنظیمات صدا"
+            >
+              <Bell className="w-4 h-4 text-cyan-400" />
+              {unreadAlertsCount > 0 && (
+                <span className="absolute -top-1 -right-1 bg-cyan-500 text-black text-[9px] font-mono font-black px-1.5 py-0.2 rounded-full border border-[#11141b] shadow-sm">
+                  {unreadAlertsCount}
+                </span>
+              )}
+            </button>
           )}
 
           {/* دکمه نصب PWA */}

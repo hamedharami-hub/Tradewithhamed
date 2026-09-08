@@ -18,6 +18,8 @@ import { runMultiStyleRegimesTestSuite } from '@/lib/core/__tests__/multi-style-
 import { runTacticalCockpitTestSuite } from '@/lib/core/__tests__/tactical-cockpit.test';
 import { runMultiAgentCouncilTestSuite } from '@/lib/core/__tests__/multi-agent-council.test';
 import { runMonteCarloTestSuite } from '@/lib/core/__tests__/monte-carlo.test';
+import { runSignalAlertsTestSuite } from '@/lib/core/__tests__/signal-alerts.test';
+import { runMultiStyleBacktesterTestSuite } from '@/lib/core/__tests__/multi-style-backtester.test';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -87,6 +89,12 @@ export async function GET() {
     // نتایج آزمون‌های موتور مونت‌کارلو ۱۰۰۰ مسیری و ارزیابی ریسک احتمالاتی (Monte Carlo GBM Engine)
     const monteCarloResults = runMonteCarloTestSuite();
 
+    // نتایج آزمون‌های سیستم هوشمند ارسال هشدار چندتایم‌فریمه و اعلان‌های صوتی (Signal Alerts & Dispatcher)
+    const signalAlertResults = runSignalAlertsTestSuite();
+
+    // نتایج آزمون‌های موتور جامع بک‌تست تاریخی چند سبکه و خروج پله‌ای (Multi-Style Historical Backtester)
+    const backtesterResults = runMultiStyleBacktesterTestSuite();
+
     const combined = [
       ...coreResults,
       ...ctraderResults,
@@ -107,6 +115,8 @@ export async function GET() {
       ...tacticalCockpitResults,
       ...councilResults,
       ...monteCarloResults,
+      ...signalAlertResults,
+      ...backtesterResults,
     ];
     const allPassed = combined.every(t => t.passed);
 

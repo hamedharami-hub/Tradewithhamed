@@ -15,6 +15,8 @@ import {
   Sliders,
   TrendingUp,
   TrendingDown,
+  BarChart3,
+  Bell,
 } from 'lucide-react';
 
 interface MultiTimeframeSyncViewProps {
@@ -23,6 +25,9 @@ interface MultiTimeframeSyncViewProps {
   macroTrend?: 'BULLISH' | 'BEARISH' | 'RANGING';
   macroLevels?: MultiTimeframeLevel[];
   onOpenMonteCarlo?: () => void;
+  onOpenBacktest?: () => void;
+  onOpenAlerts?: () => void;
+  unreadAlertsCount?: number;
 }
 
 export const MultiTimeframeSyncView: React.FC<MultiTimeframeSyncViewProps> = ({
@@ -31,6 +36,9 @@ export const MultiTimeframeSyncView: React.FC<MultiTimeframeSyncViewProps> = ({
   macroTrend = 'BULLISH',
   macroLevels = [],
   onOpenMonteCarlo,
+  onOpenBacktest,
+  onOpenAlerts,
+  unreadAlertsCount = 0,
 }) => {
   const [isCrosshairSynced, setIsCrosshairSynced] = useState<boolean>(true);
   const [activeMacroTF, setActiveMacroTF] = useState<'H1' | 'H4'>('H1');
@@ -100,8 +108,8 @@ export const MultiTimeframeSyncView: React.FC<MultiTimeframeSyncViewProps> = ({
           </div>
         </div>
 
-        {/* دکمه‌های وضعیت همگام‌سازی و مونت‌کارلو */}
-        <div className="flex items-center gap-1.5">
+        {/* دکمه‌های وضعیت همگام‌سازی، بک‌تست، اعلان‌ها و مونت‌کارلو */}
+        <div className="flex items-center gap-1.5 flex-wrap">
           <button
             type="button"
             onClick={() => setIsCrosshairSynced(!isCrosshairSynced)}
@@ -115,6 +123,33 @@ export const MultiTimeframeSyncView: React.FC<MultiTimeframeSyncViewProps> = ({
             <Crosshair className="w-3 h-3" />
             <span>کراس‌هیر {isCrosshairSynced ? 'همگام' : 'جدا'}</span>
           </button>
+
+          {onOpenAlerts && (
+            <button
+              type="button"
+              onClick={onOpenAlerts}
+              className="px-2.5 py-1 rounded-lg text-[10px] font-bold bg-[#141b2b] text-cyan-300 border border-cyan-800/70 hover:bg-cyan-950 flex items-center gap-1 transition-colors relative"
+              title="مشاهده هشدارهای هوشمند و تنظیمات صدا"
+            >
+              <Bell className="w-3 h-3 text-cyan-400" />
+              <span>هشدارها</span>
+              {unreadAlertsCount > 0 && (
+                <span className="w-2 h-2 rounded-full bg-cyan-400 animate-ping" />
+              )}
+            </button>
+          )}
+
+          {onOpenBacktest && (
+            <button
+              type="button"
+              onClick={onOpenBacktest}
+              className="px-2.5 py-1 rounded-lg text-[10px] font-bold bg-[#181a28] text-purple-300 border border-purple-800/70 hover:bg-purple-950 flex items-center gap-1 transition-colors"
+              title="بک‌تست تاریخی چند سبکه با اعتبارسنجی شورا و مونت‌کارلو"
+            >
+              <BarChart3 className="w-3 h-3 text-purple-400" />
+              <span>بک‌تست تاریخی</span>
+            </button>
+          )}
 
           {onOpenMonteCarlo && (
             <button

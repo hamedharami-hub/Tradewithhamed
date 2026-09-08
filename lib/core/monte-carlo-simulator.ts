@@ -197,6 +197,7 @@ export class MonteCarloSimulator {
     return {
       config,
       probabilityOfProfit,
+      probabilityHittingTarget: probabilityOfProfit,
       probabilityOfStopLoss,
       expectedMaxDrawdownPercent,
       riskOfRuin,
@@ -211,5 +212,28 @@ export class MonteCarloSimulator {
       persianRiskAssessment,
       isTradeViable,
     };
+  }
+
+  /**
+   * متد کمکی و خلاصه‌شده جهت فراخوانی سریع شبیه‌سازی در بک‌تستر و هشدارها
+   */
+  public static simulate(params: {
+    initialPrice: number;
+    targetPrice: number;
+    stopLossPrice: number;
+    iterations?: number;
+    stepsPerPath?: number;
+    volatility?: number;
+    seed?: number;
+  }): MonteCarloSimulationResult {
+    return this.runSimulation({
+      initialPrice: params.initialPrice,
+      targetPrice: params.targetPrice,
+      stopLossPrice: params.stopLossPrice,
+      iterations: params.iterations,
+      steps: params.stepsPerPath,
+      annualizedVolatility: params.volatility,
+      seed: params.seed,
+    });
   }
 }

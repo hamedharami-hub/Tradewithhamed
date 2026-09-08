@@ -25,6 +25,7 @@ export interface PercentileStepPoint {
 export interface MonteCarloSimulationResult {
   config: MonteCarloSimulationConfig;
   probabilityOfProfit: number;       // احتمال لمس حد سود قبل از حد ضرر (درصد ۰ تا ۱۰۰)
+  probabilityHittingTarget: number;  // نام مستعار هم‌معنی probabilityOfProfit
   probabilityOfStopLoss: number;     // احتمال لمس حد ضرر قبل از حد سود (درصد ۰ تا ۱۰۰)
   expectedMaxDrawdownPercent: number;// حداکثر افت سرمایه مورد انتظار در طول مسیرها (درصد)
   riskOfRuin: number;                // احتمال نابودی سرمایه بر مبنای استاپ یا افت فراتر از ۵٪
