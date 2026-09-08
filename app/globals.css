@@ -38,6 +38,45 @@ body {
   font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
 }
 
+/* اجزای قدیمی میزهای معاملاتی هنوز از رنگ‌های ثابتِ نسخه تاریک استفاده می‌کنند.
+   این نگاشت تم روشن را در همه فضای کاری‌ها یکدست می‌کند، بدون تغییر رفتار اجزا. */
+html.light [class*="bg-[#"],
+html.light [class*="bg-slate-900"],
+html.light [class*="bg-slate-800"],
+html.light [class*="bg-zinc-900"],
+html.light [class*="bg-zinc-800"] {
+  background-color: var(--bg-surface) !important;
+}
+
+html.light [class*="border-slate-"],
+html.light [class*="border-zinc-"],
+html.light [class*="border-[#"] {
+  border-color: var(--border-subtle) !important;
+}
+
+html.light [class*="text-white"],
+html.light [class*="text-slate-100"],
+html.light [class*="text-slate-200"],
+html.light [class*="text-slate-300"],
+html.light [class*="text-zinc-100"],
+html.light [class*="text-zinc-200"],
+html.light [class*="text-zinc-300"],
+html.light [class*="text-[#"] {
+  color: var(--text-primary) !important;
+}
+
+html.light [class*="text-slate-400"],
+html.light [class*="text-slate-500"],
+html.light [class*="text-zinc-400"] {
+  color: var(--text-secondary) !important;
+}
+
+@media (max-width: 639px) {
+  button {
+    min-height: 44px;
+  }
+}
+
 /* اسکرول‌بار نرم و مدرن متناسب با تم */
 ::-webkit-scrollbar {
   width: 6px;

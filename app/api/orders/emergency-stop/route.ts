@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { CTraderOMS } from '@/lib/server/ctrader-oms';
 import { ExecutorManager } from '@/lib/server/executor-manager';
+import { getOperatorSession } from '@/lib/server/operator-session';
 
 export async function GET() {
   return NextResponse.json({
@@ -10,6 +11,10 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
+  if (!getOperatorSession(request)) {
+    return NextResponse.json({ success: false, error: 'UNAUTHENTICATED_SESSION: نشست اپراتور الزامی است.' }, { status: 401 });
+  }
+
   try {
     const body = await request.json();
     const { active, sessionId, epoch, deviceLabel } = body;

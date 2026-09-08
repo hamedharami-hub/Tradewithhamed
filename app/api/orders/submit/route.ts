@@ -2,8 +2,13 @@ import { NextRequest, NextResponse } from 'next/server';
 import { CTraderOMS } from '@/lib/server/ctrader-oms';
 import { OrderSubmissionRequest } from '@/lib/contracts/execution';
 import { RateLimiter } from '@/lib/server/rate-limiter';
+import { getOperatorSession } from '@/lib/server/operator-session';
 
 export async function POST(request: NextRequest) {
+  if (!getOperatorSession(request)) {
+    return NextResponse.json({ success: false, error: 'UNAUTHENTICATED_SESSION: ثبت سفارش به نشست اپراتور نیاز دارد.' }, { status: 401 });
+  }
+
   const clientIp = RateLimiter.extractClientIdentifier(request.headers);
   const rateLimitResult = RateLimiter.checkLimit('ORDER_SUBMIT', clientIp);
 

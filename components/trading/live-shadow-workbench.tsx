@@ -55,9 +55,11 @@ export const LiveShadowWorkbench: React.FC = () => {
     epoch: number;
     activeSessionId: string;
     status: string;
-    switchToken?: string;
   } | null>(null);
   const [isKillNewEntries, setIsKillNewEntries] = useState(false);
+  const [isOperatorAuthenticated, setIsOperatorAuthenticated] = useState(false);
+  const [operatorAccessKey, setOperatorAccessKey] = useState('');
+  const [isUnlockingOperator, setIsUnlockingOperator] = useState(false);
 
   // واکشی دوره‌ای وضعیت زنده قیمت‌ها، تک‌مجری و کلید اضطراری
   useEffect(() => {
@@ -74,12 +76,8 @@ export const LiveShadowWorkbench: React.FC = () => {
           setLiveQuotes(qRes.quotes);
           setFeedStatus(qRes.feedStatus);
         }
-        if (eRes?.state) {
-          setExecutorState({
-            ...eRes.state,
-            switchToken: eRes.switchToken,
-          });
-        }
+        setIsOperatorAuthenticated(eRes?.isAuthenticated === true);
+        setExecutorState(eRes?.isAuthenticated === true && eRes?.state ? eRes.state : null);
         if (kRes) {
           setIsKillNewEntries(!!kRes.isKillNewEntriesActive);
         }
@@ -94,44 +92,67 @@ export const LiveShadowWorkbench: React.FC = () => {
     };
   }, []);
 
-  // واگذاری مجری‌گری بین ویندوز و گوشی پیکسل (W4 Gate B) با توکن احراز هویت
-  const handleSwitchExecutor = async (targetDevice: 'windows' | 'pixel') => {
+  const handleUnlockOperator = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!operatorAccessKey) return;
+    setIsUnlockingOperator(true);
+    setActionNotice(null);
     try {
-      let currentSwitchToken = executorState?.switchToken;
-      let activeSession = executorState?.activeSessionId;
-      let activeEpoch = executorState?.epoch;
-
-      if (!currentSwitchToken) {
-        const fresh = await fetch('/api/executor').then(r => r.json()).catch(() => null);
-        if (fresh?.switchToken) {
-          currentSwitchToken = fresh.switchToken;
-          activeSession = fresh.state?.activeSessionId;
-          activeEpoch = fresh.state?.epoch;
-        }
+      const response = await fetch('/api/operator/session', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ accessKey: operatorAccessKey }),
+      });
+      const data = await response.json();
+      if (!response.ok || !data.authenticated) {
+        setActionNotice(
+          data.error === 'OPERATOR_ACCESS_NOT_CONFIGURED'
+            ? 'کنترل اپراتور در سرور پیکربندی نشده است. OPERATOR_ACCESS_KEY و OPERATOR_SESSION_SECRET را تنظیم کنید.'
+            : 'بازگشایی کنترل اپراتور انجام نشد. کلید را بررسی کنید.'
+        );
+        return;
       }
 
+      const executorResponse = await fetch('/api/executor');
+      const executorData = await executorResponse.json();
+      setIsOperatorAuthenticated(executorData.isAuthenticated === true);
+      setExecutorState(executorData.isAuthenticated === true ? executorData.state : null);
+      setOperatorAccessKey('');
+      setActionNotice('کنترل اپراتور برای این مرورگر باز شد.');
+    } catch {
+      setActionNotice('ارتباط با سرور برای بازگشایی کنترل اپراتور برقرار نشد.');
+    } finally {
+      setIsUnlockingOperator(false);
+    }
+  };
+
+  const handleLockOperator = async () => {
+    await fetch('/api/operator/session', { method: 'DELETE' }).catch(() => null);
+    setIsOperatorAuthenticated(false);
+    setExecutorState(null);
+    setActionNotice('کنترل اپراتور در این مرورگر قفل شد.');
+  };
+
+  // واگذاری مجری‌گری بین ویندوز و گوشی پیکسل (W4 Gate B) پس از احراز نشست اپراتور
+  const handleSwitchExecutor = async (targetDevice: 'windows' | 'pixel') => {
+    if (!isOperatorAuthenticated || !executorState) {
+      setActionNotice('ابتدا کنترل اپراتور را باز کنید.');
+      return;
+    }
+    try {
       const res = await fetch('/api/executor', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-executor-token': currentSwitchToken || '',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           action: 'switch',
           targetDevice,
           targetSessionId: `${targetDevice}-session-${Date.now()}`,
           userConfirmation: true,
-          switchToken: currentSwitchToken,
-          sessionId: activeSession,
-          epoch: activeEpoch,
         }),
       });
       const data = await res.json();
       if (data.success && data.state) {
-        setExecutorState({
-          ...data.state,
-          switchToken: data.switchToken,
-        });
+        setExecutorState(data.state);
         setActionNotice(`مجری‌گری با موفقیت به ${targetDevice === 'windows' ? 'ویندوز' : 'گوشی پیکسل'} منتقل شد (ایپاک: ${data.state.epoch}).`);
       } else {
         setActionNotice(`خطای تغییر مجری: ${data.error || 'عملیات رد شد'}`);
@@ -143,30 +164,20 @@ export const LiveShadowWorkbench: React.FC = () => {
 
   // فعال/غیرفعال‌سازی سوئیچ اضطراری توقف معاملات جدید (W4 Gate C) با احراز تک‌مجری
   const handleToggleKillSwitch = async () => {
+    if (!isOperatorAuthenticated || !executorState) {
+      setActionNotice('ابتدا کنترل اپراتور را باز کنید.');
+      return;
+    }
     try {
-      let activeSession = executorState?.activeSessionId;
-      let activeEpoch = executorState?.epoch;
-      let activeDevice = executorState?.activeDeviceLabel;
-
-      if (!activeSession || activeEpoch === undefined) {
-        const fresh = await fetch('/api/executor').then(r => r.json()).catch(() => null);
-        if (fresh?.state) {
-          activeSession = fresh.state.activeSessionId;
-          activeEpoch = fresh.state.epoch;
-          activeDevice = fresh.state.activeDeviceLabel;
-          setExecutorState({ ...fresh.state, switchToken: fresh.switchToken });
-        }
-      }
-
       const newActive = !isKillNewEntries;
       const res = await fetch('/api/orders/emergency-stop', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           active: newActive,
-          sessionId: activeSession,
-          epoch: activeEpoch,
-          deviceLabel: activeDevice,
+          sessionId: executorState.activeSessionId,
+          epoch: executorState.epoch,
+          deviceLabel: executorState.activeDeviceLabel,
         }),
       });
       const data = await res.json();
@@ -433,50 +444,81 @@ export const LiveShadowWorkbench: React.FC = () => {
 
         {/* کنترل تک‌مجری بین‌دستگاهی (W4 Gate B) و سوئیچ اضطراری (Gate C) */}
         <div className="p-3.5 rounded-2xl bg-slate-900/90 border border-slate-800 flex flex-col justify-between gap-2">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-1.5">
-              <span className="text-xs text-slate-400">مجری:</span>
-              <span className="font-bold text-cyan-400 text-xs flex items-center gap-1">
-                {executorState?.activeDeviceLabel === 'pixel' ? (
-                  <>
-                    <Smartphone className="w-3.5 h-3.5 text-amber-400" />
-                    <span>پیکسل</span>
-                  </>
-                ) : (
-                  <>
-                    <Laptop className="w-3.5 h-3.5 text-cyan-400" />
-                    <span>ویندوز</span>
-                  </>
-                )}
-              </span>
-              <span className="text-[10px] font-mono text-slate-400 bg-slate-800 px-1.5 py-0.5 rounded border border-slate-700">
-                Epoch: {executorState?.epoch ?? 1}
-              </span>
-            </div>
+          {!isOperatorAuthenticated ? (
+            <form onSubmit={handleUnlockOperator} className="space-y-2" aria-label="بازگشایی کنترل اپراتور">
+              <div className="flex items-center gap-2 text-amber-400">
+                <Lock className="w-4 h-4" />
+                <span className="text-xs font-bold">کنترل اپراتور قفل است</span>
+              </div>
+              <label className="sr-only" htmlFor="operator-access-key">کلید دسترسی اپراتور</label>
+              <input
+                id="operator-access-key"
+                type="password"
+                autoComplete="current-password"
+                value={operatorAccessKey}
+                onChange={(event) => setOperatorAccessKey(event.target.value)}
+                className="w-full rounded-lg bg-slate-800 border border-slate-700 px-3 py-2 text-xs text-white outline-none focus:border-cyan-500"
+                placeholder="کلید دسترسی اپراتور"
+              />
+              <button
+                type="submit"
+                disabled={isUnlockingOperator || !operatorAccessKey}
+                className="w-full min-h-[44px] rounded-xl bg-cyan-500/15 hover:bg-cyan-500/25 disabled:opacity-50 text-cyan-300 border border-cyan-500/30 text-xs font-bold"
+              >
+                {isUnlockingOperator ? 'در حال بازگشایی…' : 'بازگشایی کنترل اپراتور'}
+              </button>
+            </form>
+          ) : (
+            <>
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-1.5">
+                  <span className="text-xs text-slate-400">مجری:</span>
+                  <span className="font-bold text-cyan-400 text-xs flex items-center gap-1">
+                    {executorState?.activeDeviceLabel === 'pixel' ? (
+                      <><Smartphone className="w-3.5 h-3.5 text-amber-400" /><span>پیکسل</span></>
+                    ) : (
+                      <><Laptop className="w-3.5 h-3.5 text-cyan-400" /><span>ویندوز</span></>
+                    )}
+                  </span>
+                  <span className="text-[10px] font-mono text-slate-400 bg-slate-800 px-1.5 py-0.5 rounded border border-slate-700">
+                    Epoch: {executorState?.epoch ?? '—'}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleLockOperator}
+                  className="min-h-[36px] px-2 rounded-lg text-[10px] text-slate-400 hover:text-white border border-slate-700"
+                >
+                  قفل
+                </button>
+              </div>
 
-            <button
-              onClick={() => handleSwitchExecutor(executorState?.activeDeviceLabel === 'windows' ? 'pixel' : 'windows')}
-              className="text-[11px] px-3 py-2 min-h-[44px] rounded-xl bg-slate-800 hover:bg-slate-700 text-cyan-300 border border-cyan-500/30 transition-colors flex items-center justify-center font-medium"
-              title="واگذاری نوبت مجری‌گری با افزایش اتمیک Epoch"
-            >
-              واگذاری به {executorState?.activeDeviceLabel === 'windows' ? 'پیکسل' : 'ویندوز'}
-            </button>
-          </div>
+              <button
+                type="button"
+                onClick={() => handleSwitchExecutor(executorState?.activeDeviceLabel === 'windows' ? 'pixel' : 'windows')}
+                className="text-[11px] px-3 py-2 min-h-[44px] rounded-xl bg-slate-800 hover:bg-slate-700 text-cyan-300 border border-cyan-500/30 transition-colors flex items-center justify-center font-medium"
+                title="واگذاری نوبت مجری‌گری با افزایش اتمیک Epoch"
+              >
+                واگذاری به {executorState?.activeDeviceLabel === 'windows' ? 'پیکسل' : 'ویندوز'}
+              </button>
 
-          <div className="flex items-center justify-between pt-1 border-t border-slate-800/80">
-            <span className="text-xs text-slate-400">سوئیچ اضطراری:</span>
-            <button
-              onClick={handleToggleKillSwitch}
-              className={`px-3 py-2 min-h-[44px] rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors border ${
-                isKillNewEntries
-                  ? 'bg-rose-950 text-rose-300 border-rose-600 animate-pulse'
-                  : 'bg-slate-800 text-slate-400 hover:text-slate-200 border-slate-700'
-              }`}
-            >
-              <AlertTriangle className="w-3.5 h-3.5" />
-              <span>{isKillNewEntries ? 'ورود جدید مسدود (فعال)' : 'عادی (غیرفعال)'}</span>
-            </button>
-          </div>
+              <div className="flex items-center justify-between gap-2 pt-1 border-t border-slate-800/80">
+                <span className="text-xs text-slate-400">سوئیچ اضطراری:</span>
+                <button
+                  type="button"
+                  onClick={handleToggleKillSwitch}
+                  className={`px-3 py-2 min-h-[44px] rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors border ${
+                    isKillNewEntries
+                      ? 'bg-rose-950 text-rose-300 border-rose-600 animate-pulse'
+                      : 'bg-slate-800 text-slate-400 hover:text-slate-200 border-slate-700'
+                  }`}
+                >
+                  <AlertTriangle className="w-3.5 h-3.5" />
+                  <span>{isKillNewEntries ? 'ورود جدید مسدود (فعال)' : 'عادی (غیرفعال)'}</span>
+                </button>
+              </div>
+            </>
+          )}
         </div>
       </div>
 

@@ -2,11 +2,16 @@ import { NextRequest, NextResponse } from 'next/server';
 import { DisasterRecoveryEngine } from '@/lib/server/disaster-recovery';
 import { RateLimiter } from '@/lib/server/rate-limiter';
 import { TokenVault } from '@/lib/server/token-vault';
+import { getOperatorSession } from '@/lib/server/operator-session';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
 export async function GET(req: NextRequest) {
+  if (!getOperatorSession(req)) {
+    return NextResponse.json({ success: false, error: 'UNAUTHENTICATED_SESSION: بازیابی اضطراری به نشست اپراتور نیاز دارد.' }, { status: 401 });
+  }
+
   const clientIp = RateLimiter.extractClientIdentifier(req.headers);
   const rateLimitResult = RateLimiter.checkLimit('DISASTER_RECOVERY', clientIp);
 
@@ -47,6 +52,10 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+  if (!getOperatorSession(req)) {
+    return NextResponse.json({ success: false, error: 'UNAUTHENTICATED_SESSION: بازیابی اضطراری به نشست اپراتور نیاز دارد.' }, { status: 401 });
+  }
+
   const clientIp = RateLimiter.extractClientIdentifier(req.headers);
   const rateLimitResult = RateLimiter.checkLimit('DISASTER_RECOVERY', clientIp);
 

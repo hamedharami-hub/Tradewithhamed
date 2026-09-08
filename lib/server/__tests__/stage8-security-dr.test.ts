@@ -13,6 +13,12 @@ export interface Stage8TestResult {
 
 export async function runStage8SecurityDRTests(): Promise<Stage8TestResult[]> {
   const results: Stage8TestResult[] = [];
+  const previousVaultKey = process.env.CTRADER_TOKEN_ENCRYPTION_KEY;
+  // این مجموعه باید رمزنگاری را در محیط بدون تنظیمات بروکر نیز واقعاً آزمایش کند،
+  // بدون آن‌که کلید آزمایشی پس از پایان تست در فرایند باقی بماند.
+  if (!previousVaultKey) {
+    process.env.CTRADER_TOKEN_ENCRYPTION_KEY = 'TEST_ONLY_STAGE8_VAULT_KEY_NOT_FOR_PRODUCTION_2026';
+  }
 
   // ۱. آزمون رمزنگاری AES-256-GCM و مقاومت در برابر دستکاری
   try {
@@ -401,9 +407,12 @@ export async function runStage8SecurityDRTests(): Promise<Stage8TestResult[]> {
     });
   }
 
-  return results.map(r => ({
+  const normalizedResults = results.map(r => ({
     name: r.name,
     passed: Boolean(r.pass ?? r.passed),
     details: r.details,
   }));
+  if (previousVaultKey === undefined) delete process.env.CTRADER_TOKEN_ENCRYPTION_KEY;
+  else process.env.CTRADER_TOKEN_ENCRYPTION_KEY = previousVaultKey;
+  return normalizedResults;
 }

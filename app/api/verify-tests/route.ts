@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { runAllCoreTests } from '@/lib/core/__tests__/core.test';
 import { runAllCTraderSecurityTests } from '@/lib/server/__tests__/ctrader-security.test';
 import { runStage4ShadowTests } from '@/lib/core/__tests__/shadow-stage4.test';
@@ -24,11 +24,16 @@ import { runPhase6TestSuite } from '@/lib/core/__tests__/phase6-apex-synthesis.t
 import { CTraderOMS } from '@/lib/server/ctrader-oms';
 import { JournalService } from '@/lib/server/journal-service';
 import { ExecutorManager } from '@/lib/server/executor-manager';
+import { getOperatorSession } from '@/lib/server/operator-session';
+import { runOperatorSessionTests } from '@/lib/server/__tests__/operator-session.test';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
-export async function GET() {
+export async function GET(request: NextRequest) {
+  if (!getOperatorSession(request)) {
+    return NextResponse.json({ status: 'UNAUTHENTICATED', error: 'نشست اپراتور برای اجرای آزمون‌های سرور الزامی است.' }, { status: 401 });
+  }
   // ثبت وضعیت فعال سرور جهت ایزولاسیون تست‌ها و جلوگیری از دستکاری وضعیت زنده
   const savedOMS = CTraderOMS.getAllRecords();
   const savedIdemp = CTraderOMS.getIdempotencyEntries();
@@ -110,6 +115,7 @@ export async function GET() {
 
     // نتایج آزمون‌های جامع سنتز اوج و انطباق شورای هوش مصنوعی (Phase 6: The Apex Synthesis)
     const phase6Results = runPhase6TestSuite();
+    const operatorSessionResults = await runOperatorSessionTests();
 
     const combined = [
       ...coreResults,
@@ -134,6 +140,7 @@ export async function GET() {
       ...signalAlertResults,
       ...backtesterResults,
       ...phase6Results,
+      ...operatorSessionResults,
     ];
     const allPassed = combined.every(t => t.passed);
 
