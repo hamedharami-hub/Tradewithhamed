@@ -148,8 +148,8 @@ export function runTacticalCockpitTestSuite(): TacticalCockpitTestResult[] {
     const passed =
       res.success === true &&
       res.remainingLots === 0.1 &&
-      res.realizedPnl === 40 && // 0.1 لات * 4 دلار * 100 = 40 دلار سود
-      broker.getState().accountBalance === 10040 &&
+      Math.abs(res.realizedPnl - 39.4) < 0.01 && // 0.1 لات * 4 دلار * 100 = 40 دلار سود ناخالص - 0.60 دلار کارمزد = 39.40 دلار خالص
+      Math.abs(broker.getState().accountBalance - 10039.4) < 0.01 &&
       position.stopLoss === 2050.0 &&
       position.isBreakevenActive === true;
 

@@ -54,7 +54,8 @@ export class LiveMarketFeed {
   private lastHeartbeatTimestamp: number = Date.now();
   private maxStaleThresholdMs: number = 4000;
   private isSimulatedLiveActive: boolean = true;
-  private hasRealConnection: boolean = false;
+  private symbolLiveConnections: Map<string, boolean> = new Map();
+  private symbolLastHeartbeats: Map<string, number> = new Map();
   private timer: NodeJS.Timeout | null = null;
 
   // قیمت‌های پایه پیش‌فرض
@@ -107,6 +108,11 @@ export class LiveMarketFeed {
       this.lastHeartbeatTimestamp = now;
 
       for (const [sym, currentPrice] of Object.entries(this.currentBasePrices)) {
+        // اگر این نماد به دیتای لایو متصل شده، شبیه‌ساز تصادفی برای آن اجرا نمی‌شود
+        if (this.symbolLiveConnections.get(sym)) {
+          continue;
+        }
+
         // نوسان گام تصادفی (Random Walk)
         const volatility = sym === 'XAUUSD' ? 0.35 : 0.00008;
         const delta = (Math.random() - 0.495) * volatility;
@@ -127,7 +133,7 @@ export class LiveMarketFeed {
           ask,
           spreadPips,
           timestamp: now,
-          quality: this.hasRealConnection ? 'LIVE' : 'SIMULATED',
+          quality: 'SIMULATED',
         });
       }
     }, 1000);
@@ -137,16 +143,18 @@ export class LiveMarketFeed {
    * دریافت آخرین مظنه قیمت یک نماد با ارزیابی برخط تازگی داده
    */
   public getQuote(symbol: string): CTraderLiveQuote | null {
-    const quote = this.quotes.get(symbol.toUpperCase());
+    const sym = symbol.toUpperCase();
+    const quote = this.quotes.get(sym);
     if (!quote) return null;
 
     const now = Date.now();
     const delay = now - quote.timestamp;
     const isStale = delay > this.maxStaleThresholdMs;
+    const isLive = this.symbolLiveConnections.get(sym) === true;
 
     return {
       ...quote,
-      quality: isStale ? 'STALE' : (this.hasRealConnection ? 'LIVE' : 'SIMULATED'),
+      quality: isStale ? 'STALE' : (isLive ? 'LIVE' : 'SIMULATED'),
     };
   }
 
@@ -166,9 +174,9 @@ export class LiveMarketFeed {
    * تزریق دستی داده زنده از سرور cTrader (هنگام اتصال واقعی پروتوباف)
    */
   public injectLiveQuote(quote: CTraderLiveQuote): void {
-    this.hasRealConnection = true;
-    this.isSimulatedLiveActive = false; // توقف گام تصادفی شبیه‌ساز برای جلوگیری از پولوشن داده زنده
     const sym = quote.symbol.toUpperCase();
+    this.symbolLiveConnections.set(sym, true);
+    this.symbolLastHeartbeats.set(sym, Date.now());
     this.currentBasePrices[sym] = (quote.bid + quote.ask) / 2;
 
     this.quotes.set(sym, {
@@ -184,7 +192,8 @@ export class LiveMarketFeed {
    * بازنشانی فید به حالت اولیه جهت ایزولاسیون کامل تست‌ها
    */
   public resetForTesting(): void {
-    this.hasRealConnection = false;
+    this.symbolLiveConnections.clear();
+    this.symbolLastHeartbeats.clear();
     this.isSimulatedLiveActive = true;
     this.currentBasePrices = {
       XAUUSD: 2652.45,
@@ -203,7 +212,8 @@ export class LiveMarketFeed {
     const isConnected = delaySinceHeartbeat < 15000;
     const isStale = delaySinceHeartbeat > this.maxStaleThresholdMs;
 
-    let dataMode: 'LIVE' | 'STALE' | 'UNKNOWN' | 'SIMULATED' = this.hasRealConnection ? 'LIVE' : 'SIMULATED';
+    const hasAnyLive = Array.from(this.symbolLiveConnections.values()).some(v => v);
+    let dataMode: 'LIVE' | 'STALE' | 'UNKNOWN' | 'SIMULATED' = hasAnyLive ? 'LIVE' : 'SIMULATED';
     if (!isConnected) {
       dataMode = 'UNKNOWN';
     } else if (isStale) {

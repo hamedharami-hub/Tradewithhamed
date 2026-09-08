@@ -116,7 +116,8 @@ export class PositionScalingEngine {
       const remainingLots = Number((position.volumeLots - closeVolume).toFixed(2));
 
       const winPips = Math.abs(tp1TargetPrice - position.entryPrice);
-      const realizedPnl = Number((closeVolume * winPips * spec.contractSize).toFixed(2));
+      const commission = Number((closeVolume * 6.0).toFixed(2));
+      const realizedPnl = Number((closeVolume * winPips * spec.contractSize - commission).toFixed(2));
 
       // محاسبه حد ضرر جدید در نقطه ورود همراه با بافر اسپرد (Risk-Free)
       const buffer = config.breakevenBufferPips * spec.pipSize;

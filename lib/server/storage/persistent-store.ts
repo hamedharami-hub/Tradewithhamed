@@ -101,13 +101,49 @@ export class PersistentStore {
   }
 
   /**
-   * ذخیره‌سازی اتمیک وضعیت روی دیسک
+   * جایگزینی اتمیک فایل با تلاش مجدد در صورت قفل موقت در ویندوز
+   */
+  private static atomicReplace(tmpFile: string, targetFile: string): void {
+    const maxRetries = 6;
+    let lastError: any = null;
+
+    for (let attempt = 0; attempt < maxRetries; attempt++) {
+      try {
+        fs.renameSync(tmpFile, targetFile);
+        return;
+      } catch (err: any) {
+        lastError = err;
+        if (err.code === 'EPERM' || err.code === 'EBUSY' || err.code === 'EACCES') {
+          const waitMs = (attempt + 1) * 10;
+          try {
+            Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, waitMs);
+          } catch {}
+          continue;
+        }
+        break;
+      }
+    }
+
+    // فال‌بک کنترل‌شده با کپی و پاکسازی فایل موقت
+    try {
+      fs.copyFileSync(tmpFile, targetFile);
+      try { fs.unlinkSync(tmpFile); } catch {}
+      return;
+    } catch (copyErr) {
+      try { if (fs.existsSync(tmpFile)) fs.unlinkSync(tmpFile); } catch {}
+      throw lastError || copyErr;
+    }
+  }
+
+  /**
+   * ذخیره‌سازی اتمیک و تراکنشی وضعیت روی دیسک با سیاست شکست-بسته (Fail-Closed)
    */
   public static saveState(updates: Partial<PersistentStorageSchema>): void {
     if (!this.isInitialized) {
       this.init();
     }
 
+    const previousCache = { ...this.memoryCache };
     this.memoryCache = {
       ...this.memoryCache,
       ...updates,
@@ -122,20 +158,12 @@ export class PersistentStore {
       const tmpFile = `${this.storageFile}.tmp.${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
       fs.writeFileSync(tmpFile, JSON.stringify(this.memoryCache, null, 2), 'utf-8');
 
-      try {
-        fs.copyFileSync(tmpFile, this.storageFile);
-        try {
-          fs.unlinkSync(tmpFile);
-        } catch {}
-      } catch {
-        // Fallback for direct write
-        fs.writeFileSync(this.storageFile, JSON.stringify(this.memoryCache, null, 2), 'utf-8');
-        try {
-          if (fs.existsSync(tmpFile)) fs.unlinkSync(tmpFile);
-        } catch {}
-      }
+      this.atomicReplace(tmpFile, this.storageFile);
     } catch (err) {
-      console.error('[PersistentStore] Error writing state to file:', err);
+      // اصل شکست امن: در صورت شکست ذخیره‌سازی، کش حافظه به وضعیت قبلی برمی‌گردد و خطا پرتاب می‌شود
+      this.memoryCache = previousCache;
+      console.error('[PersistentStore] Critical Error writing state to file:', err);
+      throw new Error(`PERSISTENCE_FATAL: ذخیره وضعیت در دیسک شکست خورد: ${(err as Error).message}`);
     }
   }
 

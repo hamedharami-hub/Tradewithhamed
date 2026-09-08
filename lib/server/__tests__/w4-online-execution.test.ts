@@ -71,10 +71,13 @@ export async function runW4OnlineExecutionTests(): Promise<W4TestResult[]> {
     });
 
     const xauLiveQuote = feed.getQuote('XAUUSD');
+    const eurAfterXauLive = feed.getQuote('EURUSD');
     const liveQualityOk = Boolean(
       xauLiveQuote &&
       xauLiveQuote.quality === 'LIVE' &&
-      xauLiveQuote.bid === 2685.20
+      xauLiveQuote.bid === 2685.20 &&
+      eurAfterXauLive &&
+      eurAfterXauLive.quality === 'SIMULATED'
     );
 
     const passed = simQualityOk && liveQualityOk;

@@ -64,6 +64,12 @@ export class CTraderOMS {
   private static outbox: Map<string, TransactionalOutboxRecord> = sharedOutbox;
   private static idempotencyMap: Map<string, string> = sharedIdempotencyMap;
   private static isTestRunning: boolean = false;
+  private static isBrokerConnected: boolean = false;
+  private static verifiedBrokerOrderHandler?: (req: OrderSubmissionRequest) => Promise<{
+    brokerOrderId: string;
+    stopLossConfirmed: boolean;
+    takeProfitConfirmed: boolean;
+  }>;
 
   public static setIsTestRunning(active: boolean): void {
     this.isTestRunning = active;
@@ -71,6 +77,24 @@ export class CTraderOMS {
 
   public static getIsTestRunning(): boolean {
     return this.isTestRunning;
+  }
+
+  public static setBrokerConnection(connected: boolean): void {
+    this.isBrokerConnected = connected;
+  }
+
+  public static isBrokerOnline(): boolean {
+    return this.isBrokerConnected;
+  }
+
+  public static registerBrokerOrderHandler(
+    handler?: (req: OrderSubmissionRequest) => Promise<{
+      brokerOrderId: string;
+      stopLossConfirmed: boolean;
+      takeProfitConfirmed: boolean;
+    }>
+  ): void {
+    this.verifiedBrokerOrderHandler = handler;
   }
 
   /**
@@ -91,6 +115,8 @@ export class CTraderOMS {
     this.outbox.clear();
     this.idempotencyMap.clear();
     this.isTestRunning = true;
+    this.isBrokerConnected = false;
+    this.verifiedBrokerOrderHandler = undefined;
     globalForOMS.killNewEntriesActive = false;
     this.syncPersistent();
     ExecutorManager.resetForTesting();
@@ -351,6 +377,24 @@ export class CTraderOMS {
         if (!isConfigured) {
           record.state = 'REJECTED_BY_BROKER';
           record.brokerError = reason || 'BROKER_NOT_CONFIGURED: تنظیمات یا اتصال به بروکر cTrader برقرار نیست.';
+          record.isBrokerStopLossConfirmed = false;
+          record.isBrokerTakeProfitConfirmed = false;
+          this.syncPersistent();
+          return {
+            success: false,
+            state: 'REJECTED_BY_BROKER',
+            record,
+            requiresReconciliation: false,
+            error: record.brokerError,
+          };
+        }
+
+        // الزام عدم جعل شناسه و تایید حد ضرر: در صورت عدم اتصال واقعی به بروکر، سفارش با خطای صریح قطع ارتباط رد می‌شود
+        if (!this.isBrokerConnected) {
+          record.state = 'REJECTED_BY_BROKER';
+          record.brokerError = 'BROKER_DISCONNECTED: اتصال بلادرنگ به سرور معاملات بروکر cTrader برقرار نیست. ثبت سفارش و اخذ تاییدیه حد ضرر منوط به برقراری ارتباط زنده با سرور بروکر است.';
+          record.isBrokerStopLossConfirmed = false;
+          record.isBrokerTakeProfitConfirmed = false;
           this.syncPersistent();
           return {
             success: false,
@@ -394,19 +438,53 @@ export class CTraderOMS {
         };
       }
 
-      // سناریوی اجرای موفق در دمو با تایید حد ضرر و سود
-      record.state = 'ACKNOWLEDGED';
-      record.acknowledgedAt = Date.now();
-      record.brokerOrderId = `CT-ORD-${Math.floor(1000000 + Math.random() * 9000000)}`;
-      record.isBrokerStopLossConfirmed = true;
-      record.isBrokerTakeProfitConfirmed = true;
-      this.syncPersistent();
+      // در صورتی که اتصال واقعی به بروکر و هندلر تأیید شده وجود داشته باشد
+      if (this.verifiedBrokerOrderHandler) {
+        const brokerRes = await this.verifiedBrokerOrderHandler(request);
+        record.state = 'ACKNOWLEDGED';
+        record.acknowledgedAt = Date.now();
+        record.brokerOrderId = brokerRes.brokerOrderId;
+        record.isBrokerStopLossConfirmed = brokerRes.stopLossConfirmed;
+        record.isBrokerTakeProfitConfirmed = brokerRes.takeProfitConfirmed;
+        this.syncPersistent();
 
+        return {
+          success: true,
+          state: 'ACKNOWLEDGED',
+          record,
+          requiresReconciliation: false,
+        };
+      }
+
+      // در صورتی که در محیط تست خودکار هستیم
+      if (this.isTestRunning) {
+        record.state = 'ACKNOWLEDGED';
+        record.acknowledgedAt = Date.now();
+        record.brokerOrderId = `CT-ORD-${Math.floor(1000000 + Math.random() * 9000000)}`;
+        record.isBrokerStopLossConfirmed = true;
+        record.isBrokerTakeProfitConfirmed = true;
+        this.syncPersistent();
+
+        return {
+          success: true,
+          state: 'ACKNOWLEDGED',
+          record,
+          requiresReconciliation: false,
+        };
+      }
+
+      // اگر خارج از تست است و اتصال واقعی تایید نشده است
+      record.state = 'REJECTED_BY_BROKER';
+      record.brokerError = 'BROKER_DISCONNECTED: پاسخی از سرور بروکر cTrader دریافت نشد.';
+      record.isBrokerStopLossConfirmed = false;
+      record.isBrokerTakeProfitConfirmed = false;
+      this.syncPersistent();
       return {
-        success: true,
-        state: 'ACKNOWLEDGED',
+        success: false,
+        state: 'REJECTED_BY_BROKER',
         record,
         requiresReconciliation: false,
+        error: record.brokerError,
       };
     } catch (networkError) {
       // قاعده بحرانی ایمنی: تایم‌اوت شبکه => انتقال قطعی به UNKNOWN_RECONCILE_REQUIRED
@@ -435,6 +513,14 @@ export class CTraderOMS {
     const record = this.outbox.get(intentId);
     if (!record) {
       return { reconciled: false, record: null, message: 'سفارش مورد نظر در صندوق خروجی یافت نشد.' };
+    }
+
+    if (!this.isTestRunning && !this.isBrokerConnected) {
+      return {
+        reconciled: false,
+        record,
+        message: 'BROKER_DISCONNECTED: امکان بازتطبیق سفارش به دلیل عدم برقراری اتصال فعال با سرور بروکر cTrader وجود ندارد.',
+      };
     }
 
     record.state = 'RECONCILED';
