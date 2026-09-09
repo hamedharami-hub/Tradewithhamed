@@ -2,7 +2,7 @@
 
 https://github.com/hamedharami-hub/Tradewithhamed
 
-آخرین commit انتقال: `396cc89`.
+آخرین commit انتقال: `df39976`.
 
 هدف پروژه ساخت یک آزمایشگاه Quantitative Trading برای Backtest، Walk-Forward، Out-of-Sample، Bootstrap و Paper-Forward است. Live Trading و هرگونه broker write ممنوع است. AI باید فقط به‌عنوان فیلتر/مشاور ساختاریافته و قابل‌اندازه‌گیری وارد شود، نه تولیدکنندهٔ آزاد سیگنال.
 

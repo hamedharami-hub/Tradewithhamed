@@ -11,7 +11,7 @@ https://github.com/hamedharami-hub/Tradewithhamed
 آخرین commit معتبر انتقال:
 
 ```text
-396cc89 docs: finalize stage7 gate and stage8 paper forward runbook
+df39976 docs: add cross-account project handoff package
 ```
 
 Commit زیرساخت اصلی قبل از آن نیز در تاریخچهٔ Git موجود است:
