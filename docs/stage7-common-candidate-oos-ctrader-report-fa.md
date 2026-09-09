@@ -122,3 +122,46 @@ npm run stage7:gpu:30trades
 - Broker writes: **صفر؛ ایمن**
 
 بنابراین در این مرحله نباید Hybrid یا هیچ mode دیگری را به‌عنوان استراتژی تأییدشده معرفی کرد.
+
+
+## نتیجهٔ نهایی benchmark چندسالهٔ ۱۵ دقیقه‌ای
+
+برای کاهش اثر کمبود نمونه، یک آزمایش از پیش‌تعریف‌شده روی dataset چندسالهٔ GBPUSD با تایم‌فریم ۱۵ دقیقه و Candidate Set مشترک ۱۵۰تایی اجرا شد. Candidate Set برای تمام modeها یکسان بود و پس از مشاهدهٔ نتایج تغییر نکرد.
+
+| مورد | مقدار |
+|---|---:|
+| train bars | 84,893 |
+| OOS bars | 36,384 |
+| شروع OOS | 2023-07-11 04:45 UTC |
+| Candidate Set مشترک | 150 |
+| حداقل Gate | 30 معامله |
+
+| حالت | وضعیت | Approved | معاملات | Win Rate | Net Profit | Max Drawdown | Gate |
+|---|---|---:|---:|---:|---:|---:|---|
+| OFF | MEASURED | 0 | 354 | 33.9٪ | -3,683.50 | 38.04 | عبور |
+| DETERMINISTIC | MEASURED | 150 | 343 | 33.8٪ | -3,728.41 | 37.50 | عبور |
+| ONLINE | MEASURED | 97 | 89 | 42.7٪ | -158.67 | 4.57 | عبور |
+| HYBRID | MEASURED | 103 | 95 | 43.2٪ | -164.64 | 4.73 | عبور |
+| WEBLLM | BLOCKED | 0 | 0 | — | — | — | عدم ارزیابی |
+
+### تفسیر نهایی
+
+Gate حداقل ۳۰ معامله برای `ONLINE` و `HYBRID` اکنون با فاصلهٔ مناسب عبور کرده است؛ Hybrid با ۹۵ معامله و Win Rate برابر ۴۳.۲٪، نسبت به اجرای بدون AI و Deterministic از نظر کاهش تعداد معاملات و drawdown بسیار فیلترشده‌تر است. بااین‌حال Net Profit در مدل هزینهٔ فعلی منفی است؛ بنابراین عبور از Gate به‌تنهایی مجوز promotion یا Live Trading نیست و این نتیجه فعلاً برای Paper-Forward و تحلیل بیشتر معتبر است.
+
+`WEBLLM` هنوز Gate را رد نکرده است، نه به‌دلیل عملکرد ضعیف، بلکه به‌دلیل `BLOCKED` بودن اجرای واقعی WebGPU در محیط فعلی. هیچ نتیجهٔ شبیه‌سازی‌شده‌ای به‌عنوان عملکرد WebLLM ثبت نشده است. برای ارزیابی آن باید همین Candidate Set و پروتکل روی Browser مجهز به GPU واقعی اجرا شود.
+
+Artifact کامل benchmark در محیط محلی تولید شده است:
+
+```text
+data/runs/stage7-common-gbpusd-15m-2020-2024-all-modes.json
+```
+
+این فایل به‌دلیل حجم داده و سیاست repository در Git commit نمی‌شود؛ گزارش عددی و قابل بازتولید در همین سند ثبت شده است.
+
+### تصمیم Stage 7
+
+- `ONLINE`: **Measured / Paper-Forward eligible؛ بدون promotion خودکار**
+- `HYBRID`: **Measured / Paper-Forward eligible؛ بدون promotion خودکار**
+- `WEBLLM`: **BLOCKED؛ نیازمند GPU/WebGPU واقعی**
+- Live trading: **ممنوع و خارج از محدودهٔ این پروژه**
+- گام بعدی: اجرای Paper-Forward read-only سی‌روزه با ثبت تفکیکی session، weekday، هزینه، drawdown و gapهای feed طبق runbook Stage 8.
