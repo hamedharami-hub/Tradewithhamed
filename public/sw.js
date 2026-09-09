@@ -3,7 +3,7 @@
 
 // Bump this whenever the app shell or Next.js chunks change. Keeping an old
 // document cached can reference removed chunks and leave the preview stuck.
-const CACHE_NAME = 'hamed-trading-lab-v3';
+const CACHE_NAME = 'hamed-trading-lab-v4';
 const PRESERVED_CACHE_PREFIXES = ['webllm', 'transformers', 'onnx', 'huggingface', 'wllama', 'model'];
 
 const STATIC_ASSETS = [

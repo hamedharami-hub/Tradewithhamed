@@ -19,6 +19,7 @@ const suiteModules = [
   '../lib/ai/__tests__/offline-ai-safety.test',
   '../lib/ai/__tests__/agentic-review.test',
   '../lib/core/__tests__/multi-agent-council.test',
+  '../lib/core/__tests__/research-desk.test',
   '../lib/research/__tests__/research-engine.test',
   '../lib/research/__tests__/paper-forward-ledger.test',
   '../lib/research/__tests__/stage8-analysis.test',

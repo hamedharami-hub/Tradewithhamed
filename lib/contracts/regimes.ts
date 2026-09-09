@@ -13,6 +13,7 @@ export type MarketRegimeType =
 export type TradingStyleType =
   | 'SCALP_M1_M5'        // اسکلپینگ سریع ۱ و ۵ دقیقه با خروج‌های نقطه‌ای
   | 'SMC_INTRADAY'       // اسمارت مانی / پرایس‌اکشن کلاسیک (FVG + BOS + سشن‌ها)
+  | 'TREND_BREAKOUT'     // شکست کانال همسو با رژیم روند
   | 'SWING_MACRO'        // سوئینگ کلان H1 تا D1 با اهداف چندروزه
   | 'MEAN_REVERSION';    // بازگشت به میانگین در باندهای اشباع و بازارهای رنج
 
@@ -67,6 +68,16 @@ export const TRADING_STYLES_CONFIG: Record<TradingStyleType, TradingStyleConfig>
     maxHoldingTimeMinutes: 240,
     favorableRegimes: ['TRENDING_BULLISH', 'TRENDING_BEARISH', 'COMPRESSION'],
     prohibitedRegimes: ['HIGH_VOL_NEWS'],
+  },
+  TREND_BREAKOUT: {
+    id: 'TREND_BREAKOUT',
+    nameFa: 'شکست روندی با فیلتر رژیم',
+    nameEn: 'Trend-Following Breakout',
+    recommendedTf: '15M / 1H',
+    defaultRiskReward: 2.0,
+    maxHoldingTimeMinutes: 1440,
+    favorableRegimes: ['TRENDING_BULLISH', 'TRENDING_BEARISH', 'COMPRESSION'],
+    prohibitedRegimes: ['CHOPPY_RANGING', 'HIGH_VOL_NEWS'],
   },
   SWING_MACRO: {
     id: 'SWING_MACRO',

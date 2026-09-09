@@ -5,11 +5,12 @@
 
 'use client';
 
-import React, { useRef, useEffect, useState } from 'react';
+import React, { useRef, useEffect, useMemo, useState } from 'react';
 import { Candle, SymbolId } from '@/lib/contracts/market';
 import { StrategyCandidate } from '@/lib/contracts/strategy';
 import { MultiTimeframeLevel, PercentileStepPoint } from '@/lib/contracts/monte-carlo';
 import { useTheme } from '@/context/theme-context';
+import { Maximize2, Minimize2, ZoomIn, ZoomOut } from 'lucide-react';
 
 interface ChartCanvasProps {
   symbol: SymbolId;
@@ -42,8 +43,14 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
   const containerRef = useRef<HTMLDivElement>(null);
   const [containerWidth, setContainerWidth] = useState(600);
   const [hoverState, setHoverState] = useState<{ x: number; y: number; price: number; timestamp?: number } | null>(null);
+  const [visibleCandleCount, setVisibleCandleCount] = useState(80);
+  const [isExpanded, setIsExpanded] = useState(false);
   const { actualTheme } = useTheme();
   const isDark = actualTheme === 'dark';
+  const visibleCandles = useMemo(
+    () => candles.slice(-Math.max(1, Math.min(visibleCandleCount, candles.length))),
+    [candles, visibleCandleCount]
+  );
 
   // پالت رنگ‌های هماهنگ با قالب فعال
   const themeColors = {
@@ -66,9 +73,9 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
   };
 
   // ارتفاع ثابت و پایدار نمودار برای جلوگیری کامل از کشیدگی ResizeObserver
-  const CHART_TOTAL_HEIGHT = 360;
+  const CHART_TOTAL_HEIGHT = isExpanded ? 680 : 360;
   const PLOT_TOP = 20;
-  const PLOT_BOTTOM = 300;
+  const PLOT_BOTTOM = CHART_TOTAL_HEIGHT - 60;
   const PLOT_HEIGHT = PLOT_BOTTOM - PLOT_TOP;
   const RIGHT_PRICE_AXIS_WIDTH = 65;
 
@@ -97,7 +104,7 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
   let minPrice = Infinity;
   let maxPrice = -Infinity;
 
-  candles.forEach(c => {
+  visibleCandles.forEach(c => {
     if (c.low < minPrice) minPrice = c.low;
     if (c.high > maxPrice) maxPrice = c.high;
   });
@@ -135,11 +142,11 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
 
   // محاسبه عرض کندل‌ها و فواصل
   const usableWidth = Math.max(200, containerWidth - RIGHT_PRICE_AXIS_WIDTH - 20);
-  const candleCount = candles.length;
+  const candleCount = visibleCandles.length;
   const slotWidth = usableWidth / candleCount;
   const candleBodyWidth = Math.max(3, Math.min(18, Math.floor(slotWidth * 0.7)));
 
-  const lastCandle = candles[candles.length - 1];
+  const lastCandle = visibleCandles[visibleCandles.length - 1];
 
   // مدیریت رویداد حرکت ماوس برای کراس‌هیر
   const handleMouseMove = (e: React.MouseEvent<SVGSVGElement>) => {
@@ -155,7 +162,7 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
 
     const price = viewMaxPrice - ((y - PLOT_TOP) / PLOT_HEIGHT) * viewRange;
     const candleIdx = Math.min(candleCount - 1, Math.max(0, Math.floor((x - 10) / slotWidth)));
-    const timestamp = candles[candleIdx]?.timestamp;
+    const timestamp = visibleCandles[candleIdx]?.timestamp;
 
     setHoverState({ x, y, price, timestamp });
     if (onCrosshairChange) {
@@ -178,7 +185,9 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
     <div
       id="chart-main-container"
       ref={containerRef}
-      className="w-full h-[360px] bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-2xl p-3 flex flex-col relative overflow-hidden select-none font-sans shadow-xs transition-colors"
+      className={`w-full bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-2xl p-3 flex flex-col relative overflow-hidden select-none font-sans shadow-xs transition-colors ${
+        isExpanded ? 'fixed inset-3 md:inset-6 z-[100] h-[calc(100vh-1.5rem)] md:h-[calc(100vh-3rem)] shadow-2xl' : 'h-[360px]'
+      }`}
     >
       {/* سربرگ اطلاعات نماد و وضعیت چندتایم‌فریمه */}
       <div className="flex flex-wrap items-center justify-between mb-1.5 px-1 text-xs shrink-0 gap-2">
@@ -209,7 +218,38 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
               قیمت: {hoverState.price.toFixed(symbol === 'XAUUSD' ? 2 : 5)}
             </span>
           )}
-          <span>کندل‌ها: <strong className="font-mono text-[var(--text-primary)]">{candles.length}</strong></span>
+          <span>نمایش: <strong className="font-mono text-[var(--text-primary)]">{visibleCandles.length}</strong> از {candles.length}</span>
+          <div className="flex items-center gap-1 border-r border-[var(--border-subtle)] pr-2">
+            <button
+              type="button"
+              onClick={() => setVisibleCandleCount(count => Math.max(20, Math.floor(count / 1.6)))}
+              disabled={visibleCandles.length <= 20}
+              className="p-1 rounded hover:bg-[var(--bg-surface-raised)] disabled:opacity-40"
+              title="بزرگ‌نمایی کندل‌ها"
+              aria-label="بزرگ‌نمایی نمودار"
+            >
+              <ZoomIn className="w-3.5 h-3.5" />
+            </button>
+            <button
+              type="button"
+              onClick={() => setVisibleCandleCount(count => Math.min(candles.length, Math.ceil(count * 1.6)))}
+              disabled={visibleCandles.length >= candles.length}
+              className="p-1 rounded hover:bg-[var(--bg-surface-raised)] disabled:opacity-40"
+              title="کوچک‌نمایی کندل‌ها"
+              aria-label="کوچک‌نمایی نمودار"
+            >
+              <ZoomOut className="w-3.5 h-3.5" />
+            </button>
+            <button
+              type="button"
+              onClick={() => setIsExpanded(value => !value)}
+              className="p-1 rounded hover:bg-[var(--bg-surface-raised)]"
+              title={isExpanded ? 'بستن نمای بزرگ' : 'نمای بزرگ نمودار'}
+              aria-label={isExpanded ? 'بستن نمای بزرگ نمودار' : 'نمای بزرگ نمودار'}
+            >
+              {isExpanded ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
+            </button>
+          </div>
         </div>
       </div>
 
@@ -325,7 +365,7 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
           })()}
 
           {/* ۳. ترسیم کندل‌استیک‌ها */}
-          {candles.map((c, i) => {
+          {visibleCandles.map((c, i) => {
             const x = 10 + i * slotWidth + slotWidth / 2;
             const isUp = c.close >= c.open;
             const highY = getY(c.high);

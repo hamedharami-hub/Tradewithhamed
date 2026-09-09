@@ -1,10 +1,23 @@
 // lib/core/research-lab.ts
 // آزمایشگاه پژوهش معاملاتی، تحلیل پیش‌رونده (Walk-Forward) و آزمون‌های تنش (Stress Testing)
 
-import { Candle, SymbolId } from '../contracts/market';
+import { Candle, SYMBOL_SPECS, SymbolId, Timeframe } from '../contracts/market';
 import { EventDrivenExecutionEngine } from './event-driven-engine';
-import { S0Engine } from './s0-engine';
+import { MultiStyleEngine } from './multi-style-engine';
 import { OrderIntentPayload, PositionLedgerEntry } from './ports';
+import { TradingStyleType } from '../contracts/regimes';
+
+function timeframeToMs(timeframe: Timeframe): number {
+  const durations: Record<Timeframe, number> = {
+    '1M': 60_000,
+    '5M': 5 * 60_000,
+    '15M': 15 * 60_000,
+    '1H': 60 * 60_000,
+    '4H': 4 * 60 * 60_000,
+    D1: 24 * 60 * 60_000,
+  };
+  return durations[timeframe];
+}
 
 export interface PerformanceMetrics {
   totalTrades: number;
@@ -68,12 +81,18 @@ export class ResearchLab {
       commissionPerLot?: number;
       defaultSpreadPips?: number;
       useAIReview?: boolean;
+      style?: TradingStyleType | 'ALL';
+      timeframe?: Timeframe;
+      lookbackCandles?: number;
     } = {}
   ): {
     metrics: PerformanceMetrics;
     trades: PositionLedgerEntry[];
   } {
     const initialCash = options.initialCash ?? 10000;
+    const style = options.style ?? 'ALL';
+    const timeframe = options.timeframe ?? '15M';
+    const lookbackCandles = Math.max(210, Math.min(options.lookbackCandles ?? 240, 1000));
     const engine = new EventDrivenExecutionEngine({
       environment: 'BACKTEST',
       accountNamespace: 'BACKTEST-RUN',
@@ -87,18 +106,24 @@ export class ResearchLab {
       { timestamp: candles[0]?.timestamp || 0, equity: initialCash, drawdownPercent: 0 },
     ];
 
-    // اجرای گام‌به‌گام کندل‌ها
+    // سفارش پس از بسته‌شدن کندل سیگنال ثبت می‌شود و فقط در کندل بعدی
+    // پردازش می‌گردد؛ این ترتیب مانع پرشدن همان‌کندلی و نگاه‌به‌آینده است.
     for (let i = 14; i < candles.length; i++) {
-      const slice = candles.slice(0, i + 1);
       const currentCandle = candles[i];
 
-      // الف. بررسی سیگنال استراتژی تجربی S0 روی داده‌های بسته
-      const candidate = S0Engine.evaluateSlice(slice, symbol, '15M');
+      // الف. ابتدا سفارش‌های ثبت‌شده در کندل‌های پیشین پردازش می‌شوند.
+      engine.processCandle(currentCandle, symbol);
+
+      const lookbackStart = Math.max(0, i - lookbackCandles + 1);
+      const slice = candles.slice(lookbackStart, i + 1);
+
+      // ب. سیگنال تنها از دادهٔ بسته و قابل مشاهدهٔ همین لحظه ساخته می‌شود.
+      const candidate = MultiStyleEngine.evaluate(slice, symbol, style).candidate;
       if (candidate) {
         // محاسبه حجم بر اساس ریسک ۰.۲۵٪
         const dollarRisk = engine.getLedger().equity * 0.0025;
         const priceDistance = Math.abs(candidate.entryPrice - candidate.stopLossPrice);
-        const contractSize = symbol === 'XAUUSD' ? 100 : 100000;
+        const contractSize = SYMBOL_SPECS[symbol].contractSize;
         const rawVolume = priceDistance > 0 ? dollarRisk / (priceDistance * contractSize) : 0.01;
         const volumeLots = Math.max(0.01, Number(rawVolume.toFixed(2)));
 
@@ -114,7 +139,7 @@ export class ResearchLab {
           entryPrice: candidate.entryPrice,
           stopLossPrice: candidate.stopLossPrice,
           takeProfitPrice: candidate.takeProfitPrice,
-          expiryTimestamp: currentCandle.timestamp + 6 * 15 * 60 * 1000,
+          expiryTimestamp: currentCandle.timestamp + 6 * timeframeToMs(timeframe),
           reasonCode: candidate.strategyName,
           createdTimestamp: currentCandle.timestamp,
           idempotencyKey: `${candidate.id}-${currentCandle.timestamp}`,
@@ -123,10 +148,7 @@ export class ResearchLab {
         engine.submitOrder(intent);
       }
 
-      // ب. پردازش کندل در موتور شبیه‌ساز رویدادمحور
-      engine.processCandle(currentCandle, symbol);
-
-      // ثبت نقاط نمودار دارایی هر ۵ کندل یکبار
+      // ج. ثبت نقاط نمودار دارایی هر ۵ کندل یکبار
       if (i % 5 === 0 || i === candles.length - 1) {
         const ledger = engine.getLedger();
         equityCurve.push({
