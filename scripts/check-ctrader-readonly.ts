@@ -3,7 +3,21 @@ import { resolve } from 'node:path';
 
 async function main(): Promise<void> {
   const logDir = resolve(process.env.STAGE7_REPORT_DIR || 'data/runs/stage7-gpu-30trades');
-  const logCandidates = [process.env.MONITOR_REPORT, `${logDir}/ctrader-paper-events.jsonl`, 'data/runs/stage5-hybrid-monitor-readiness.jsonl', 'data/runs/stage8-30d/gbpusd-monitor-report.jsonl'].filter(Boolean) as string[];
+  const stage8Dir = resolve(process.env.STAGE8_REPORT_DIR || 'data/runs/stage8-30d');
+  let stage8Files: string[] = [];
+  try {
+    const entries = await readdir(stage8Dir);
+    stage8Files = entries.filter(f => f.endsWith('.jsonl')).map(f => `${stage8Dir}/${f}`);
+  } catch {
+    // Directory not created yet
+  }
+  const logCandidates = [
+    process.env.MONITOR_REPORT,
+    `${logDir}/ctrader-paper-events.jsonl`,
+    'data/runs/stage5-hybrid-monitor-readiness.jsonl',
+    'data/runs/stage8-30d/gbpusd-monitor-report.jsonl',
+    ...stage8Files,
+  ].filter(Boolean) as string[];
   const logs: Array<{ path: string; lines: string[] }> = [];
   for (const path of logCandidates) { try { const text = await readFile(resolve(path), 'utf8'); logs.push({ path, lines: text.split('\n').filter(Boolean).slice(-20) }); } catch { /* absent artifact */ } }
   const envPresence = Object.fromEntries(['CTRADER_CLIENT_ID','CTRADER_ACCESS_TOKEN','CTRADER_ACCOUNT_ID','CTRADER_ENVIRONMENT','RUN_CTRADER','REQUIRE_CTRADER','MONITOR_ANALYST_PROVIDER'].map(key => [key, process.env[key] ? '<set>' : '<missing>']));

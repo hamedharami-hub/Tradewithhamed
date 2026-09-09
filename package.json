@@ -31,6 +31,8 @@
     "research:analyze:hybrid-depth": "python3 scripts/analyze-hybrid-depth.py",
     "research:oos:common-candidates": "tsx scripts/run-common-candidate-set-oos.ts",
     "research:ctrader:readonly-check": "tsx scripts/check-ctrader-readonly.ts",
+    "research:stage8:monitor": "tsx scripts/run-stage8-paper-forward-monitor.ts",
+    "research:stage8:analyze": "tsx scripts/analyze-stage8-paper-run.ts",
     "data:download:histdata:range": "bash scripts/download-histdata-range.sh",
     "data:merge:histdata:years": "tsx scripts/merge-histdata-years.ts",
     "clean": "next clean"

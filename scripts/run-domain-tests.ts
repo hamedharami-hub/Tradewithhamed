@@ -11,6 +11,7 @@ const suiteModules = [
   '../lib/server/__tests__/risk-dashboard.test',
   '../lib/stress/__tests__/stress-scenarios.test',
   '../lib/gateway/__tests__/gateway.test',
+  '../lib/gateway/__tests__/ctrader-readonly-transport.test',
   '../lib/execution/__tests__/ctrader-execution.test',
   '../lib/execution/__tests__/reconciliation.test',
   '../lib/server/__tests__/auto-reconciliation.test',
@@ -20,6 +21,7 @@ const suiteModules = [
   '../lib/core/__tests__/multi-agent-council.test',
   '../lib/research/__tests__/research-engine.test',
   '../lib/research/__tests__/walk-forward.test',
+  '../lib/research/__tests__/stage8-paper-forward.test',
 ];
 
 export {};
