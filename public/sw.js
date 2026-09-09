@@ -1,7 +1,9 @@
 // Service Worker for Hamed Trading Lab PWA
 // Provides 100% offline functionality, asset caching, and fast app-shell loading on Windows and Mobile
 
-const CACHE_NAME = 'hamed-trading-lab-v2';
+// Bump this whenever the app shell or Next.js chunks change. Keeping an old
+// document cached can reference removed chunks and leave the preview stuck.
+const CACHE_NAME = 'hamed-trading-lab-v3';
 const PRESERVED_CACHE_PREFIXES = ['webllm', 'transformers', 'onnx', 'huggingface', 'wllama', 'model'];
 
 const STATIC_ASSETS = [
@@ -52,6 +54,23 @@ self.addEventListener('fetch', event => {
 
   // تمام اندپوینت‌های /api به طور قطعی از کش مستثنی شده و مستقیماً به شبکه ارسال می‌شوند (Network Only)
   if (url.pathname.startsWith('/api/')) {
+    return;
+  }
+
+  // Always obtain the HTML document from the current deployment first. A
+  // cached document may point at a different build's hashed JS chunks.
+  if (event.request.mode === 'navigate' || event.request.destination === 'document') {
+    event.respondWith(
+      fetch(event.request)
+        .then(networkResponse => {
+          if (networkResponse && networkResponse.status === 200 && networkResponse.type === 'basic') {
+            const responseToCache = networkResponse.clone();
+            caches.open(CACHE_NAME).then(cache => cache.put(event.request, responseToCache));
+          }
+          return networkResponse;
+        })
+        .catch(() => caches.match(event.request).then(cached => cached || caches.match('/')))
+    );
     return;
   }
 
