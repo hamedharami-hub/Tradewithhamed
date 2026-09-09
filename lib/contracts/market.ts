@@ -2,7 +2,7 @@
  * قراردادهای پایه داده‌های بازار، کندل‌ها و مشخصات نمادها
  */
 
-export type SymbolId = 'XAUUSD' | 'EURUSD' | 'GBPUSD' | 'USDJPY';
+export type SymbolId = 'XAUUSD' | 'EURUSD' | 'GBPUSD' | 'USDJPY' | 'BTCUSD';
 
 export type Timeframe = '1M' | '5M' | '15M' | '1H' | '4H' | 'D1';
 
@@ -19,7 +19,7 @@ export interface Candle {
 export interface SymbolMetadata {
   id: SymbolId;
   name: string;
-  category: 'METALS' | 'FOREX';
+  category: 'METALS' | 'FOREX' | 'CRYPTO';
   contractSize: number; // اندازه قرارداد (طلا ۱۰۰ اونس، یورو ۱۰۰,۰۰۰ واحد)
   pipSize: number;      // ارزش هر پیپ در قیمت (طلا ۰.۱، یورو ۰.۰۰۰۱)
   tickSize: number;     // کمترین گام قیمت (طلا ۰.۰۱، یورو ۰.۰۰۰۰۱)
@@ -82,5 +82,18 @@ export const SYMBOL_SPECS: Record<SymbolId, SymbolMetadata> = {
     lotStep: 0.01,
     commissionPerLot: 6.0,
     typicalSpreadPips: 1.0,
+  },
+  BTCUSD: {
+    id: 'BTCUSD',
+    name: 'Bitcoin vs US Dollar',
+    category: 'CRYPTO',
+    contractSize: 1,
+    pipSize: 1,
+    tickSize: 0.01,
+    minLots: 0.01,
+    maxLots: 10.0,
+    lotStep: 0.01,
+    commissionPerLot: 0.0,
+    typicalSpreadPips: 50.0,
   },
 };

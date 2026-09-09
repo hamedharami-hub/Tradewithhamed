@@ -29,6 +29,7 @@ export interface CircuitBreakerConfig {
     EURUSD: number;                   // حداکثر اسپرد مجاز یورو (مثلاً ۲.۵ پیپ)
     GBPUSD: number;
     USDJPY: number;
+    BTCUSD: number;
   };
   volatilitySpikeThresholdMultiplier: number; // ضریب جهش ناگهانی نوسان نسبت به میانگین ATR (مثلاً ۳.۰ برابر)
   blockNewsWindowsMinutesBefore: number;      // دقایق مسدودی پیش از اخبار قرمز

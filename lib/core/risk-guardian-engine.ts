@@ -44,6 +44,7 @@ export class RiskGuardianEngine {
         EURUSD: 2.5,                      // حداکثر اسپرد مجاز یورو ۲.۵ پیپ
         GBPUSD: 3.0,
         USDJPY: 2.5,
+        BTCUSD: 100.0,
       },
       volatilitySpikeThresholdMultiplier: 3.0,
       blockNewsWindowsMinutesBefore: 15,
