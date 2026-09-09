@@ -82,6 +82,7 @@ export class EventDrivenExecutionEngine implements IExecutionPort {
   private ledger: PortfolioLedgerState;
   private pendingOrders: OrderIntentPayload[] = [];
   private orderAgeMap: Map<string, number> = new Map(); // شمارش کندل‌های سپری شده برای انقضا
+  private eventSequence = 0;
 
   constructor(
     config: Partial<EngineConfig> = {},
@@ -135,17 +136,28 @@ export class EventDrivenExecutionEngine implements IExecutionPort {
     return this.clock;
   }
 
+  private nextEventId(kind: string): string {
+    this.eventSequence += 1;
+    return `EVT-${kind}-${this.config.environment}-${this.eventSequence.toString().padStart(8, '0')}`;
+  }
+
+  private pnlInAccountCurrency(symbol: SymbolId, volumeLots: number, priceDiff: number, conversionPrice: number): number {
+    const contractSize = symbol === 'XAUUSD' ? 100 : 100_000;
+    const quotePnl = volumeLots * priceDiff * contractSize;
+    return symbol === 'USDJPY' ? quotePnl / Math.max(conversionPrice, 0.000001) : quotePnl;
+  }
+
   public submitOrder(intent: OrderIntentPayload): ExecutionEventPayload {
     // اعتبارسنجی اولیه
-    if (intent.volumeLots <= 0) {
+    if (intent.volumeLots <= 0 || this.ledger.equity <= 0) {
       const rejectEvent: ExecutionEventPayload = {
-        eventId: `EVT-REJ-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+        eventId: this.nextEventId('REJ'),
         intentId: intent.intentId,
         environment: this.config.environment,
         timestamp: this.clock.now(),
         status: 'REJECTED',
         commissionPaid: 0,
-        notes: 'حجم سفارش نامعتبر است (باید بیشتر از صفر باشد).',
+        notes: intent.volumeLots <= 0 ? 'حجم سفارش نامعتبر است (باید بیشتر از صفر باشد).' : 'به علت پایان سرمایهٔ قابل‌ریسک، سفارش جدید رد شد.',
       };
       this.eventStore.recordEvent(rejectEvent);
       return rejectEvent;
@@ -156,7 +168,7 @@ export class EventDrivenExecutionEngine implements IExecutionPort {
     this.orderAgeMap.set(intent.intentId, 0);
 
     const pendingEvent: ExecutionEventPayload = {
-      eventId: `EVT-PND-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+      eventId: this.nextEventId('PND'),
       intentId: intent.intentId,
       environment: this.config.environment,
       timestamp: this.clock.now(),
@@ -175,7 +187,7 @@ export class EventDrivenExecutionEngine implements IExecutionPort {
       this.orderAgeMap.delete(intentId);
 
       const cancelEvent: ExecutionEventPayload = {
-        eventId: `EVT-CNC-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+        eventId: this.nextEventId('CNC'),
         intentId,
         environment: this.config.environment,
         timestamp: this.clock.now(),
@@ -228,7 +240,7 @@ export class EventDrivenExecutionEngine implements IExecutionPort {
       if (fillPrice !== null) {
         const commission = order.volumeLots * this.config.commissionPerLot;
         const fillEvent: ExecutionEventPayload = {
-          eventId: `EVT-FIL-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+          eventId: this.nextEventId('FIL'),
           intentId: order.intentId,
           environment: this.config.environment,
           timestamp: this.clock.now(),
@@ -267,7 +279,7 @@ export class EventDrivenExecutionEngine implements IExecutionPort {
 
       if (order.expiryTimestamp && candle.timestamp >= order.expiryTimestamp) {
         const expireEvt: ExecutionEventPayload = {
-          eventId: `EVT-EXP-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+          eventId: this.nextEventId('EXP'),
           intentId: order.intentId,
           environment: this.config.environment,
           timestamp: candle.timestamp,
@@ -291,13 +303,16 @@ export class EventDrivenExecutionEngine implements IExecutionPort {
           fillPrice = order.entryPrice;
         }
       } else if (order.orderType === 'MARKET') {
-        fillPrice = order.direction === 'BUY' ? candle.open + spreadPoints : candle.open;
+        const adverseEntrySlippage = this.config.slippageModel.baseSlippagePips * pipVal;
+        fillPrice = order.direction === 'BUY'
+          ? candle.open + spreadPoints * 0.5 + adverseEntrySlippage
+          : candle.open - spreadPoints * 0.5 - adverseEntrySlippage;
       }
 
       if (fillPrice !== null) {
         const commission = order.volumeLots * this.config.commissionPerLot;
         const fillEvent: ExecutionEventPayload = {
-          eventId: `EVT-FIL-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+          eventId: this.nextEventId('FIL'),
           intentId: order.intentId,
           environment: this.config.environment,
           timestamp: candle.timestamp,
@@ -337,8 +352,6 @@ export class EventDrivenExecutionEngine implements IExecutionPort {
     events: ExecutionEventPayload[]
   ): void {
     const pipVal = symbol === 'XAUUSD' ? 0.1 : 0.0001;
-    const contractSize = symbol === 'XAUUSD' ? 100 : 100000;
-
     // محاسبه اکستریم‌های معامله جهت ثبت MAE و MFE
     if (pos.direction === 'BUY') {
       const adversePips = Math.max(0, (pos.entryPrice - candle.low) / pipVal);
@@ -386,24 +399,32 @@ export class EventDrivenExecutionEngine implements IExecutionPort {
       }
 
       pos.closeReason = finalReason;
-      const exitPrice = finalReason === 'SL' ? pos.stopLossPrice : pos.takeProfitPrice;
+      const triggerPrice = finalReason === 'SL' ? pos.stopLossPrice : pos.takeProfitPrice;
+      const adverseExitSlippage = (this.config.slippageModel.baseSlippagePips + this.config.defaultSpreadPips * 0.5) * pipVal;
+      const exitPrice = pos.direction === 'BUY'
+        ? triggerPrice - adverseExitSlippage
+        : triggerPrice + adverseExitSlippage;
       const priceDiff =
         pos.direction === 'BUY' ? exitPrice - pos.entryPrice : pos.entryPrice - exitPrice;
-
-      pos.realizedPnl = Number((pos.volumeLots * priceDiff * contractSize - pos.commissionPaid).toFixed(2));
+      // commissionPerLot is a round-trip amount debited at entry; never charge it again on exit.
+      const exitCommission = 0;
+      pos.commissionPaid = Number((pos.commissionPaid + exitCommission).toFixed(2));
+      const realizedPnl = this.pnlInAccountCurrency(symbol, pos.volumeLots, priceDiff, exitPrice);
+      pos.realizedPnl = Number((realizedPnl - pos.commissionPaid).toFixed(2));
       pos.unrealizedPnl = 0;
-      this.ledger.cashBalance = Number((this.ledger.cashBalance + pos.realizedPnl).toFixed(2));
+      this.ledger.cashBalance = Number((this.ledger.cashBalance + realizedPnl - exitCommission).toFixed(2));
+      this.ledger.totalCommissions = Number((this.ledger.totalCommissions + exitCommission).toFixed(2));
       this.ledger.totalRealizedPnl = Number((this.ledger.totalRealizedPnl + pos.realizedPnl).toFixed(2));
 
       const closeEvent: ExecutionEventPayload = {
-        eventId: `EVT-CLS-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+        eventId: this.nextEventId('CLS'),
         intentId: pos.intentId,
         environment: this.config.environment,
         timestamp: candle.timestamp,
         status: 'FILLED',
         fillPrice: exitPrice,
         filledVolume: pos.volumeLots,
-        commissionPaid: 0,
+        commissionPaid: exitCommission,
         ambiguityFlag: isAmbiguous,
         notes: isAmbiguous
           ? `برخورد همزمان SL و TP با سیاست ${this.config.ambiguityPolicy} به نفع ${finalReason} حل شد.`
@@ -416,7 +437,7 @@ export class EventDrivenExecutionEngine implements IExecutionPort {
       pos.currentPrice = candle.close;
       const priceDiff =
         pos.direction === 'BUY' ? candle.close - pos.entryPrice : pos.entryPrice - candle.close;
-      pos.unrealizedPnl = Number((pos.volumeLots * priceDiff * contractSize).toFixed(2));
+      pos.unrealizedPnl = Number(this.pnlInAccountCurrency(symbol, pos.volumeLots, priceDiff, candle.close).toFixed(2));
     }
   }
 
@@ -448,14 +469,13 @@ export class EventDrivenExecutionEngine implements IExecutionPort {
   }
 
   private updateOpenPositions(bid: number, ask: number, symbol: SymbolId): void {
-    const contractSize = symbol === 'XAUUSD' ? 100 : 100000;
     for (const pos of this.ledger.positions) {
       if (!pos.isOpen || pos.symbol !== symbol) continue;
       const closePrice = pos.direction === 'BUY' ? bid : ask;
       pos.currentPrice = closePrice;
       const priceDiff =
         pos.direction === 'BUY' ? closePrice - pos.entryPrice : pos.entryPrice - closePrice;
-      pos.unrealizedPnl = Number((pos.volumeLots * priceDiff * contractSize).toFixed(2));
+      pos.unrealizedPnl = Number(this.pnlInAccountCurrency(symbol, pos.volumeLots, priceDiff, closePrice).toFixed(2));
     }
     this.updateLedgerTotals();
   }
@@ -515,5 +535,6 @@ export class EventDrivenExecutionEngine implements IExecutionPort {
     };
     this.pendingOrders = [];
     this.orderAgeMap.clear();
+    this.eventSequence = 0;
   }
 }

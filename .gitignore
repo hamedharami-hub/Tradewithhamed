@@ -52,3 +52,8 @@ pnpm-debug.log*
 .data/
 local_data/
 temp/
+
+# Local market research artifacts and provider-licensed data
+data/raw/
+data/datasets/
+data/runs/

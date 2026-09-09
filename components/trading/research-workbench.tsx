@@ -2,7 +2,7 @@
 'use client';
 
 import React, { useState, useMemo } from 'react';
-import { Candle, SymbolId } from '@/lib/contracts/market';
+import { Candle, SymbolId, Timeframe } from '@/lib/contracts/market';
 import { DataWorkbench, DatasetManifest, ValidationReport } from '@/lib/core/data-workbench';
 import {
   ResearchLab,
@@ -12,6 +12,10 @@ import {
   MonteCarloSimulationResult,
 } from '@/lib/core/research-lab';
 import { PositionLedgerEntry } from '@/lib/core/ports';
+import { createDatasetFromCandles } from '@/lib/research/dataset';
+import { createBaselineResearchConfig } from '@/lib/research/default-config';
+import { ResearchExperimentEngine } from '@/lib/research/experiment-engine';
+import type { ResearchExperimentResult } from '@/lib/research/contracts';
 import { runW2AcceptanceSuite, AcceptanceTestResult } from '@/lib/core/__tests__/w2-acceptance.test';
 import { runW3BenchmarkEvaluationSuite, W3BenchmarkSuiteReport } from '@/lib/core/__tests__/w3-benchmark.test';
 import {
@@ -33,6 +37,8 @@ import {
   Search,
   Bot,
   ShieldCheck,
+  GitCompareArrows,
+  Clock3,
 } from 'lucide-react';
 
 interface ResearchWorkbenchProps {
@@ -44,13 +50,14 @@ export const ResearchWorkbench: React.FC<ResearchWorkbenchProps> = ({
   currentCandles,
   symbol,
 }) => {
-  const [activeSubTab, setActiveSubTab] = useState<'backtest' | 'data' | 'walkforward' | 'stress' | 'w2tests' | 'w3benchmark'>('backtest');
+  const [activeSubTab, setActiveSubTab] = useState<'backtest' | 'data' | 'walkforward' | 'matrix' | 'stress' | 'w2tests' | 'w3benchmark'>('backtest');
   const [w3Report, setW3Report] = useState<W3BenchmarkSuiteReport | null>(null);
+  const [researchTimeframe, setResearchTimeframe] = useState<Timeframe>('5M');
 
   // داده‌های لود شده و مانیفست
   const [activeCandles, setActiveCandles] = useState<Candle[]>(currentCandles);
   const [validationReport, setValidationReport] = useState<ValidationReport | null>(() =>
-    DataWorkbench.validateCandles(currentCandles, symbol, '15M', 'استریم فعال چارت')
+    DataWorkbench.validateCandles(currentCandles, symbol, '5M', 'استریم فعال چارت')
   );
 
   // وضعیت و نتایج بک‌تست
@@ -63,6 +70,8 @@ export const ResearchWorkbench: React.FC<ResearchWorkbenchProps> = ({
   const [walkForwardWindows, setWalkForwardWindows] = useState<WalkForwardWindow[]>([]);
   const [stressScenarios, setStressScenarios] = useState<StressTestScenarioResult[]>([]);
   const [monteCarloResult, setMonteCarloResult] = useState<MonteCarloSimulationResult | null>(null);
+  const [researchExperiment, setResearchExperiment] = useState<ResearchExperimentResult | null>(null);
+  const [researchError, setResearchError] = useState<string | null>(null);
 
   // نتایج تست‌های پذیرش W2
   const [w2TestResults, setW2TestResults] = useState<AcceptanceTestResult[]>([]);
@@ -93,6 +102,39 @@ export const ResearchWorkbench: React.FC<ResearchWorkbenchProps> = ({
         setMonteCarloResult(mc);
       } catch (err) {
         console.error('Backtest error:', err);
+      } finally {
+        setIsRunning(false);
+      }
+    }, 50);
+  };
+
+  const handleRunResearchMatrix = () => {
+    setIsRunning(true);
+    setResearchError(null);
+    setTimeout(() => {
+      try {
+        const clientDataset = createDatasetFromCandles({
+          candles: activeCandles,
+          provider: validationReport?.manifest?.source || 'Browser CSV import',
+          providerSymbol: symbol,
+          canonicalSymbol: symbol,
+          instrumentLabel: `${symbol} client-side research dataset`,
+          timeframe: researchTimeframe,
+          rawSourcePath: 'browser-memory://research-workbench',
+          contentSha256: 'UNVERIFIED-CLIENT-IMPORT',
+          sourceLicense: 'Local user import; full file SHA-256 is created by the server/CLI importer.',
+        });
+        const config = createBaselineResearchConfig({
+          datasetId: clientDataset.manifest.datasetId,
+          symbol,
+          timeframe: researchTimeframe,
+          experimentId: `EXP-CLIENT-${symbol}-${activeCandles[0]?.timestamp || 0}-${activeCandles.length}`,
+        });
+        const result = ResearchExperimentEngine.run(clientDataset, config);
+        setResearchExperiment(result);
+        setActiveSubTab('matrix');
+      } catch (error) {
+        setResearchError(error instanceof Error ? error.message : 'اجرای ماتریس پژوهش با خطای ناشناخته مواجه شد.');
       } finally {
         setIsRunning(false);
       }
@@ -147,10 +189,10 @@ export const ResearchWorkbench: React.FC<ResearchWorkbenchProps> = ({
     const reader = new FileReader();
     reader.onload = ev => {
       const text = ev.target?.result as string;
-      const parsed = DataWorkbench.parseCSV(text, '15M', timezoneOffset);
+      const parsed = DataWorkbench.parseCSV(text, researchTimeframe, timezoneOffset);
       if (parsed.candles.length > 0) {
         setActiveCandles(parsed.candles);
-        const report = DataWorkbench.validateCandles(parsed.candles, symbol, '15M', `${file.name} (UTC${timezoneOffset >= 0 ? '+' : ''}${timezoneOffset})`);
+        const report = DataWorkbench.validateCandles(parsed.candles, symbol, researchTimeframe, `${file.name} (UTC${timezoneOffset >= 0 ? '+' : ''}${timezoneOffset})`);
         setValidationReport(report);
       }
     };
@@ -233,6 +275,15 @@ export const ResearchWorkbench: React.FC<ResearchWorkbenchProps> = ({
           </button>
           <button
             type="button"
+            onClick={handleRunResearchMatrix}
+            disabled={isRunning || !validationReport?.isValid}
+            className="px-3 py-2 bg-violet-700 hover:bg-violet-600 disabled:bg-zinc-800 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-sm transition-all"
+          >
+            <GitCompareArrows className="w-3.5 h-3.5" />
+            <span>ماتریس سبک و فیلتر</span>
+          </button>
+          <button
+            type="button"
             onClick={handleRunW2Suite}
             className="px-3 py-2 bg-[#1b212f] hover:bg-[#252c3d] text-cyan-300 rounded-xl text-xs font-semibold flex items-center gap-1.5 border border-cyan-800/50 transition-colors"
           >
@@ -284,6 +335,22 @@ export const ResearchWorkbench: React.FC<ResearchWorkbenchProps> = ({
         >
           <TrendingUp className="w-3.5 h-3.5" />
           <span>تحلیل پیش‌رونده (Walk-Forward)</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => {
+            setActiveSubTab('matrix');
+            if (!researchExperiment) handleRunResearchMatrix();
+          }}
+          className={`px-3.5 py-2.5 border-b-2 transition-colors flex items-center gap-1.5 shrink-0 ${
+            activeSubTab === 'matrix'
+              ? 'border-violet-400 text-violet-300 font-bold'
+              : 'border-transparent text-zinc-400 hover:text-zinc-200'
+          }`}
+        >
+          <GitCompareArrows className="w-3.5 h-3.5 text-violet-400" />
+          <span>ماتریس سبک، زمان و AI</span>
         </button>
 
         <button
@@ -599,6 +666,20 @@ export const ResearchWorkbench: React.FC<ResearchWorkbenchProps> = ({
                 </select>
               </div>
 
+              <div className="flex items-center gap-2 bg-[#10131b] px-3 py-1.5 rounded-xl border border-[#232b3b]">
+                <span className="text-zinc-400 text-xs">تایم‌فریم فایل:</span>
+                <select
+                  value={researchTimeframe}
+                  onChange={(e) => setResearchTimeframe(e.target.value as Timeframe)}
+                  className="bg-[#171b26] border border-[#2c3548] rounded-lg px-2 py-1 text-xs text-zinc-100 focus:outline-none focus:border-violet-500 font-mono"
+                  dir="ltr"
+                >
+                  {(['1M', '5M', '15M', '1H', '4H', 'D1'] as Timeframe[]).map(timeframe => (
+                    <option key={timeframe} value={timeframe}>{timeframe}</option>
+                  ))}
+                </select>
+              </div>
+
               <label className="px-4 py-2 bg-cyan-600 hover:bg-cyan-500 text-white rounded-xl text-xs font-bold flex items-center gap-2 cursor-pointer shadow-sm transition-colors">
                 <Upload className="w-3.5 h-3.5" />
                 <span>انتخاب فایل CSV کندل‌ها</span>
@@ -615,7 +696,7 @@ export const ResearchWorkbench: React.FC<ResearchWorkbenchProps> = ({
                 onClick={() => {
                   setActiveCandles(currentCandles);
                   setValidationReport(
-                    DataWorkbench.validateCandles(currentCandles, symbol, '15M', 'داده‌های زنده چارت')
+                    DataWorkbench.validateCandles(currentCandles, symbol, researchTimeframe, 'داده‌های فعال چارت')
                   );
                 }}
                 className="px-3 py-2 bg-[#1b202c] hover:bg-[#252c3c] text-zinc-300 rounded-xl text-xs flex items-center gap-1.5 border border-[#2b3345] transition-colors"
@@ -732,6 +813,112 @@ export const ResearchWorkbench: React.FC<ResearchWorkbenchProps> = ({
                 </div>
               ))}
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* محتوای تب ۴: ماتریس مقایسه استراتژی، زمان، رژیم و کنترل AI */}
+      {activeSubTab === 'matrix' && (
+        <div className="space-y-4">
+          <div className="p-4 bg-[#141822] border border-violet-900/60 rounded-xl space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-[#29233d] pb-3">
+              <div>
+                <h3 className="font-bold text-zinc-100 text-xs flex items-center gap-2">
+                  <GitCompareArrows className="w-4 h-4 text-violet-400" />
+                  <span>آزمایش ماتریسی: سبک، ساعت، روز، سشن، رژیم و کنترل AI</span>
+                </h3>
+                <p className="text-[11px] text-zinc-400 mt-1 leading-relaxed">
+                  سیگنال در پایان کندل ساخته می‌شود و فقط از کندل بعدی اجازهٔ ورود دارد. «فیلتر قطعی» کنترل قاعده‌محور است؛ WebLLM در batch به‌صورت ساختگی تصمیم نمی‌گیرد.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={handleRunResearchMatrix}
+                disabled={isRunning || !validationReport?.isValid}
+                className="px-3 py-1.5 bg-violet-700 hover:bg-violet-600 disabled:opacity-40 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 self-start sm:self-center"
+              >
+                <RotateCcw className={`w-3 h-3 ${isRunning ? 'animate-spin' : ''}`} />
+                <span>اجرای ماتریس</span>
+              </button>
+            </div>
+
+            {researchError && (
+              <div className="p-3 rounded-lg border border-rose-800 bg-rose-950/30 text-rose-200 text-xs">{researchError}</div>
+            )}
+
+            {!researchExperiment && !researchError && (
+              <div className="p-5 text-center text-zinc-400 text-xs">ابتدا dataset معتبر را در تب داده وارد کنید؛ سپس ماتریس را اجرا کنید.</div>
+            )}
+
+            {researchExperiment && (
+              <>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
+                  <div className="p-3 bg-[#0f121a] rounded-xl border border-[#26223a]">
+                    <span className="text-zinc-500 block text-[10px]">Dataset:</span>
+                    <span className="text-violet-200 font-mono text-[10px] break-all">{researchExperiment.manifest.datasetId}</span>
+                  </div>
+                  <div className="p-3 bg-[#0f121a] rounded-xl border border-[#26223a]">
+                    <span className="text-zinc-500 block text-[10px]">Rule / Cost:</span>
+                    <span className="text-zinc-200 font-mono text-[10px]">{researchExperiment.manifest.config.ruleVersion} / {researchExperiment.manifest.config.costModel.modelVersion}</span>
+                  </div>
+                  <div className="p-3 bg-[#0f121a] rounded-xl border border-[#26223a]">
+                    <span className="text-zinc-500 block text-[10px]">Spread / Slippage:</span>
+                    <span className="text-amber-300 font-mono">{researchExperiment.manifest.config.costModel.spreadPips}p / {researchExperiment.manifest.config.costModel.slippagePips}p</span>
+                  </div>
+                  <div className="p-3 bg-[#0f121a] rounded-xl border border-[#26223a]">
+                    <span className="text-zinc-500 block text-[10px]">Seed:</span>
+                    <span className="text-cyan-300 font-mono">{researchExperiment.manifest.config.seed}</span>
+                  </div>
+                </div>
+
+                <div className="overflow-x-auto rounded-lg border border-[#27223a]">
+                  <table className="w-full text-right text-[11px]">
+                    <thead className="bg-[#10131b] text-zinc-400 border-b border-[#27223a]">
+                      <tr>
+                        <th className="p-2.5">ترکیب آزمایش</th><th className="p-2.5">تعداد معامله</th><th className="p-2.5">برد</th><th className="p-2.5">P&L خالص</th><th className="p-2.5">PF</th><th className="p-2.5">Max DD</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-[#1f2330] text-zinc-300 font-mono">
+                      {researchExperiment.comparisons.map(row => (
+                        <tr key={row.key} className="hover:bg-violet-950/20">
+                          <td className="p-2.5 font-sans text-violet-200">{row.labelFa}</td>
+                          <td className="p-2.5">{row.tradesCount}</td>
+                          <td className="p-2.5">{row.winRatePercent}%</td>
+                          <td className={`p-2.5 font-bold ${row.netProfit >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>${row.netProfit}</td>
+                          <td className="p-2.5">{row.profitFactor}</td>
+                          <td className="p-2.5 text-rose-300">{row.maxDrawdownPercent}%</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
+                  {(['SESSION_UTC', 'HOUR_UTC', 'REGIME'] as const).map(dimension => {
+                    const slices = researchExperiment.runs[0]?.analysis[dimension] || [];
+                    const title = dimension === 'SESSION_UTC' ? 'عملکرد بر اساس سشن UTC' : dimension === 'HOUR_UTC' ? 'عملکرد بر اساس ساعت UTC' : 'عملکرد بر اساس رژیم heuristic';
+                    return (
+                      <div key={dimension} className="p-3 bg-[#0f121a] border border-[#26223a] rounded-xl space-y-2">
+                        <h4 className="text-xs font-bold text-zinc-200 flex items-center gap-1.5"><Clock3 className="w-3.5 h-3.5 text-violet-400" />{title}</h4>
+                        {slices.slice(0, 6).map(slice => (
+                          <div key={slice.key} className="flex items-center justify-between gap-2 text-[11px] border-b border-[#1d2230] pb-1.5 last:border-0">
+                            <span className="text-zinc-400">{slice.labelFa}</span>
+                            <span className="font-mono text-zinc-200">{slice.tradesCount}T / <span className={slice.netProfit >= 0 ? 'text-emerald-400' : 'text-rose-400'}>${slice.netProfit}</span></span>
+                          </div>
+                        ))}
+                        {slices.length === 0 && <p className="text-[11px] text-zinc-500">معاملهٔ بسته‌شده‌ای برای این بُعد وجود ندارد.</p>}
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {researchExperiment.warnings.length > 0 && (
+                  <div className="p-3 bg-amber-950/20 border border-amber-900/60 rounded-lg text-[11px] text-amber-100 space-y-1">
+                    {researchExperiment.warnings.map(warning => <p key={warning}>• {warning}</p>)}
+                  </div>
+                )}
+              </>
+            )}
           </div>
         </div>
       )}

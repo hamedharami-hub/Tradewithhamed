@@ -1,0 +1,1230 @@
+{
+  "version": "webgpu-gbpusd-oos-candidates-v1",
+  "datasetId": "DS-HISTDATAAGGREGATED-GBPUSD-1H-dd467dfc2f05",
+  "datasetSha256": "dd467dfc2f0561c6e35ff343a93a20b55c5e82bee8d2d15b355a51b729cd5c2a",
+  "evaluationStartTime": 1726102800000,
+  "oosStartIso": "2024-09-12T01:00:00.000Z",
+  "candidates": [
+    {
+      "id": "RS-research-rules-v1-S0_SWEEP_FVG-BUY-1726120800000",
+      "strategyName": "S0_SWEEP_FVG",
+      "symbol": "GBPUSD",
+      "timeframe": "1H",
+      "direction": "BUY",
+      "createdAtTimestamp": 1726120800000,
+      "expiresAtTimestamp": 1726164000000,
+      "entryPrice": 1.30538,
+      "stopLossPrice": 1.30444,
+      "takeProfitPrice": 1.30726,
+      "riskRewardRatio": 2,
+      "style": "SMC_INTRADAY",
+      "evidenceIds": {
+        "sweepId": "SWEEP-SW-L-1H-1725980400000-1726120800000",
+        "contextSwingId": "SW-L-1H-1725980400000",
+        "fvgId": "FVG-BUY-1726120800000-1.30428-1.30466"
+      },
+      "rationale": "sweep کف تاییدشده با نفوذ 0.00026 و reclaim در کندل بسته؛ rule=research-rules-v1",
+      "ruleProvenance": {
+        "ruleVersion": "research-rules-v1",
+        "parameterHash": "fnv1a-515c4426",
+        "resolvedParameters": {
+          "stopLossAtrBuffer": 0.2,
+          "targetRiskReward": 2,
+          "expiryBars": 12,
+          "minSweepPenetrationAtr": 0.1,
+          "minFvgSizeAtr": 0.3,
+          "meanReversionLookback": 20,
+          "meanReversionEntryZScore": 2
+        },
+        "signalCandleTimestamp": 1726120800000,
+        "evidenceAvailableAtTimestamp": 1726120800000,
+        "lifecycle": "CONFIRMED"
+      },
+      "status": "PENDING_CONFIRMATION"
+    },
+    {
+      "id": "RS-research-rules-v1-S0_SWEEP_FVG-BUY-1726156800000",
+      "strategyName": "S0_SWEEP_FVG",
+      "symbol": "GBPUSD",
+      "timeframe": "1H",
+      "direction": "BUY",
+      "createdAtTimestamp": 1726156800000,
+      "expiresAtTimestamp": 1726200000000,
+      "entryPrice": 1.30801,
+      "stopLossPrice": 1.30697,
+      "takeProfitPrice": 1.31009,
+      "riskRewardRatio": 2,
+      "style": "SMC_INTRADAY",
+      "evidenceIds": {
+        "sweepId": "SWEEP-SW-L-1H-1726041600000-1726156800000",
+        "contextSwingId": "SW-L-1H-1726041600000",
+        "fvgId": "FVG-BUY-1726156800000-1.30669-1.30726"
+      },
+      "rationale": "sweep کف تاییدشده با نفوذ 0.00045 و reclaim در کندل بسته؛ rule=research-rules-v1",
+      "ruleProvenance": {
+        "ruleVersion": "research-rules-v1",
+        "parameterHash": "fnv1a-515c4426",
+        "resolvedParameters": {
+          "stopLossAtrBuffer": 0.2,
+          "targetRiskReward": 2,
+          "expiryBars": 12,
+          "minSweepPenetrationAtr": 0.1,
+          "minFvgSizeAtr": 0.3,
+          "meanReversionLookback": 20,
+          "meanReversionEntryZScore": 2
+        },
+        "signalCandleTimestamp": 1726156800000,
+        "evidenceAvailableAtTimestamp": 1726156800000,
+        "lifecycle": "CONFIRMED"
+      },
+      "status": "PENDING_CONFIRMATION"
+    },
+    {
+      "id": "RS-research-rules-v1-S0_SWEEP_FVG-SELL-1726228800000",
+      "strategyName": "S0_SWEEP_FVG",
+      "symbol": "GBPUSD",
+      "timeframe": "1H",
+      "direction": "SELL",
+      "createdAtTimestamp": 1726228800000,
+      "expiresAtTimestamp": 1726272000000,
+      "entryPrice": 1.31216,
+      "stopLossPrice": 1.31309,
+      "takeProfitPrice": 1.3103,
+      "riskRewardRatio": 2,
+      "style": "SMC_INTRADAY",
+      "evidenceIds": {
+        "sweepId": "SWEEP-SW-H-1H-1726174800000-1726228800000",
+        "contextSwingId": "SW-H-1H-1726174800000",
+        "fvgId": "FVG-SELL-1726228800000-1.31282-1.31344"
+      },
+      "rationale": "sweep سقف تاییدشده با نفوذ 0.00014 و reclaim در کندل بسته؛ rule=research-rules-v1",
+      "ruleProvenance": {
+        "ruleVersion": "research-rules-v1",
+        "parameterHash": "fnv1a-515c4426",
+        "resolvedParameters": {
+          "stopLossAtrBuffer": 0.2,
+          "targetRiskReward": 2,
+          "expiryBars": 12,
+          "minSweepPenetrationAtr": 0.1,
+          "minFvgSizeAtr": 0.3,
+          "meanReversionLookback": 20,
+          "meanReversionEntryZScore": 2
+        },
+        "signalCandleTimestamp": 1726228800000,
+        "evidenceAvailableAtTimestamp": 1726228800000,
+        "lifecycle": "CONFIRMED"
+      },
+      "status": "PENDING_CONFIRMATION"
+    },
+    {
+      "id": "RS-research-rules-v1-S0_SWEEP_FVG-SELL-1726592400000",
+      "strategyName": "S0_SWEEP_FVG",
+      "symbol": "GBPUSD",
+      "timeframe": "1H",
+      "direction": "SELL",
+      "createdAtTimestamp": 1726592400000,
+      "expiresAtTimestamp": 1726635600000,
+      "entryPrice": 1.31578,
+      "stopLossPrice": 1.31676,
+      "takeProfitPrice": 1.31383,
+      "riskRewardRatio": 2,
+      "style": "SMC_INTRADAY",
+      "evidenceIds": {
+        "sweepId": "SWEEP-SW-H-1H-1726459200000-1726592400000",
+        "contextSwingId": "SW-H-1H-1726459200000",
+        "fvgId": "FVG-SELL-1726592400000-1.31644-1.31792"
+      },
+      "rationale": "sweep سقف تاییدشده با نفوذ 0.00016 و reclaim در کندل بسته؛ rule=research-rules-v1",
+      "ruleProvenance": {
+        "ruleVersion": "research-rules-v1",
+        "parameterHash": "fnv1a-515c4426",
+        "resolvedParameters": {
+          "stopLossAtrBuffer": 0.2,
+          "targetRiskReward": 2,
+          "expiryBars": 12,
+          "minSweepPenetrationAtr": 0.1,
+          "minFvgSizeAtr": 0.3,
+          "meanReversionLookback": 20,
+          "meanReversionEntryZScore": 2
+        },
+        "signalCandleTimestamp": 1726592400000,
+        "evidenceAvailableAtTimestamp": 1726592400000,
+        "lifecycle": "CONFIRMED"
+      },
+      "status": "PENDING_CONFIRMATION"
+    },
+    {
+      "id": "RS-research-rules-v1-S0_SWEEP_FVG-BUY-1726646400000",
+      "strategyName": "S0_SWEEP_FVG",
+      "symbol": "GBPUSD",
+      "timeframe": "1H",
+      "direction": "BUY",
+      "createdAtTimestamp": 1726646400000,
+      "expiresAtTimestamp": 1726689600000,
+      "entryPrice": 1.31979,
+      "stopLossPrice": 1.31786,
+      "takeProfitPrice": 1.32365,
+      "riskRewardRatio": 2,
+      "style": "SMC_INTRADAY",
+      "evidenceIds": {
+        "sweepId": "SWEEP-SW-L-1H-1726502400000-1726646400000",
+        "contextSwingId": "SW-L-1H-1726502400000",
+        "fvgId": "FVG-BUY-1726646400000-1.31605-1.31811"
+      },
+      "rationale": "sweep کف تاییدشده با نفوذ 0.00098 و reclaim در کندل بسته؛ rule=research-rules-v1",
+      "ruleProvenance": {
+        "ruleVersion": "research-rules-v1",
+        "parameterHash": "fnv1a-515c4426",
+        "resolvedParameters": {
+          "stopLossAtrBuffer": 0.2,
+          "targetRiskReward": 2,
+          "expiryBars": 12,
+          "minSweepPenetrationAtr": 0.1,
+          "minFvgSizeAtr": 0.3,
+          "meanReversionLookback": 20,
+          "meanReversionEntryZScore": 2
+        },
+        "signalCandleTimestamp": 1726646400000,
+        "evidenceAvailableAtTimestamp": 1726646400000,
+        "lifecycle": "CONFIRMED"
+      },
+      "status": "PENDING_CONFIRMATION"
+    },
+    {
+      "id": "RS-research-rules-v1-S0_SWEEP_FVG-BUY-1726650000000",
+      "strategyName": "S0_SWEEP_FVG",
+      "symbol": "GBPUSD",
+      "timeframe": "1H",
+      "direction": "BUY",
+      "createdAtTimestamp": 1726650000000,
+      "expiresAtTimestamp": 1726693200000,
+      "entryPrice": 1.32055,
+      "stopLossPrice": 1.3192,
+      "takeProfitPrice": 1.32324,
+      "riskRewardRatio": 2,
+      "style": "SMC_INTRADAY",
+      "evidenceIds": {
+        "sweepId": "SWEEP-SW-L-1H-1726560000000-1726650000000",
+        "contextSwingId": "SW-L-1H-1726560000000",
+        "fvgId": "FVG-BUY-1726650000000-1.31834-1.31946"
+      },
+      "rationale": "sweep کف تاییدشده با نفوذ 0.00037 و reclaim در کندل بسته؛ rule=research-rules-v1",
+      "ruleProvenance": {
+        "ruleVersion": "research-rules-v1",
+        "parameterHash": "fnv1a-515c4426",
+        "resolvedParameters": {
+          "stopLossAtrBuffer": 0.2,
+          "targetRiskReward": 2,
+          "expiryBars": 12,
+          "minSweepPenetrationAtr": 0.1,
+          "minFvgSizeAtr": 0.3,
+          "meanReversionLookback": 20,
+          "meanReversionEntryZScore": 2
+        },
+        "signalCandleTimestamp": 1726650000000,
+        "evidenceAvailableAtTimestamp": 1726650000000,
+        "lifecycle": "CONFIRMED"
+      },
+      "status": "PENDING_CONFIRMATION"
+    },
+    {
+      "id": "RS-research-rules-v1-S0_SWEEP_FVG-SELL-1726711200000",
+      "strategyName": "S0_SWEEP_FVG",
+      "symbol": "GBPUSD",
+      "timeframe": "1H",
+      "direction": "SELL",
+      "createdAtTimestamp": 1726711200000,
+      "expiresAtTimestamp": 1726754400000,
+      "entryPrice": 1.31718,
+      "stopLossPrice": 1.31802,
+      "takeProfitPrice": 1.3155,
+      "riskRewardRatio": 2,
+      "style": "SMC_INTRADAY",
+      "evidenceIds": {
+        "sweepId": "SWEEP-SW-H-1H-1726624800000-1726711200000",
+        "contextSwingId": "SW-H-1H-1726624800000",
+        "fvgId": "FVG-SELL-1726711200000-1.31752-1.31958"
+      },
+      "rationale": "sweep سقف تاییدشده با نفوذ 0.00032 و reclaim در کندل بسته؛ rule=research-rules-v1",
+      "ruleProvenance": {
+        "ruleVersion": "research-rules-v1",
+        "parameterHash": "fnv1a-515c4426",
+        "resolvedParameters": {
+          "stopLossAtrBuffer": 0.2,
+          "targetRiskReward": 2,
+          "expiryBars": 12,
+          "minSweepPenetrationAtr": 0.1,
+          "minFvgSizeAtr": 0.3,
+          "meanReversionLookback": 20,
+          "meanReversionEntryZScore": 2
+        },
+        "signalCandleTimestamp": 1726711200000,
+        "evidenceAvailableAtTimestamp": 1726711200000,
+        "lifecycle": "CONFIRMED"
+      },
+      "status": "PENDING_CONFIRMATION"
+    },
+    {
+      "id": "RS-research-rules-v1-S0_SWEEP_FVG-BUY-1726718400000",
+      "strategyName": "S0_SWEEP_FVG",
+      "symbol": "GBPUSD",
+      "timeframe": "1H",
+      "direction": "BUY",
+      "createdAtTimestamp": 1726718400000,
+      "expiresAtTimestamp": 1726761600000,
+      "entryPrice": 1.32105,
+      "stopLossPrice": 1.31834,
+      "takeProfitPrice": 1.32647,
+      "riskRewardRatio": 2,
+      "style": "SMC_INTRADAY",
+      "evidenceIds": {
+        "sweepId": "SWEEP-SW-L-1H-1726675200000-1726718400000",
+        "contextSwingId": "SW-L-1H-1726675200000",
+        "fvgId": "FVG-BUY-1726718400000-1.31752-1.31884"
+      },
+      "rationale": "sweep کف تاییدشده با نفوذ 0.00063 و reclaim در کندل بسته؛ rule=research-rules-v1",
+      "ruleProvenance": {
+        "ruleVersion": "research-rules-v1",
+        "parameterHash": "fnv1a-515c4426",
+        "resolvedParameters": {
+          "stopLossAtrBuffer": 0.2,
+          "targetRiskReward": 2,
+          "expiryBars": 12,
+          "minSweepPenetrationAtr": 0.1,
+          "minFvgSizeAtr": 0.3,
+          "meanReversionLookback": 20,
+          "meanReversionEntryZScore": 2
+        },
+        "signalCandleTimestamp": 1726718400000,
+        "evidenceAvailableAtTimestamp": 1726718400000,
+        "lifecycle": "CONFIRMED"
+      },
+      "status": "PENDING_CONFIRMATION"
+    },
+    {
+      "id": "RS-research-rules-v1-S0_SWEEP_FVG-BUY-1727092800000",
+      "strategyName": "S0_SWEEP_FVG",
+      "symbol": "GBPUSD",
+      "timeframe": "1H",
+      "direction": "BUY",
+      "createdAtTimestamp": 1727092800000,
+      "expiresAtTimestamp": 1727136000000,
+      "entryPrice": 1.33124,
+      "stopLossPrice": 1.32958,
+      "takeProfitPrice": 1.33456,
+      "riskRewardRatio": 2,
+      "style": "SMC_INTRADAY",
+      "evidenceIds": {
+        "sweepId": "SWEEP-SW-L-1H-1727042400000-1727092800000",
+        "contextSwingId": "SW-L-1H-1727042400000",
+        "fvgId": "FVG-BUY-1727092800000-1.32905-1.32994"
+      },
+      "rationale": "sweep کف تاییدشده با نفوذ 0.00045 و reclaim در کندل بسته؛ rule=research-rules-v1",
+      "ruleProvenance": {
+        "ruleVersion": "research-rules-v1",
+        "parameterHash": "fnv1a-515c4426",
+        "resolvedParameters": {
+          "stopLossAtrBuffer": 0.2,
+          "targetRiskReward": 2,
+          "expiryBars": 12,
+          "minSweepPenetrationAtr": 0.1,
+          "minFvgSizeAtr": 0.3,
+          "meanReversionLookback": 20,
+          "meanReversionEntryZScore": 2
+        },
+        "signalCandleTimestamp": 1727092800000,
+        "evidenceAvailableAtTimestamp": 1727092800000,
+        "lifecycle": "CONFIRMED"
+      },
+      "status": "PENDING_CONFIRMATION"
+    },
+    {
+      "id": "RS-research-rules-v1-S0_SWEEP_FVG-SELL-1727280000000",
+      "strategyName": "S0_SWEEP_FVG",
+      "symbol": "GBPUSD",
+      "timeframe": "1H",
+      "direction": "SELL",
+      "createdAtTimestamp": 1727280000000,
+      "expiresAtTimestamp": 1727323200000,
+      "entryPrice": 1.33376,
+      "stopLossPrice": 1.33815,
+      "takeProfitPrice": 1.32498,
+      "riskRewardRatio": 2,
+      "style": "SMC_INTRADAY",
+      "evidenceIds": {
+        "sweepId": "SWEEP-SW-H-1H-1727157600000-1727280000000",
+        "contextSwingId": "SW-H-1H-1727157600000",
+        "fvgId": "FVG-SELL-1727280000000-1.33778-1.33942"
+      },
+      "rationale": "sweep سقف تاییدشده با نفوذ 0.00119 و reclaim در کندل بسته؛ rule=research-rules-v1",
+      "ruleProvenance": {
+        "ruleVersion": "research-rules-v1",
+        "parameterHash": "fnv1a-515c4426",
+        "resolvedParameters": {
+          "stopLossAtrBuffer": 0.2,
+          "targetRiskReward": 2,
+          "expiryBars": 12,
+          "minSweepPenetrationAtr": 0.1,
+          "minFvgSizeAtr": 0.3,
+          "meanReversionLookback": 20,
+          "meanReversionEntryZScore": 2
+        },
+        "signalCandleTimestamp": 1727280000000,
+        "evidenceAvailableAtTimestamp": 1727280000000,
+        "lifecycle": "CONFIRMED"
+      },
+      "status": "PENDING_CONFIRMATION"
+    },
+    {
+      "id": "RS-research-rules-v1-S0_SWEEP_FVG-BUY-1727366400000",
+      "strategyName": "S0_SWEEP_FVG",
+      "symbol": "GBPUSD",
+      "timeframe": "1H",
+      "direction": "BUY",
+      "createdAtTimestamp": 1727366400000,
+      "expiresAtTimestamp": 1727409600000,
+      "entryPrice": 1.3428,
+      "stopLossPrice": 1.33866,
+      "takeProfitPrice": 1.35108,
+      "riskRewardRatio": 2,
+      "style": "SMC_INTRADAY",
+      "evidenceIds": {
+        "sweepId": "SWEEP-SW-L-1H-1727229600000-1727366400000",
+        "contextSwingId": "SW-L-1H-1727229600000",
+        "fvgId": "FVG-BUY-1727366400000-1.33761-1.33908"
+      },
+      "rationale": "sweep کف تاییدشده با نفوذ 0.00195 و reclaim در کندل بسته؛ rule=research-rules-v1",
+      "ruleProvenance": {
+        "ruleVersion": "research-rules-v1",
+        "parameterHash": "fnv1a-515c4426",
+        "resolvedParameters": {
+          "stopLossAtrBuffer": 0.2,
+          "targetRiskReward": 2,
+          "expiryBars": 12,
+          "minSweepPenetrationAtr": 0.1,
+          "minFvgSizeAtr": 0.3,
+          "meanReversionLookback": 20,
+          "meanReversionEntryZScore": 2
+        },
+        "signalCandleTimestamp": 1727366400000,
+        "evidenceAvailableAtTimestamp": 1727366400000,
+        "lifecycle": "CONFIRMED"
+      },
+      "status": "PENDING_CONFIRMATION"
+    },
+    {
+      "id": "RS-research-rules-v1-S0_SWEEP_FVG-SELL-1729015200000",
+      "strategyName": "S0_SWEEP_FVG",
+      "symbol": "GBPUSD",
+      "timeframe": "1H",
+      "direction": "SELL",
+      "createdAtTimestamp": 1729015200000,
+      "expiresAtTimestamp": 1729058400000,
+      "entryPrice": 1.30628,
+      "stopLossPrice": 1.30748,
+      "takeProfitPrice": 1.30389,
+      "riskRewardRatio": 2,
+      "style": "SMC_INTRADAY",
+      "evidenceIds": {
+        "sweepId": "SWEEP-SW-H-1H-1728957600000-1729015200000",
+        "contextSwingId": "SW-H-1H-1728957600000",
+        "fvgId": "FVG-SELL-1729015200000-1.30718-1.30811"
+      },
+      "rationale": "sweep سقف تاییدشده با نفوذ 0.00030 و reclaim در کندل بسته؛ rule=research-rules-v1",
+      "ruleProvenance": {
+        "ruleVersion": "research-rules-v1",
+        "parameterHash": "fnv1a-515c4426",
+        "resolvedParameters": {
+          "stopLossAtrBuffer": 0.2,
+          "targetRiskReward": 2,
+          "expiryBars": 12,
+          "minSweepPenetrationAtr": 0.1,
+          "minFvgSizeAtr": 0.3,
+          "meanReversionLookback": 20,
+          "meanReversionEntryZScore": 2
+        },
+        "signalCandleTimestamp": 1729015200000,
+        "evidenceAvailableAtTimestamp": 1729015200000,
+        "lifecycle": "CONFIRMED"
+      },
+      "status": "PENDING_CONFIRMATION"
+    },
+    {
+      "id": "RS-research-rules-v1-S0_SWEEP_FVG-SELL-1729497600000",
+      "strategyName": "S0_SWEEP_FVG",
+      "symbol": "GBPUSD",
+      "timeframe": "1H",
+      "direction": "SELL",
+      "createdAtTimestamp": 1729497600000,
+      "expiresAtTimestamp": 1729540800000,
+      "entryPrice": 1.30216,
+      "stopLossPrice": 1.30346,
+      "takeProfitPrice": 1.29957,
+      "riskRewardRatio": 2,
+      "style": "SMC_INTRADAY",
+      "evidenceIds": {
+        "sweepId": "SWEEP-SW-H-1H-1729220400000-1729497600000",
+        "contextSwingId": "SW-H-1H-1729220400000",
+        "fvgId": "FVG-SELL-1729497600000-1.30322-1.30388"
+      },
+      "rationale": "sweep سقف تاییدشده با نفوذ 0.00062 و reclaim در کندل بسته؛ rule=research-rules-v1",
+      "ruleProvenance": {
+        "ruleVersion": "research-rules-v1",
+        "parameterHash": "fnv1a-515c4426",
+        "resolvedParameters": {
+          "stopLossAtrBuffer": 0.2,
+          "targetRiskReward": 2,
+          "expiryBars": 12,
+          "minSweepPenetrationAtr": 0.1,
+          "minFvgSizeAtr": 0.3,
+          "meanReversionLookback": 20,
+          "meanReversionEntryZScore": 2
+        },
+        "signalCandleTimestamp": 1729497600000,
+        "evidenceAvailableAtTimestamp": 1729497600000,
+        "lifecycle": "CONFIRMED"
+      },
+      "status": "PENDING_CONFIRMATION"
+    },
+    {
+      "id": "RS-research-rules-v1-S0_SWEEP_FVG-BUY-1729756800000",
+      "strategyName": "S0_SWEEP_FVG",
+      "symbol": "GBPUSD",
+      "timeframe": "1H",
+      "direction": "BUY",
+      "createdAtTimestamp": 1729756800000,
+      "expiresAtTimestamp": 1729800000000,
+      "entryPrice": 1.29618,
+      "stopLossPrice": 1.29371,
+      "takeProfitPrice": 1.30112,
+      "riskRewardRatio": 2,
+      "style": "SMC_INTRADAY",
+      "evidenceIds": {
+        "sweepId": "SWEEP-SW-L-1H-1729674000000-1729756800000",
+        "contextSwingId": "SW-L-1H-1729674000000",
+        "fvgId": "FVG-BUY-1729756800000-1.29324-1.29397"
+      },
+      "rationale": "sweep کف تاییدشده با نفوذ 0.00220 و reclaim در کندل بسته؛ rule=research-rules-v1",
+      "ruleProvenance": {
+        "ruleVersion": "research-rules-v1",
+        "parameterHash": "fnv1a-515c4426",
+        "resolvedParameters": {
+          "stopLossAtrBuffer": 0.2,
+          "targetRiskReward": 2,
+          "expiryBars": 12,
+          "minSweepPenetrationAtr": 0.1,
+          "minFvgSizeAtr": 0.3,
+          "meanReversionLookback": 20,
+          "meanReversionEntryZScore": 2
+        },
+        "signalCandleTimestamp": 1729756800000,
+        "evidenceAvailableAtTimestamp": 1729756800000,
+        "lifecycle": "CONFIRMED"
+      },
+      "status": "PENDING_CONFIRMATION"
+    },
+    {
+      "id": "RS-research-rules-v1-S0_SWEEP_FVG-SELL-1729875600000",
+      "strategyName": "S0_SWEEP_FVG",
+      "symbol": "GBPUSD",
+      "timeframe": "1H",
+      "direction": "SELL",
+      "createdAtTimestamp": 1729875600000,
+      "expiresAtTimestamp": 1729918800000,
+      "entryPrice": 1.29761,
+      "stopLossPrice": 1.29822,
+      "takeProfitPrice": 1.29639,
+      "riskRewardRatio": 2,
+      "style": "SMC_INTRADAY",
+      "evidenceIds": {
+        "sweepId": "SWEEP-SW-H-1H-1729803600000-1729875600000",
+        "contextSwingId": "SW-H-1H-1729803600000",
+        "fvgId": "FVG-SELL-1729875600000-1.29798-1.29836"
+      },
+      "rationale": "sweep سقف تاییدشده با نفوذ 0.00026 و reclaim در کندل بسته؛ rule=research-rules-v1",
+      "ruleProvenance": {
+        "ruleVersion": "research-rules-v1",
+        "parameterHash": "fnv1a-515c4426",
+        "resolvedParameters": {
+          "stopLossAtrBuffer": 0.2,
+          "targetRiskReward": 2,
+          "expiryBars": 12,
+          "minSweepPenetrationAtr": 0.1,
+          "minFvgSizeAtr": 0.3,
+          "meanReversionLookback": 20,
+          "meanReversionEntryZScore": 2
+        },
+        "signalCandleTimestamp": 1729875600000,
+        "evidenceAvailableAtTimestamp": 1729875600000,
+        "lifecycle": "CONFIRMED"
+      },
+      "status": "PENDING_CONFIRMATION"
+    },
+    {
+      "id": "RS-research-rules-v1-S0_SWEEP_FVG-BUY-1730098800000",
+      "strategyName": "S0_SWEEP_FVG",
+      "symbol": "GBPUSD",
+      "timeframe": "1H",
+      "direction": "BUY",
+      "createdAtTimestamp": 1730098800000,
+      "expiresAtTimestamp": 1730142000000,
+      "entryPrice": 1.297,
+      "stopLossPrice": 1.29546,
+      "takeProfitPrice": 1.30008,
+      "riskRewardRatio": 2,
+      "style": "SMC_INTRADAY",
+      "evidenceIds": {
+        "sweepId": "SWEEP-SW-L-1H-1729807200000-1730098800000",
+        "contextSwingId": "SW-L-1H-1729807200000",
+        "fvgId": "FVG-BUY-1730098800000-1.29496-1.29568"
+      },
+      "rationale": "sweep کف تاییدشده با نفوذ 0.00109 و reclaim در کندل بسته؛ rule=research-rules-v1",
+      "ruleProvenance": {
+        "ruleVersion": "research-rules-v1",
+        "parameterHash": "fnv1a-515c4426",
+        "resolvedParameters": {
+          "stopLossAtrBuffer": 0.2,
+          "targetRiskReward": 2,
+          "expiryBars": 12,
+          "minSweepPenetrationAtr": 0.1,
+          "minFvgSizeAtr": 0.3,
+          "meanReversionLookback": 20,
+          "meanReversionEntryZScore": 2
+        },
+        "signalCandleTimestamp": 1730098800000,
+        "evidenceAvailableAtTimestamp": 1730098800000,
+        "lifecycle": "CONFIRMED"
+      },
+      "status": "PENDING_CONFIRMATION"
+    },
+    {
+      "id": "RS-research-rules-v1-S0_SWEEP_FVG-SELL-1730257200000",
+      "strategyName": "S0_SWEEP_FVG",
+      "symbol": "GBPUSD",
+      "timeframe": "1H",
+      "direction": "SELL",
+      "createdAtTimestamp": 1730257200000,
+      "expiresAtTimestamp": 1730300400000,
+      "entryPrice": 1.29987,
+      "stopLossPrice": 1.30086,
+      "takeProfitPrice": 1.29789,
+      "riskRewardRatio": 2,
+      "style": "SMC_INTRADAY",
+      "evidenceIds": {
+        "sweepId": "SWEEP-SW-H-1H-1730124000000-1730257200000",
+        "contextSwingId": "SW-H-1H-1730124000000",
+        "fvgId": "FVG-SELL-1730257200000-1.30062-1.301"
+      },
+      "rationale": "sweep سقف تاییدشده با نفوذ 0.00051 و reclaim در کندل بسته؛ rule=research-rules-v1",
+      "ruleProvenance": {
+        "ruleVersion": "research-rules-v1",
+        "parameterHash": "fnv1a-515c4426",
+        "resolvedParameters": {
+          "stopLossAtrBuffer": 0.2,
+          "targetRiskReward": 2,
+          "expiryBars": 12,
+          "minSweepPenetrationAtr": 0.1,
+          "minFvgSizeAtr": 0.3,
+          "meanReversionLookback": 20,
+          "meanReversionEntryZScore": 2
+        },
+        "signalCandleTimestamp": 1730257200000,
+        "evidenceAvailableAtTimestamp": 1730257200000,
+        "lifecycle": "CONFIRMED"
+      },
+      "status": "PENDING_CONFIRMATION"
+    },
+    {
+      "id": "RS-research-rules-v1-S0_SWEEP_FVG-BUY-1730358000000",
+      "strategyName": "S0_SWEEP_FVG",
+      "symbol": "GBPUSD",
+      "timeframe": "1H",
+      "direction": "BUY",
+      "createdAtTimestamp": 1730358000000,
+      "expiresAtTimestamp": 1730401200000,
+      "entryPrice": 1.29953,
+      "stopLossPrice": 1.29618,
+      "takeProfitPrice": 1.30624,
+      "riskRewardRatio": 2,
+      "style": "SMC_INTRADAY",
+      "evidenceIds": {
+        "sweepId": "SWEEP-SW-L-1H-1730206800000-1730358000000",
+        "contextSwingId": "SW-L-1H-1730206800000",
+        "fvgId": "FVG-BUY-1730358000000-1.29568-1.29651"
+      },
+      "rationale": "sweep کف تاییدشده با نفوذ 0.00017 و reclaim در کندل بسته؛ rule=research-rules-v1",
+      "ruleProvenance": {
+        "ruleVersion": "research-rules-v1",
+        "parameterHash": "fnv1a-515c4426",
+        "resolvedParameters": {
+          "stopLossAtrBuffer": 0.2,
+          "targetRiskReward": 2,
+          "expiryBars": 12,
+          "minSweepPenetrationAtr": 0.1,
+          "minFvgSizeAtr": 0.3,
+          "meanReversionLookback": 20,
+          "meanReversionEntryZScore": 2
+        },
+        "signalCandleTimestamp": 1730358000000,
+        "evidenceAvailableAtTimestamp": 1730358000000,
+        "lifecycle": "CONFIRMED"
+      },
+      "status": "PENDING_CONFIRMATION"
+    },
+    {
+      "id": "RS-research-rules-v1-S0_SWEEP_FVG-BUY-1730466000000",
+      "strategyName": "S0_SWEEP_FVG",
+      "symbol": "GBPUSD",
+      "timeframe": "1H",
+      "direction": "BUY",
+      "createdAtTimestamp": 1730466000000,
+      "expiresAtTimestamp": 1730509200000,
+      "entryPrice": 1.29667,
+      "stopLossPrice": 1.29395,
+      "takeProfitPrice": 1.30211,
+      "riskRewardRatio": 2,
+      "style": "SMC_INTRADAY",
+      "evidenceIds": {
+        "sweepId": "SWEEP-SW-L-1H-1730365200000-1730466000000",
+        "contextSwingId": "SW-L-1H-1730365200000",
+        "fvgId": "FVG-BUY-1730466000000-1.29227-1.29435"
+      },
+      "rationale": "sweep کف تاییدشده با نفوذ 0.00142 و reclaim در کندل بسته؛ rule=research-rules-v1",
+      "ruleProvenance": {
+        "ruleVersion": "research-rules-v1",
+        "parameterHash": "fnv1a-515c4426",
+        "resolvedParameters": {
+          "stopLossAtrBuffer": 0.2,
+          "targetRiskReward": 2,
+          "expiryBars": 12,
+          "minSweepPenetrationAtr": 0.1,
+          "minFvgSizeAtr": 0.3,
+          "meanReversionLookback": 20,
+          "meanReversionEntryZScore": 2
+        },
+        "signalCandleTimestamp": 1730466000000,
+        "evidenceAvailableAtTimestamp": 1730466000000,
+        "lifecycle": "CONFIRMED"
+      },
+      "status": "PENDING_CONFIRMATION"
+    },
+    {
+      "id": "RS-research-rules-v1-S0_SWEEP_FVG-SELL-1731070800000",
+      "strategyName": "S0_SWEEP_FVG",
+      "symbol": "GBPUSD",
+      "timeframe": "1H",
+      "direction": "SELL",
+      "createdAtTimestamp": 1731070800000,
+      "expiresAtTimestamp": 1731114000000,
+      "entryPrice": 1.29412,
+      "stopLossPrice": 1.29541,
+      "takeProfitPrice": 1.29155,
+      "riskRewardRatio": 2,
+      "style": "SMC_INTRADAY",
+      "evidenceIds": {
+        "sweepId": "SWEEP-SW-H-1H-1730962800000-1731070800000",
+        "contextSwingId": "SW-H-1H-1730962800000",
+        "fvgId": "FVG-SELL-1731070800000-1.29503-1.29618"
+      },
+      "rationale": "sweep سقف تاییدشده با نفوذ 0.00032 و reclaim در کندل بسته؛ rule=research-rules-v1",
+      "ruleProvenance": {
+        "ruleVersion": "research-rules-v1",
+        "parameterHash": "fnv1a-515c4426",
+        "resolvedParameters": {
+          "stopLossAtrBuffer": 0.2,
+          "targetRiskReward": 2,
+          "expiryBars": 12,
+          "minSweepPenetrationAtr": 0.1,
+          "minFvgSizeAtr": 0.3,
+          "meanReversionLookback": 20,
+          "meanReversionEntryZScore": 2
+        },
+        "signalCandleTimestamp": 1731070800000,
+        "evidenceAvailableAtTimestamp": 1731070800000,
+        "lifecycle": "CONFIRMED"
+      },
+      "status": "PENDING_CONFIRMATION"
+    },
+    {
+      "id": "RS-research-rules-v1-S0_SWEEP_FVG-BUY-1731949200000",
+      "strategyName": "S0_SWEEP_FVG",
+      "symbol": "GBPUSD",
+      "timeframe": "1H",
+      "direction": "BUY",
+      "createdAtTimestamp": 1731949200000,
+      "expiresAtTimestamp": 1731992400000,
+      "entryPrice": 1.26656,
+      "stopLossPrice": 1.26502,
+      "takeProfitPrice": 1.26963,
+      "riskRewardRatio": 2,
+      "style": "SMC_INTRADAY",
+      "evidenceIds": {
+        "sweepId": "SWEEP-SW-L-1H-1731628800000-1731949200000",
+        "contextSwingId": "SW-L-1H-1731628800000",
+        "fvgId": "FVG-BUY-1731949200000-1.26432-1.26537"
+      },
+      "rationale": "sweep کف تاییدشده با نفوذ 0.00024 و reclaim در کندل بسته؛ rule=research-rules-v1",
+      "ruleProvenance": {
+        "ruleVersion": "research-rules-v1",
+        "parameterHash": "fnv1a-515c4426",
+        "resolvedParameters": {
+          "stopLossAtrBuffer": 0.2,
+          "targetRiskReward": 2,
+          "expiryBars": 12,
+          "minSweepPenetrationAtr": 0.1,
+          "minFvgSizeAtr": 0.3,
+          "meanReversionLookback": 20,
+          "meanReversionEntryZScore": 2
+        },
+        "signalCandleTimestamp": 1731949200000,
+        "evidenceAvailableAtTimestamp": 1731949200000,
+        "lifecycle": "CONFIRMED"
+      },
+      "status": "PENDING_CONFIRMATION"
+    },
+    {
+      "id": "RS-research-rules-v1-S0_SWEEP_FVG-BUY-1732032000000",
+      "strategyName": "S0_SWEEP_FVG",
+      "symbol": "GBPUSD",
+      "timeframe": "1H",
+      "direction": "BUY",
+      "createdAtTimestamp": 1732032000000,
+      "expiresAtTimestamp": 1732075200000,
+      "entryPrice": 1.26658,
+      "stopLossPrice": 1.26578,
+      "takeProfitPrice": 1.26819,
+      "riskRewardRatio": 2,
+      "style": "SMC_INTRADAY",
+      "evidenceIds": {
+        "sweepId": "SWEEP-SW-L-1H-1731978000000-1732032000000",
+        "contextSwingId": "SW-L-1H-1731978000000",
+        "fvgId": "FVG-BUY-1732032000000-1.26544-1.26617"
+      },
+      "rationale": "sweep کف تاییدشده با نفوذ 0.00039 و reclaim در کندل بسته؛ rule=research-rules-v1",
+      "ruleProvenance": {
+        "ruleVersion": "research-rules-v1",
+        "parameterHash": "fnv1a-515c4426",
+        "resolvedParameters": {
+          "stopLossAtrBuffer": 0.2,
+          "targetRiskReward": 2,
+          "expiryBars": 12,
+          "minSweepPenetrationAtr": 0.1,
+          "minFvgSizeAtr": 0.3,
+          "meanReversionLookback": 20,
+          "meanReversionEntryZScore": 2
+        },
+        "signalCandleTimestamp": 1732032000000,
+        "evidenceAvailableAtTimestamp": 1732032000000,
+        "lifecycle": "CONFIRMED"
+      },
+      "status": "PENDING_CONFIRMATION"
+    },
+    {
+      "id": "RS-research-rules-v1-S0_SWEEP_FVG-BUY-1732485600000",
+      "strategyName": "S0_SWEEP_FVG",
+      "symbol": "GBPUSD",
+      "timeframe": "1H",
+      "direction": "BUY",
+      "createdAtTimestamp": 1732485600000,
+      "expiresAtTimestamp": 1732528800000,
+      "entryPrice": 1.25852,
+      "stopLossPrice": 1.25592,
+      "takeProfitPrice": 1.26373,
+      "riskRewardRatio": 2,
+      "style": "SMC_INTRADAY",
+      "evidenceIds": {
+        "sweepId": "SWEEP-SW-L-1H-1732240800000-1732485600000",
+        "contextSwingId": "SW-L-1H-1732240800000",
+        "fvgId": "FVG-BUY-1732485600000-1.25318-1.25635"
+      },
+      "rationale": "sweep کف تاییدشده با نفوذ 0.00168 و reclaim در کندل بسته؛ rule=research-rules-v1",
+      "ruleProvenance": {
+        "ruleVersion": "research-rules-v1",
+        "parameterHash": "fnv1a-515c4426",
+        "resolvedParameters": {
+          "stopLossAtrBuffer": 0.2,
+          "targetRiskReward": 2,
+          "expiryBars": 12,
+          "minSweepPenetrationAtr": 0.1,
+          "minFvgSizeAtr": 0.3,
+          "meanReversionLookback": 20,
+          "meanReversionEntryZScore": 2
+        },
+        "signalCandleTimestamp": 1732485600000,
+        "evidenceAvailableAtTimestamp": 1732485600000,
+        "lifecycle": "CONFIRMED"
+      },
+      "status": "PENDING_CONFIRMATION"
+    },
+    {
+      "id": "RS-research-rules-v1-S0_SWEEP_FVG-BUY-1732489200000",
+      "strategyName": "S0_SWEEP_FVG",
+      "symbol": "GBPUSD",
+      "timeframe": "1H",
+      "direction": "BUY",
+      "createdAtTimestamp": 1732489200000,
+      "expiresAtTimestamp": 1732532400000,
+      "entryPrice": 1.25926,
+      "stopLossPrice": 1.25695,
+      "takeProfitPrice": 1.26387,
+      "riskRewardRatio": 2,
+      "style": "SMC_INTRADAY",
+      "evidenceIds": {
+        "sweepId": "SWEEP-SW-L-1H-1732240800000-1732489200000",
+        "contextSwingId": "SW-L-1H-1732240800000",
+        "fvgId": "FVG-BUY-1732489200000-1.25337-1.25739"
+      },
+      "rationale": "sweep کف تاییدشده با نفوذ 0.00064 و reclaim در کندل بسته؛ rule=research-rules-v1",
+      "ruleProvenance": {
+        "ruleVersion": "research-rules-v1",
+        "parameterHash": "fnv1a-515c4426",
+        "resolvedParameters": {
+          "stopLossAtrBuffer": 0.2,
+          "targetRiskReward": 2,
+          "expiryBars": 12,
+          "minSweepPenetrationAtr": 0.1,
+          "minFvgSizeAtr": 0.3,
+          "meanReversionLookback": 20,
+          "meanReversionEntryZScore": 2
+        },
+        "signalCandleTimestamp": 1732489200000,
+        "evidenceAvailableAtTimestamp": 1732489200000,
+        "lifecycle": "CONFIRMED"
+      },
+      "status": "PENDING_CONFIRMATION"
+    },
+    {
+      "id": "RS-research-rules-v1-S0_SWEEP_FVG-SELL-1732579200000",
+      "strategyName": "S0_SWEEP_FVG",
+      "symbol": "GBPUSD",
+      "timeframe": "1H",
+      "direction": "SELL",
+      "createdAtTimestamp": 1732579200000,
+      "expiresAtTimestamp": 1732622400000,
+      "entryPrice": 1.25132,
+      "stopLossPrice": 1.25434,
+      "takeProfitPrice": 1.24528,
+      "riskRewardRatio": 2,
+      "style": "SMC_INTRADAY",
+      "evidenceIds": {
+        "sweepId": "SWEEP-SW-H-1H-1732298400000-1732579200000",
+        "contextSwingId": "SW-H-1H-1732298400000",
+        "fvgId": "FVG-SELL-1732579200000-1.25392-1.25655"
+      },
+      "rationale": "sweep سقف تاییدشده با نفوذ 0.00043 و reclaim در کندل بسته؛ rule=research-rules-v1",
+      "ruleProvenance": {
+        "ruleVersion": "research-rules-v1",
+        "parameterHash": "fnv1a-515c4426",
+        "resolvedParameters": {
+          "stopLossAtrBuffer": 0.2,
+          "targetRiskReward": 2,
+          "expiryBars": 12,
+          "minSweepPenetrationAtr": 0.1,
+          "minFvgSizeAtr": 0.3,
+          "meanReversionLookback": 20,
+          "meanReversionEntryZScore": 2
+        },
+        "signalCandleTimestamp": 1732579200000,
+        "evidenceAvailableAtTimestamp": 1732579200000,
+        "lifecycle": "CONFIRMED"
+      },
+      "status": "PENDING_CONFIRMATION"
+    },
+    {
+      "id": "RS-research-rules-v1-S0_SWEEP_FVG-BUY-1732593600000",
+      "strategyName": "S0_SWEEP_FVG",
+      "symbol": "GBPUSD",
+      "timeframe": "1H",
+      "direction": "BUY",
+      "createdAtTimestamp": 1732593600000,
+      "expiresAtTimestamp": 1732636800000,
+      "entryPrice": 1.25519,
+      "stopLossPrice": 1.25445,
+      "takeProfitPrice": 1.25667,
+      "riskRewardRatio": 2,
+      "style": "SMC_INTRADAY",
+      "evidenceIds": {
+        "sweepId": "SWEEP-SW-L-1H-1732536000000-1732593600000",
+        "contextSwingId": "SW-L-1H-1732536000000",
+        "fvgId": "FVG-BUY-1732593600000-1.25352-1.25486"
+      },
+      "rationale": "sweep کف تاییدشده با نفوذ 0.00026 و reclaim در کندل بسته؛ rule=research-rules-v1",
+      "ruleProvenance": {
+        "ruleVersion": "research-rules-v1",
+        "parameterHash": "fnv1a-515c4426",
+        "resolvedParameters": {
+          "stopLossAtrBuffer": 0.2,
+          "targetRiskReward": 2,
+          "expiryBars": 12,
+          "minSweepPenetrationAtr": 0.1,
+          "minFvgSizeAtr": 0.3,
+          "meanReversionLookback": 20,
+          "meanReversionEntryZScore": 2
+        },
+        "signalCandleTimestamp": 1732593600000,
+        "evidenceAvailableAtTimestamp": 1732593600000,
+        "lifecycle": "CONFIRMED"
+      },
+      "status": "PENDING_CONFIRMATION"
+    },
+    {
+      "id": "RS-research-rules-v1-S0_SWEEP_FVG-SELL-1732870800000",
+      "strategyName": "S0_SWEEP_FVG",
+      "symbol": "GBPUSD",
+      "timeframe": "1H",
+      "direction": "SELL",
+      "createdAtTimestamp": 1732870800000,
+      "expiresAtTimestamp": 1732914000000,
+      "entryPrice": 1.26925,
+      "stopLossPrice": 1.27163,
+      "takeProfitPrice": 1.26449,
+      "riskRewardRatio": 2,
+      "style": "SMC_INTRADAY",
+      "evidenceIds": {
+        "sweepId": "SWEEP-SW-H-1H-1732723200000-1732870800000",
+        "contextSwingId": "SW-H-1H-1732723200000",
+        "fvgId": "FVG-SELL-1732870800000-1.27134-1.2721"
+      },
+      "rationale": "sweep سقف تاییدشده با نفوذ 0.00192 و reclaim در کندل بسته؛ rule=research-rules-v1",
+      "ruleProvenance": {
+        "ruleVersion": "research-rules-v1",
+        "parameterHash": "fnv1a-515c4426",
+        "resolvedParameters": {
+          "stopLossAtrBuffer": 0.2,
+          "targetRiskReward": 2,
+          "expiryBars": 12,
+          "minSweepPenetrationAtr": 0.1,
+          "minFvgSizeAtr": 0.3,
+          "meanReversionLookback": 20,
+          "meanReversionEntryZScore": 2
+        },
+        "signalCandleTimestamp": 1732870800000,
+        "evidenceAvailableAtTimestamp": 1732870800000,
+        "lifecycle": "CONFIRMED"
+      },
+      "status": "PENDING_CONFIRMATION"
+    },
+    {
+      "id": "RS-research-rules-v1-S0_SWEEP_FVG-BUY-1733212800000",
+      "strategyName": "S0_SWEEP_FVG",
+      "symbol": "GBPUSD",
+      "timeframe": "1H",
+      "direction": "BUY",
+      "createdAtTimestamp": 1733212800000,
+      "expiresAtTimestamp": 1733256000000,
+      "entryPrice": 1.269,
+      "stopLossPrice": 1.26576,
+      "takeProfitPrice": 1.27549,
+      "riskRewardRatio": 2,
+      "style": "SMC_INTRADAY",
+      "evidenceIds": {
+        "sweepId": "SWEEP-SW-L-1H-1733126400000-1733212800000",
+        "contextSwingId": "SW-L-1H-1733126400000",
+        "fvgId": "FVG-BUY-1733212800000-1.26544-1.2661"
+      },
+      "rationale": "sweep کف تاییدشده با نفوذ 0.00176 و reclaim در کندل بسته؛ rule=research-rules-v1",
+      "ruleProvenance": {
+        "ruleVersion": "research-rules-v1",
+        "parameterHash": "fnv1a-515c4426",
+        "resolvedParameters": {
+          "stopLossAtrBuffer": 0.2,
+          "targetRiskReward": 2,
+          "expiryBars": 12,
+          "minSweepPenetrationAtr": 0.1,
+          "minFvgSizeAtr": 0.3,
+          "meanReversionLookback": 20,
+          "meanReversionEntryZScore": 2
+        },
+        "signalCandleTimestamp": 1733212800000,
+        "evidenceAvailableAtTimestamp": 1733212800000,
+        "lifecycle": "CONFIRMED"
+      },
+      "status": "PENDING_CONFIRMATION"
+    },
+    {
+      "id": "RS-research-rules-v1-S0_SWEEP_FVG-SELL-1733497200000",
+      "strategyName": "S0_SWEEP_FVG",
+      "symbol": "GBPUSD",
+      "timeframe": "1H",
+      "direction": "SELL",
+      "createdAtTimestamp": 1733497200000,
+      "expiresAtTimestamp": 1733540400000,
+      "entryPrice": 1.27434,
+      "stopLossPrice": 1.27633,
+      "takeProfitPrice": 1.27036,
+      "riskRewardRatio": 2,
+      "style": "SMC_INTRADAY",
+      "evidenceIds": {
+        "sweepId": "SWEEP-SW-H-1H-1733454000000-1733497200000",
+        "contextSwingId": "SW-H-1H-1733454000000",
+        "fvgId": "FVG-SELL-1733497200000-1.27596-1.27674"
+      },
+      "rationale": "sweep سقف تاییدشده با نفوذ 0.00060 و reclaim در کندل بسته؛ rule=research-rules-v1",
+      "ruleProvenance": {
+        "ruleVersion": "research-rules-v1",
+        "parameterHash": "fnv1a-515c4426",
+        "resolvedParameters": {
+          "stopLossAtrBuffer": 0.2,
+          "targetRiskReward": 2,
+          "expiryBars": 12,
+          "minSweepPenetrationAtr": 0.1,
+          "minFvgSizeAtr": 0.3,
+          "meanReversionLookback": 20,
+          "meanReversionEntryZScore": 2
+        },
+        "signalCandleTimestamp": 1733497200000,
+        "evidenceAvailableAtTimestamp": 1733497200000,
+        "lifecycle": "CONFIRMED"
+      },
+      "status": "PENDING_CONFIRMATION"
+    },
+    {
+      "id": "RS-research-rules-v1-S0_SWEEP_FVG-SELL-1733774400000",
+      "strategyName": "S0_SWEEP_FVG",
+      "symbol": "GBPUSD",
+      "timeframe": "1H",
+      "direction": "SELL",
+      "createdAtTimestamp": 1733774400000,
+      "expiresAtTimestamp": 1733817600000,
+      "entryPrice": 1.27484,
+      "stopLossPrice": 1.27594,
+      "takeProfitPrice": 1.27263,
+      "riskRewardRatio": 2,
+      "style": "SMC_INTRADAY",
+      "evidenceIds": {
+        "sweepId": "SWEEP-SW-H-1H-1733695200000-1733774400000",
+        "contextSwingId": "SW-H-1H-1733695200000",
+        "fvgId": "FVG-SELL-1733774400000-1.27561-1.2762"
+      },
+      "rationale": "sweep سقف تاییدشده با نفوذ 0.00053 و reclaim در کندل بسته؛ rule=research-rules-v1",
+      "ruleProvenance": {
+        "ruleVersion": "research-rules-v1",
+        "parameterHash": "fnv1a-515c4426",
+        "resolvedParameters": {
+          "stopLossAtrBuffer": 0.2,
+          "targetRiskReward": 2,
+          "expiryBars": 12,
+          "minSweepPenetrationAtr": 0.1,
+          "minFvgSizeAtr": 0.3,
+          "meanReversionLookback": 20,
+          "meanReversionEntryZScore": 2
+        },
+        "signalCandleTimestamp": 1733774400000,
+        "evidenceAvailableAtTimestamp": 1733774400000,
+        "lifecycle": "CONFIRMED"
+      },
+      "status": "PENDING_CONFIRMATION"
+    },
+    {
+      "id": "RS-research-rules-v1-S0_SWEEP_FVG-SELL-1733904000000",
+      "strategyName": "S0_SWEEP_FVG",
+      "symbol": "GBPUSD",
+      "timeframe": "1H",
+      "direction": "SELL",
+      "createdAtTimestamp": 1733904000000,
+      "expiresAtTimestamp": 1733947200000,
+      "entryPrice": 1.27483,
+      "stopLossPrice": 1.27587,
+      "takeProfitPrice": 1.27275,
+      "riskRewardRatio": 2,
+      "style": "SMC_INTRADAY",
+      "evidenceIds": {
+        "sweepId": "SWEEP-SW-H-1H-1733796000000-1733904000000",
+        "contextSwingId": "SW-H-1H-1733796000000",
+        "fvgId": "FVG-SELL-1733904000000-1.27559-1.27643"
+      },
+      "rationale": "sweep سقف تاییدشده با نفوذ 0.00025 و reclaim در کندل بسته؛ rule=research-rules-v1",
+      "ruleProvenance": {
+        "ruleVersion": "research-rules-v1",
+        "parameterHash": "fnv1a-515c4426",
+        "resolvedParameters": {
+          "stopLossAtrBuffer": 0.2,
+          "targetRiskReward": 2,
+          "expiryBars": 12,
+          "minSweepPenetrationAtr": 0.1,
+          "minFvgSizeAtr": 0.3,
+          "meanReversionLookback": 20,
+          "meanReversionEntryZScore": 2
+        },
+        "signalCandleTimestamp": 1733904000000,
+        "evidenceAvailableAtTimestamp": 1733904000000,
+        "lifecycle": "CONFIRMED"
+      },
+      "status": "PENDING_CONFIRMATION"
+    },
+    {
+      "id": "RS-research-rules-v1-S0_SWEEP_FVG-SELL-1735056000000",
+      "strategyName": "S0_SWEEP_FVG",
+      "symbol": "GBPUSD",
+      "timeframe": "1H",
+      "direction": "SELL",
+      "createdAtTimestamp": 1735056000000,
+      "expiresAtTimestamp": 1735099200000,
+      "entryPrice": 1.25236,
+      "stopLossPrice": 1.25463,
+      "takeProfitPrice": 1.24782,
+      "riskRewardRatio": 2,
+      "style": "SMC_INTRADAY",
+      "evidenceIds": {
+        "sweepId": "SWEEP-SW-H-1H-1735016400000-1735056000000",
+        "contextSwingId": "SW-H-1H-1735016400000",
+        "fvgId": "FVG-SELL-1735056000000-1.25432-1.25567"
+      },
+      "rationale": "sweep سقف تاییدشده با نفوذ 0.00030 و reclaim در کندل بسته؛ rule=research-rules-v1",
+      "ruleProvenance": {
+        "ruleVersion": "research-rules-v1",
+        "parameterHash": "fnv1a-515c4426",
+        "resolvedParameters": {
+          "stopLossAtrBuffer": 0.2,
+          "targetRiskReward": 2,
+          "expiryBars": 12,
+          "minSweepPenetrationAtr": 0.1,
+          "minFvgSizeAtr": 0.3,
+          "meanReversionLookback": 20,
+          "meanReversionEntryZScore": 2
+        },
+        "signalCandleTimestamp": 1735056000000,
+        "evidenceAvailableAtTimestamp": 1735056000000,
+        "lifecycle": "CONFIRMED"
+      },
+      "status": "PENDING_CONFIRMATION"
+    },
+    {
+      "id": "RS-research-rules-v1-S0_SWEEP_FVG-SELL-1735574400000",
+      "strategyName": "S0_SWEEP_FVG",
+      "symbol": "GBPUSD",
+      "timeframe": "1H",
+      "direction": "SELL",
+      "createdAtTimestamp": 1735574400000,
+      "expiresAtTimestamp": 1735617600000,
+      "entryPrice": 1.25187,
+      "stopLossPrice": 1.25361,
+      "takeProfitPrice": 1.24838,
+      "riskRewardRatio": 2,
+      "style": "SMC_INTRADAY",
+      "evidenceIds": {
+        "sweepId": "SWEEP-SW-H-1H-1735272000000-1735574400000",
+        "contextSwingId": "SW-H-1H-1735272000000",
+        "fvgId": "FVG-SELL-1735574400000-1.25321-1.25403"
+      },
+      "rationale": "sweep سقف تاییدشده با نفوذ 0.00034 و reclaim در کندل بسته؛ rule=research-rules-v1",
+      "ruleProvenance": {
+        "ruleVersion": "research-rules-v1",
+        "parameterHash": "fnv1a-515c4426",
+        "resolvedParameters": {
+          "stopLossAtrBuffer": 0.2,
+          "targetRiskReward": 2,
+          "expiryBars": 12,
+          "minSweepPenetrationAtr": 0.1,
+          "minFvgSizeAtr": 0.3,
+          "meanReversionLookback": 20,
+          "meanReversionEntryZScore": 2
+        },
+        "signalCandleTimestamp": 1735574400000,
+        "evidenceAvailableAtTimestamp": 1735574400000,
+        "lifecycle": "CONFIRMED"
+      },
+      "status": "PENDING_CONFIRMATION"
+    }
+  ]
+}

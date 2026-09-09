@@ -22,6 +22,8 @@ export function calculateStrategyStatistics(
   > = {
     XAUUSD: { tradesCount: 0, winRatePercent: 0, netProfit: 0, profitFactor: 0, grossWins: 0, grossLosses: 0, winsCount: 0 },
     EURUSD: { tradesCount: 0, winRatePercent: 0, netProfit: 0, profitFactor: 0, grossWins: 0, grossLosses: 0, winsCount: 0 },
+    GBPUSD: { tradesCount: 0, winRatePercent: 0, netProfit: 0, profitFactor: 0, grossWins: 0, grossLosses: 0, winsCount: 0 },
+    USDJPY: { tradesCount: 0, winRatePercent: 0, netProfit: 0, profitFactor: 0, grossWins: 0, grossLosses: 0, winsCount: 0 },
   };
 
   if (closedPositions.length === 0) {
@@ -46,6 +48,8 @@ export function calculateStrategyStatistics(
       bySymbol: {
         XAUUSD: { tradesCount: 0, winRatePercent: 0, netProfit: 0, profitFactor: 0 },
         EURUSD: { tradesCount: 0, winRatePercent: 0, netProfit: 0, profitFactor: 0 },
+        GBPUSD: { tradesCount: 0, winRatePercent: 0, netProfit: 0, profitFactor: 0 },
+        USDJPY: { tradesCount: 0, winRatePercent: 0, netProfit: 0, profitFactor: 0 },
       },
     };
   }
@@ -171,6 +175,18 @@ export function calculateStrategyStatistics(
           : bySymbol.EURUSD.grossWins > 0
           ? 99.9
           : 0,
+    },
+    GBPUSD: {
+      tradesCount: bySymbol.GBPUSD.tradesCount,
+      winRatePercent: bySymbol.GBPUSD.tradesCount > 0 ? (bySymbol.GBPUSD.winsCount / bySymbol.GBPUSD.tradesCount) * 100 : 0,
+      netProfit: Number(bySymbol.GBPUSD.netProfit.toFixed(2)),
+      profitFactor: bySymbol.GBPUSD.grossLosses > 0 ? Number((bySymbol.GBPUSD.grossWins / bySymbol.GBPUSD.grossLosses).toFixed(2)) : bySymbol.GBPUSD.grossWins > 0 ? 99.9 : 0,
+    },
+    USDJPY: {
+      tradesCount: bySymbol.USDJPY.tradesCount,
+      winRatePercent: bySymbol.USDJPY.tradesCount > 0 ? (bySymbol.USDJPY.winsCount / bySymbol.USDJPY.tradesCount) * 100 : 0,
+      netProfit: Number(bySymbol.USDJPY.netProfit.toFixed(2)),
+      profitFactor: bySymbol.USDJPY.grossLosses > 0 ? Number((bySymbol.USDJPY.grossWins / bySymbol.USDJPY.grossLosses).toFixed(2)) : bySymbol.USDJPY.grossWins > 0 ? 99.9 : 0,
     },
   };
 

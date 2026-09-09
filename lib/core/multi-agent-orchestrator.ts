@@ -124,11 +124,17 @@ export class MultiAgentOrchestrator {
       verdictPersian,
     };
 
-    const isApprovedForTrading = judgeReview.verdict === 'APPROVED' && (!vetoTriggered || judgeReview.engineId !== 'alpha-consensus-quorum-judge');
+    const configuredEngineIds = [config.scannerEngineId, config.analystEngineId, config.criticEngineId, config.judgeEngineId];
+    const hasUnexecutedNeuralEngine = configuredEngineIds.some(engineId =>
+      AGENT_ENGINE_OPTIONS.find(engine => engine.id === engineId)?.type === 'NEURAL_WEBGPU'
+    );
+    const isApprovedForTrading = !hasUnexecutedNeuralEngine && quorumReached && judgeReview.verdict === 'APPROVED' && !vetoTriggered;
     const failClosedTriggered = judgeReview.verdict === 'REJECTED' && analystReview.verdict === 'APPROVED';
 
     let finalRecommendationFa = '';
-    if (isApprovedForTrading) {
+    if (hasUnexecutedNeuralEngine) {
+      finalRecommendationFa = 'یک یا چند موتور عصبی انتخاب شده‌اند اما مسیر همگام فقط نتیجه قطعی را تولید می‌کند؛ تا اجرای advisory عصبی و کنترل‌های مستقل، ارسال سفارش مسدود است.';
+    } else if (isApprovedForTrading) {
       finalRecommendationFa = `اجماع کامل هر ۴ ایجنت در سبک «${styleInfo.nameFa}» حاصل شد (شاخص آلفا: ${alphaConsensusScore}٪). مجوز ارسال سفارش لیمیت صادر گردید.`;
     } else if (failClosedTriggered) {
       finalRecommendationFa = `توقف بر اساس قاعده شکست امن (Fail-Closed): منتقد به دلیل ${criticReview.summaryFa} ورود را متوقف کرد. هیچ سفارشی ارسال نمی‌شود.`;

@@ -181,6 +181,15 @@ export const AGENT_ENGINE_OPTIONS: AgentEngineOption[] = [
     descriptionFa: 'استنتاج عصبی سبک در مرورگر برای خلاصه شواهد ساختار بازار.',
   },
   {
+    id: 'smollm2-360m-analyst',
+    role: 'ANALYST',
+    name: 'SmolLM2-360M WebGPU Probe Analyst',
+    nameFa: 'تحلیل‌گر آزمایشی SmolLM2-360M برای تست سلامت WebGPU',
+    type: 'NEURAL_WEBGPU',
+    latencyMs: 10,
+    descriptionFa: 'مدل سبک و موجود در رجیستری WebLLM برای تشخیص دانلود، WebGPU و استنتاج.',
+  },
+  {
     id: 'qwen3.5-2b-analyst',
     role: 'ANALYST',
     name: 'Qwen3.5-2B Balanced Analyst',

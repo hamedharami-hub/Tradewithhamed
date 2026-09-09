@@ -10,6 +10,15 @@ export type CandidateStatus =
   | 'CANCELLED_PRE_FLIGHT'
   | 'INVALIDATED';
 
+export interface RuleProvenance {
+  ruleVersion: string;
+  parameterHash: string;
+  resolvedParameters: Record<string, number>;
+  signalCandleTimestamp: number;
+  evidenceAvailableAtTimestamp: number;
+  lifecycle: 'FORMED' | 'CONFIRMED' | 'FIRST_TOUCH' | 'MITIGATED' | 'INVALIDATED' | 'EXPIRED';
+}
+
 export interface StrategyCandidate {
   id: string;
   strategyName: string;
@@ -25,6 +34,7 @@ export interface StrategyCandidate {
   style?: TradingStyleType;
   regimeAtCreation?: MarketRegimeType;
   regimeScore?: number;
+  ruleProvenance?: RuleProvenance;
   evidenceIds: {
     sweepId?: string;
     fvgId?: string;

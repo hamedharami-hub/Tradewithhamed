@@ -1,0 +1,22 @@
+flowchart LR
+  C[cTrader Open API<br/>Demo market/account stream] --> G[Always-on Gateway<br/>OAuth, heartbeat, reconnect, rate limit]
+  H[Historical bars/ticks<br/>cTrader + imported CSV] --> D[(Versioned Market Data Store)]
+  G --> Q[Normalized Event Bus]
+  Q --> D
+  Q --> P[Paper Execution Engine]
+  Q --> O[Demo OMS + Reconciliation]
+  D --> R[Research & Replay Engine]
+  R --> W[Walk-forward Validation<br/>Purged CV + Monte Carlo]
+  W --> M[Approved Strategy Registry]
+  M --> P
+  M --> O
+  P --> E[(Immutable Ledger<br/>Orders, fills, positions)]
+  O --> E
+  E --> X[Risk & Observability Service]
+  Q --> X
+  X --> UI[RTL Dashboard<br/>Live / Paper / Demo / Research]
+  UI --> P
+  UI --> O
+  K[Kill Switch + Policy Engine] --> P
+  K --> O
+  X --> K

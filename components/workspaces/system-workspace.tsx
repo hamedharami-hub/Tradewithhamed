@@ -11,6 +11,8 @@ import { LiveShadowWorkbench } from '@/components/trading/live-shadow-workbench'
 import { SecurityDRPanel } from '@/components/trading/security-dr-panel';
 import { TestRunnerPanel } from '@/components/trading/test-runner-panel';
 import { OutboxExecutionCard } from '@/components/trading/outbox-execution-card';
+import { RiskDashboardPanel } from '@/components/trading/risk-dashboard-panel';
+import { StressTestPanel } from '@/components/trading/stress-test-panel';
 import { TransactionalOutboxRecord } from '@/lib/contracts/execution';
 
 interface SystemWorkspaceProps {
@@ -94,6 +96,9 @@ export const SystemWorkspace: React.FC<SystemWorkspaceProps> = ({
           </button>
         </div>
       </div>
+
+      <RiskDashboardPanel />
+      <StressTestPanel />
 
       {/* بخش فعال انتخاب‌شده */}
       {activeSection === 'execution' && (

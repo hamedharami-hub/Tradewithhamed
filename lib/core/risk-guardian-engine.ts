@@ -42,6 +42,8 @@ export class RiskGuardianEngine {
       maxSpreadPips: {
         XAUUSD: 3.5,                      // حداکثر اسپرد مجاز طلا ۳.۵ پیپ
         EURUSD: 2.5,                      // حداکثر اسپرد مجاز یورو ۲.۵ پیپ
+        GBPUSD: 3.0,
+        USDJPY: 2.5,
       },
       volatilitySpikeThresholdMultiplier: 3.0,
       blockNewsWindowsMinutesBefore: 15,

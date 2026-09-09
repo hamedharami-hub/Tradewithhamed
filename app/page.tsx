@@ -24,7 +24,7 @@ import {
   MultiAgentConfiguration,
   TRADING_STYLES,
 } from '@/lib/contracts/multi-agent-system';
-import { AVAILABLE_OFFLINE_MODELS } from '@/lib/ai/browser-offline-ai';
+import { AVAILABLE_OFFLINE_MODELS, BrowserOfflineAIManager } from '@/lib/ai/browser-offline-ai';
 import { PositionScalingEngine } from '@/lib/core/position-scaling-engine';
 import { PartialTPConfig } from '@/lib/contracts/tactical-cockpit';
 import { PersistenceStorage, AppExportPayloadV1 } from '@/lib/persistence/storage';
@@ -32,6 +32,7 @@ import {
   AnalystCriticPipeline,
   OfflineAIProfileId,
   OFFLINE_AI_PROFILES,
+  ShadowAnalysisPipelineResult,
 } from '@/lib/core/analyst-critic';
 import { MonteCarloModal } from '@/components/trading/monte-carlo-modal';
 import { MultiStyleBacktestModal } from '@/components/trading/multi-style-backtest-modal';
@@ -44,6 +45,19 @@ import { ShieldCheck, X } from 'lucide-react';
 
 const broker = new SimulatedBroker(10000);
 const replayEngine = new ReplayEngine('XAUUSD', broker);
+const PROFILE_BY_MODEL: Record<string, OfflineAIProfileId> = {
+  's0-deterministic': 'local-offline-s0-v1',
+  'deep-critic-strict': 'local-offline-deep-critic-v1',
+  'qwen3.5-0.8b-mlc': 'qwen3.5-0.8b-mlc',
+  'qwen3.5-2b-mlc': 'qwen3.5-2b-mlc',
+  'qwen3.5-4b-mlc': 'qwen3.5-4b-mlc',
+  'qwen3-1.7b-mlc': 'qwen3-1.7b-mlc',
+  'phi-4-mini-instruct-mlc': 'phi-4-mini-instruct-mlc',
+  'deepseek-r1-distill-qwen-7b-mlc': 'deepseek-r1-distill-qwen-7b-mlc',
+  'llama-3.2-3b-instruct-mlc': 'llama-3.2-3b-instruct-mlc',
+  'qwen2.5-7b-instruct-mlc': 'qwen2.5-7b-instruct-mlc',
+  'gemma-4-e2b-litert': 'gemma-4-e2b-litert',
+};
 
 export default function TradingLabPage() {
   const [symbol, setSymbol] = useState<SymbolId>('XAUUSD');
@@ -77,34 +91,16 @@ export default function TradingLabPage() {
   const [multiAgentConfig, setMultiAgentConfig] = useState<MultiAgentConfiguration>(() =>
     MultiAgentOrchestrator.loadConfiguration()
   );
-  const [selectedModelId, setSelectedModelId] = useState<string>(() => {
-    if (typeof window !== 'undefined') {
-      try {
-        const saved = localStorage.getItem('hamed_selected_ai_model_id');
-        if (saved) return saved;
-      } catch {}
-    }
-    return 's0-deterministic';
-  });
+  const [selectedModelId, setSelectedModelId] = useState<string>(() => BrowserOfflineAIManager.getSelectedModelId());
 
-  const [aiProfileId, setAiProfileId] = useState<OfflineAIProfileId>('local-offline-s0-v1');
+  const [aiProfileId, setAiProfileId] = useState<OfflineAIProfileId>(() => PROFILE_BY_MODEL[BrowserOfflineAIManager.getSelectedModelId()] || 'local-offline-s0-v1');
+  const [shadowAnalysis, setShadowAnalysis] = useState<ShadowAnalysisPipelineResult | null>(null);
 
   const handleSelectModel = (modelId: string) => {
     setSelectedModelId(modelId);
-    try {
-      localStorage.setItem('hamed_selected_ai_model_id', modelId);
-    } catch {}
+    BrowserOfflineAIManager.setSelectedModelId(modelId);
 
-    const profileMap: Record<string, OfflineAIProfileId> = {
-      's0-deterministic': 'local-offline-s0-v1',
-      'deep-critic-strict': 'local-offline-deep-critic-v1',
-      'qwen3.5-0.8b-mlc': 'qwen3.5-0.8b-mlc',
-      'qwen3.5-2b-mlc': 'qwen3.5-2b-mlc',
-      'qwen3.5-4b-mlc': 'qwen3.5-4b-mlc',
-      'qwen3-1.7b-mlc': 'qwen3-1.7b-mlc',
-      'gemma-4-e2b-litert': 'gemma-4-e2b-litert',
-    };
-    const profileId = profileMap[modelId] || 'local-offline-s0-v1';
+    const profileId = PROFILE_BY_MODEL[modelId] || 'local-offline-s0-v1';
     setAiProfileId(profileId);
   };
 
@@ -131,13 +127,25 @@ export default function TradingLabPage() {
     });
   }, [replayState.activeCandidate]);
 
-  // ارزیابی هوش مصنوعی ساختاریافته آفلاین در سایه
-  const shadowAnalysis = useMemo(() => {
-    if (!replayState.activeCandidate) return null;
-    return AnalystCriticPipeline.runShadowPipeline(
-      replayState.activeCandidate,
-      aiProfileId
-    );
+  // تحلیل عصبی صرفاً در سایه اجرا می‌شود و در نبود مدل آماده، نتیجه fail-closed دارد.
+  useEffect(() => {
+    let active = true;
+    const candidate = replayState.activeCandidate;
+    if (!candidate) {
+      queueMicrotask(() => { if (active) setShadowAnalysis(null); });
+      return () => { active = false; };
+    }
+    const profile = OFFLINE_AI_PROFILES.find(item => item.id === aiProfileId);
+    if (profile?.type !== 'WEBLLM_WEBGPU') {
+      const deterministicResult = AnalystCriticPipeline.runShadowPipeline(candidate, aiProfileId);
+      queueMicrotask(() => { if (active) setShadowAnalysis(deterministicResult); });
+      return () => { active = false; };
+    }
+    queueMicrotask(() => { if (active) setShadowAnalysis(null); });
+    void AnalystCriticPipeline.runShadowPipelineAsync(candidate, aiProfileId).then(result => {
+      if (active) setShadowAnalysis(result);
+    });
+    return () => { active = false; };
   }, [replayState.activeCandidate, aiProfileId]);
 
   // ارزیابی خط‌لوله ۴ ایجنت هوشمند و تطابق با سبک معاملاتی

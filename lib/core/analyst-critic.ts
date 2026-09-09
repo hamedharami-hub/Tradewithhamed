@@ -1,4 +1,5 @@
 import { StrategyCandidate } from '../contracts/strategy';
+import { evaluateLoadedWebLLMAgent } from '../ai/webllm-agent-adapter';
 
 export type OfflineAIProfileId =
   | 'local-offline-s0-v1'
@@ -8,7 +9,11 @@ export type OfflineAIProfileId =
   | 'qwen3.5-2b-mlc'
   | 'qwen3.5-4b-mlc'
   | 'qwen3-1.7b-mlc'
-  | 'gemma-4-e2b-litert';
+  | 'gemma-4-e2b-litert'
+  | 'phi-4-mini-instruct-mlc'
+  | 'deepseek-r1-distill-qwen-7b-mlc'
+  | 'llama-3.2-3b-instruct-mlc'
+  | 'qwen2.5-7b-instruct-mlc';
 
 export interface OfflineAIProfile {
   id: OfflineAIProfileId;
@@ -132,6 +137,27 @@ export const OFFLINE_AI_PROFILES: OfflineAIProfile[] = [
       'سنجش کارایی نسبت به Qwen',
     ],
   },
+
+  {
+    id: 'phi-4-mini-instruct-mlc', name: 'Phi-4-mini WebLLM', nameFa: 'تحلیل‌گر Phi-4-mini محلی',
+    descriptionFa: 'مدل عصبی WebLLM؛ فقط پس از بارگذاری واقعی برای advisory سایه استفاده می‌شود.', type: 'WEBLLM_WEBGPU', latencyMs: 0,
+    hardwareReqFa: 'WebGPU و مدل مقیم در حافظه GPU', featuresFa: ['استنتاج واقعی WebLLM', 'خروجی ساخت‌یافته advisory', 'بدون مجوز مستقل سفارش'],
+  },
+  {
+    id: 'deepseek-r1-distill-qwen-7b-mlc', name: 'DeepSeek-R1 7B WebLLM', nameFa: 'منتقد DeepSeek-R1 7B محلی',
+    descriptionFa: 'مدل عصبی WebLLM برای advisory انتقادی پس از بارگذاری محلی.', type: 'WEBLLM_WEBGPU', latencyMs: 0,
+    hardwareReqFa: 'WebGPU و مدل مقیم در حافظه GPU', featuresFa: ['استنتاج واقعی WebLLM', 'خروجی ساخت‌یافته advisory', 'بدون مجوز مستقل سفارش'],
+  },
+  {
+    id: 'llama-3.2-3b-instruct-mlc', name: 'Llama-3.2 3B WebLLM', nameFa: 'اسکنر Llama-3.2 3B محلی',
+    descriptionFa: 'مدل عصبی WebLLM برای advisory سایه پس از بارگذاری محلی.', type: 'WEBLLM_WEBGPU', latencyMs: 0,
+    hardwareReqFa: 'WebGPU و مدل مقیم در حافظه GPU', featuresFa: ['استنتاج واقعی WebLLM', 'خروجی ساخت‌یافته advisory', 'بدون مجوز مستقل سفارش'],
+  },
+  {
+    id: 'qwen2.5-7b-instruct-mlc', name: 'Qwen2.5 7B WebLLM', nameFa: 'تحلیل‌گر Qwen2.5 7B محلی',
+    descriptionFa: 'مدل عصبی WebLLM برای advisory سایه پس از بارگذاری محلی.', type: 'WEBLLM_WEBGPU', latencyMs: 0,
+    hardwareReqFa: 'WebGPU و مدل مقیم در حافظه GPU', featuresFa: ['استنتاج واقعی WebLLM', 'خروجی ساخت‌یافته advisory', 'بدون مجوز مستقل سفارش'],
+  },
 ];
 
 export interface AIAnalystReview {
@@ -249,17 +275,21 @@ export class AnalystCriticPipeline {
       OFFLINE_AI_PROFILES.find(p => p.id === profileId) || OFFLINE_AI_PROFILES[0];
 
     try {
-      // در حالت مدل‌های عصبی مرورگر WebLLM / WebGPU
+      // مسیر همگام اجازه ندارد اجرای مدل عصبی را جعل کند.
       if (activeProfile.type === 'WEBLLM_WEBGPU') {
-        const analyst = this.evaluateCandidate(candidate, profileId);
-        const critic = this.critiqueReview(candidate, analyst, profileId);
-
         return {
-          passed: analyst.decision === 'TRADE' && critic.verdict === 'CONFIRMED',
+          passed: false,
           activeProfile,
-          analystReview: analyst,
-          criticReview: critic,
-          explanation: `استنتاج محلی درون مرورگر (${activeProfile.nameFa}): شواهد نقدینگی، FVG و شکست ساختار با موفقیت اعتبارسنجی شد.`,
+          analystReview: {
+            role: 'ANALYST', decision: 'NO_TRADE', confidence: 0, evidenceIds: [],
+            uncertainties: ['NEURAL_ASYNC_REQUIRED'], invalidationScenarios: [], timestamp: Date.now(), modelHash: 'not-executed',
+          },
+          criticReview: {
+            role: 'CRITIC', verdict: 'REJECTED', weaknessesIdentified: ['NEURAL_ASYNC_REQUIRED'],
+            isEvidenceSufficient: false, isRiskRewardRealistic: false, timestamp: Date.now(), modelHash: 'not-executed',
+          },
+          reasonCode: 'NEURAL_ASYNC_REQUIRED',
+          explanation: `پروفایل «${activeProfile.nameFa}» نیازمند اجرای async در مرورگر است. مسیر همگام مجوز معامله صادر نمی‌کند.`,
         };
       }
 
@@ -329,5 +359,70 @@ export class AnalystCriticPipeline {
         explanation: 'به دلیل بروز خطا یا عدم پاسخگویی، طبق قاعده ایمنی fail-closed معامله متوقف شد.',
       };
     }
+  }
+
+  /**
+   * مسیر عصبی فقط برای shadow/advisory است. نبود مدل، پاسخ نامعتبر یا ابهام هرگز مجوز معامله نمی‌دهد.
+   */
+  public static async runShadowPipelineAsync(
+    candidate: StrategyCandidate,
+    profileId: OfflineAIProfileId = 'local-offline-s0-v1'
+  ): Promise<ShadowAnalysisPipelineResult> {
+    const profile = OFFLINE_AI_PROFILES.find(item => item.id === profileId) || OFFLINE_AI_PROFILES[0];
+    if (profile.type !== 'WEBLLM_WEBGPU') return this.runShadowPipeline(candidate, profile.id);
+    const engineIdByProfile: Partial<Record<OfflineAIProfileId, string>> = {
+      'qwen3.5-0.8b-mlc': 'qwen3.5-0.8b-analyst',
+      'qwen3.5-2b-mlc': 'qwen3.5-2b-analyst',
+      'qwen3.5-4b-mlc': 'qwen3.5-4b-analyst',
+      'qwen3-1.7b-mlc': 'qwen3-1.7b-analyst',
+      'phi-4-mini-instruct-mlc': 'phi-4-mini-analyst',
+      'deepseek-r1-distill-qwen-7b-mlc': 'deepseek-r1-7b-critic',
+      'llama-3.2-3b-instruct-mlc': 'llama-3.2-3b-scanner',
+      'qwen2.5-7b-instruct-mlc': 'qwen2.5-7b-analyst',
+    };
+    const now = Date.now();
+    try {
+      const advice = await evaluateLoadedWebLLMAgent(engineIdByProfile[profile.id] || 'unmapped', candidate);
+      const tradeApproved = advice.verdict === 'TRADE' && advice.riskFlags.length === 0;
+      const analyst: AIAnalystReview = {
+        role: 'ANALYST',
+        decision: tradeApproved ? 'TRADE' : 'NO_TRADE',
+        confidence: tradeApproved ? advice.confidence : 0,
+        evidenceIds: advice.evidenceIds,
+        uncertainties: tradeApproved ? [] : advice.riskFlags,
+        invalidationScenarios: advice.riskFlags,
+        timestamp: now,
+        modelHash: `${advice.modelId}@${advice.modelRevision}`,
+      };
+      const critic: AICriticReview = {
+        role: 'CRITIC',
+        verdict: tradeApproved ? 'CONFIRMED' : 'REJECTED',
+        weaknessesIdentified: tradeApproved ? [] : advice.riskFlags,
+        isEvidenceSufficient: advice.evidenceIds.length >= 2,
+        isRiskRewardRealistic: candidate.riskRewardRatio >= 2.5,
+        timestamp: now,
+        modelHash: `${advice.modelId}@${advice.modelRevision}`,
+      };
+      return {
+        passed: false,
+        activeProfile: profile,
+        analystReview: analyst,
+        criticReview: critic,
+        reasonCode: tradeApproved ? 'AI_ADVISORY_ONLY' : 'AI_REVIEW_REQUIRED',
+        explanation: tradeApproved
+          ? `مدل محلی نتیجه advisory ارائه کرد: ${advice.rationaleFa} نتیجه AI به‌تنهایی مجوز سفارش نیست.`
+          : `مدل محلی مجوز advisory نداد: ${advice.rationaleFa}`,
+      };
+    } catch (error) {
+      return {
+        passed: false,
+        activeProfile: profile,
+        analystReview: { role: 'ANALYST', decision: 'NO_TRADE', confidence: 0, evidenceIds: [], uncertainties: ['NEURAL_ENGINE_FAILURE'], invalidationScenarios: [], timestamp: now, modelHash: 'unavailable' },
+        criticReview: { role: 'CRITIC', verdict: 'REJECTED', weaknessesIdentified: ['NEURAL_ENGINE_FAILURE'], isEvidenceSufficient: false, isRiskRewardRealistic: false, timestamp: now, modelHash: 'unavailable' },
+        reasonCode: 'AI_ENGINE_UNAVAILABLE',
+        explanation: `مدل عصبی محلی در دسترس نیست؛ تصمیم به‌صورت fail-closed متوقف شد: ${(error as Error).message}`,
+      };
+    }
+
   }
 }

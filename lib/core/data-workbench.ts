@@ -13,6 +13,7 @@ export interface DatasetManifest {
   gapsDetected: number;
   duplicatesFound: number;
   sha256Hash: string;
+  integrityStatus: 'UNVERIFIED_CLIENT_IMPORT' | 'VERIFIED_FULL_SHA256';
   source: string;
   license: string;
   hasWarmupData: boolean; // آیا حداقل ۱۴ کندل برای Wilder ATR موجود است؟
@@ -117,7 +118,8 @@ export class DataWorkbench {
       totalCandles: sorted.length,
       gapsDetected: gapSummary.length,
       duplicatesFound: duplicates,
-      sha256Hash: this.calculateQuickHash(sorted),
+      sha256Hash: 'UNVERIFIED-CLIENT-IMPORT',
+      integrityStatus: 'UNVERIFIED_CLIENT_IMPORT',
       source,
       license: 'Public/Custom Trading Dataset',
       hasWarmupData,
@@ -169,7 +171,8 @@ export class DataWorkbench {
       const cStr = parts[closeIdx !== -1 ? closeIdx : 4];
       const vStr = volIdx !== -1 ? parts[volIdx] : '100';
 
-      const parsedTs = isNaN(Number(tStr)) ? Date.parse(tStr) : Number(tStr);
+      const parsedTsRaw = isNaN(Number(tStr)) ? Date.parse(tStr) : Number(tStr);
+      const parsedTs = parsedTsRaw > 0 && parsedTsRaw < 10_000_000_000 ? parsedTsRaw * 1000 : parsedTsRaw;
       // انطباق دقیق با ساعت هماهنگ جهانی (UTC) با کسر انحراف تایم‌زون
       const timestamp = !isNaN(parsedTs) ? parsedTs - (timezoneOffsetHours * 3600 * 1000) : NaN;
       const open = parseFloat(oStr);
@@ -222,9 +225,10 @@ export class DataWorkbench {
       }
     }
 
-    // اگر کندل آخر بسته شده است
+    // سطل آخر ممکن است هنوز در حال شکل‌گیری باشد؛ تا مشاهده اولین کندل سطل بعدی
+    // نباید به استراتژی به‌عنوان کندل بسته تحویل شود.
     if (currentBucket.length > 0) {
-      aggregated.push(this.mergeCandles(currentBucket, bucketStart));
+      aggregated.push({ ...this.mergeCandles(currentBucket, bucketStart), isClosed: false });
     }
 
     return aggregated;
@@ -273,14 +277,4 @@ export class DataWorkbench {
     }
   }
 
-  private static calculateQuickHash(candles: Candle[]): string {
-    let hash = 0;
-    const step = Math.max(1, Math.floor(candles.length / 50));
-    for (let i = 0; i < candles.length; i += step) {
-      const c = candles[i];
-      hash = (hash << 5) - hash + c.timestamp + Math.round(c.close * 100);
-      hash |= 0;
-    }
-    return `SHA256-${Math.abs(hash).toString(16).padStart(8, '0')}`;
-  }
 }

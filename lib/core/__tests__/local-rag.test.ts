@@ -17,6 +17,17 @@ export interface LocalRAGTestResult {
 export function runLocalRAGTests(): LocalRAGTestResult[] {
   const results: LocalRAGTestResult[] = [];
 
+  try {
+    const hits = LocalRAGEngine.search('   ');
+    results.push({
+      name: '[Local RAG] Empty Query Fail-Closed',
+      passed: hits.length === 0,
+      details: hits.length === 0 ? 'کوئری خالی هیچ سندی را به‌عنوان evidence بازنگرداند.' : 'کوئری خالی نباید evidence با اعتماد کاذب تولید کند.',
+    });
+  } catch (e) {
+    results.push({ name: '[Local RAG] Empty Query Fail-Closed', passed: false, details: (e as Error).message });
+  }
+
   // تست ۱: بررسی تعداد و ساختار پایگاه دانش S0
   try {
     LocalRAGEngine.initialize();

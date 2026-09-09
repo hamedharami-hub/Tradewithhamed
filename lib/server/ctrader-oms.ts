@@ -25,6 +25,8 @@ import {
 import { ExecutorManager } from './executor-manager';
 import { PersistentStore } from './storage/persistent-store';
 import { CTraderServerSecurity } from './ctrader-auth';
+import { NormalizedExecutionEvent } from '@/lib/execution/ctrader-execution';
+import { BrokerAccountSnapshot, ReconciliationReport } from '@/lib/execution/reconciliation';
 
 const globalForOMS = globalThis as unknown as {
   ctraderOutbox?: Map<string, TransactionalOutboxRecord>;
@@ -69,6 +71,8 @@ export class CTraderOMS {
     brokerOrderId: string;
     stopLossConfirmed: boolean;
     takeProfitConfirmed: boolean;
+    state?: TransactionalExecutionState;
+    brokerError?: string;
   }>;
 
   public static setIsTestRunning(active: boolean): void {
@@ -92,6 +96,8 @@ export class CTraderOMS {
       brokerOrderId: string;
       stopLossConfirmed: boolean;
       takeProfitConfirmed: boolean;
+      state?: TransactionalExecutionState;
+      brokerError?: string;
     }>
   ): void {
     this.verifiedBrokerOrderHandler = handler;
@@ -182,6 +188,96 @@ export class CTraderOMS {
 
   public static getRecord(intentId: string): TransactionalOutboxRecord | undefined {
     return this.outbox.get(intentId);
+  }
+
+  /**
+   * اعمال event واقعی بروکر روی outbox؛ event تکراری باید idempotent باشد.
+   */
+  public static applyExecutionEvent(event: NormalizedExecutionEvent): { applied: boolean; intentId?: string; state?: TransactionalExecutionState; reason?: string } {
+    const record = Array.from(this.outbox.values()).find(item =>
+      item.brokerOrderId === event.brokerOrderId ||
+      item.intentId === event.clientOrderId ||
+      item.correlationId === event.clientMsgId
+    );
+    if (!record) return { applied: false, reason: 'OUTBOX_RECORD_NOT_FOUND' };
+    if (record.state === event.state && record.brokerDealId === event.brokerDealId) {
+      return { applied: true, intentId: record.intentId, state: record.state, reason: 'DUPLICATE_EVENT_IGNORED' };
+    }
+    record.brokerOrderId = event.brokerOrderId || record.brokerOrderId;
+    record.brokerPositionId = event.brokerPositionId || record.brokerPositionId;
+    record.brokerDealId = event.brokerDealId || record.brokerDealId;
+    record.brokerError = event.errorCode;
+    record.isBrokerStopLossConfirmed = event.stopLossConfirmed;
+    record.isBrokerTakeProfitConfirmed = event.takeProfitConfirmed;
+    if (event.state === 'ACKNOWLEDGED') record.acknowledgedAt = record.acknowledgedAt || event.receivedAt;
+    if (event.state === 'RECONCILED' || event.state === 'FILLED') record.reconciledAt = event.receivedAt;
+    if ((event.state === 'ACKNOWLEDGED' || event.state === 'FILLED' || event.state === 'PARTIALLY_FILLED') && (!event.stopLossConfirmed || !event.takeProfitConfirmed)) {
+      record.state = 'PROTECTION_FAILED';
+      record.brokerError = record.brokerError || 'PROTECTION_FAILED: event بروکر تایید حد ضرر/سود را شامل نمی‌شود.';
+    } else {
+      record.state = event.state;
+    }
+    this.syncPersistent();
+    return { applied: true, intentId: record.intentId, state: record.state };
+  }
+
+  public static reconcileSnapshot(snapshot: BrokerAccountSnapshot): ReconciliationReport {
+    const matchedIntentIds: string[] = [];
+    const protectionFailures: string[] = [];
+    const unresolvedIntentIds: string[] = [];
+    const updatedStates: Array<{ intentId: string; state: TransactionalExecutionState }> = [];
+    for (const record of this.outbox.values()) {
+      if (record.environment !== 'BROKER_DEMO' || record.state === 'CANCELLED' || record.state === 'REJECTED_BY_BROKER') continue;
+      const brokerOrder = snapshot.orders.find(order =>
+        order.brokerOrderId === record.brokerOrderId ||
+        order.clientOrderId === record.intentId
+      );
+      const brokerPosition = snapshot.positions.find(position =>
+        position.brokerPositionId === record.brokerPositionId ||
+        (brokerOrder?.brokerPositionId && position.brokerPositionId === brokerOrder.brokerPositionId) ||
+        (brokerOrder?.brokerOrderId && position.brokerOrderId === brokerOrder.brokerOrderId)
+      );
+      if (!brokerOrder && !brokerPosition) {
+        if (record.state === 'UNKNOWN_RECONCILE_REQUIRED' || record.state === 'SUBMITTING') unresolvedIntentIds.push(record.intentId);
+        continue;
+      }
+      matchedIntentIds.push(record.intentId);
+      if (brokerOrder) {
+        record.brokerOrderId = brokerOrder.brokerOrderId;
+        record.brokerPositionId = brokerOrder.brokerPositionId || record.brokerPositionId;
+      }
+      if (brokerPosition) {
+        record.brokerPositionId = brokerPosition.brokerPositionId;
+        record.state = 'FILLED';
+        record.isBrokerStopLossConfirmed = brokerPosition.stopLossConfirmed;
+        record.isBrokerTakeProfitConfirmed = brokerPosition.takeProfitConfirmed;
+      } else if (brokerOrder) {
+        record.state = 'ACKNOWLEDGED';
+        record.isBrokerStopLossConfirmed = brokerOrder.stopLossConfirmed;
+        record.isBrokerTakeProfitConfirmed = brokerOrder.takeProfitConfirmed;
+      }
+      record.reconciledAt = snapshot.receivedAt;
+      record.brokerError = undefined;
+      if (!record.isBrokerStopLossConfirmed || !record.isBrokerTakeProfitConfirmed) {
+        record.state = 'PROTECTION_FAILED';
+        record.brokerError = 'PROTECTION_FAILED: snapshot بروکر تأیید کامل SL/TP را نشان نمی‌دهد.';
+        protectionFailures.push(record.intentId);
+      }
+      updatedStates.push({ intentId: record.intentId, state: record.state });
+    }
+    this.syncPersistent();
+    return {
+      reconciled: unresolvedIntentIds.length === 0,
+      accountId: snapshot.accountId,
+      receivedAt: snapshot.receivedAt,
+      matchedIntentIds,
+      protectionFailures,
+      unresolvedIntentIds,
+      updatedStates,
+      message: unresolvedIntentIds.length === 0
+        ? 'تمام سفارش‌های قابل تطبیق با snapshot بروکر تطبیق یافتند.'
+        : `تطبیق کامل نشد؛ ${unresolvedIntentIds.length} سفارش همچنان نیازمند بررسی است.`,
+    };
   }
 
   public static getAllRecords(): TransactionalOutboxRecord[] {
@@ -441,18 +537,24 @@ export class CTraderOMS {
       // در صورتی که اتصال واقعی به بروکر و هندلر تأیید شده وجود داشته باشد
       if (this.verifiedBrokerOrderHandler) {
         const brokerRes = await this.verifiedBrokerOrderHandler(request);
-        record.state = 'ACKNOWLEDGED';
+        record.state = brokerRes.state || 'ACKNOWLEDGED';
         record.acknowledgedAt = Date.now();
         record.brokerOrderId = brokerRes.brokerOrderId;
         record.isBrokerStopLossConfirmed = brokerRes.stopLossConfirmed;
         record.isBrokerTakeProfitConfirmed = brokerRes.takeProfitConfirmed;
+        record.brokerError = brokerRes.brokerError;
+        if ((record.state === 'ACKNOWLEDGED' || record.state === 'FILLED' || record.state === 'PARTIALLY_FILLED') && (!record.isBrokerStopLossConfirmed || !record.isBrokerTakeProfitConfirmed)) {
+          record.state = 'PROTECTION_FAILED';
+          record.brokerError = record.brokerError || 'PROTECTION_FAILED: تایید حد ضرر/سود از event بروکر دریافت نشد.';
+        }
         this.syncPersistent();
 
         return {
-          success: true,
-          state: 'ACKNOWLEDGED',
+          success: record.state !== 'REJECTED_BY_BROKER',
+          state: record.state,
           record,
-          requiresReconciliation: false,
+          requiresReconciliation: record.state === 'UNKNOWN_RECONCILE_REQUIRED' || record.state === 'PROTECTION_FAILED',
+          error: record.brokerError,
         };
       }
 

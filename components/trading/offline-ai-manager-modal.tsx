@@ -49,6 +49,7 @@ export const OfflineAIManagerModal: React.FC<OfflineAIManagerModalProps> = ({
   symbol,
 }) => {
   const [downloadedMap, setDownloadedMap] = useState<Record<string, boolean>>({});
+  const [supportedMap, setSupportedMap] = useState<Record<string, boolean>>({});
   const [downloadingModelId, setDownloadingModelId] = useState<string | null>(null);
   const [downloadProgress, setDownloadProgress] = useState<ProgressReportPayload>({
     percent: 0,
@@ -59,16 +60,18 @@ export const OfflineAIManagerModal: React.FC<OfflineAIManagerModalProps> = ({
   });
 
   const [residentModelId, setResidentModelId] = useState<string | null>(null);
+  const [runtimeState, setRuntimeState] = useState('IDLE');
   const [hardwareReport, setHardwareReport] = useState<WebGPUCapabilityReport | null>(null);
   const [testResult, setTestResult] = useState<{
     modelId: string;
     text: string;
     latencyMs: number;
     ttftMs?: number;
-    tokensPerSec?: number;
+    chunksPerSec?: number;
   } | null>(null);
   const [customPrompt, setCustomPrompt] = useState('وضعیت سوییپ نقدینگی و FVG در این تایم‌فریم را تحلیل کن و پیشنهاد ورود بده.');
   const [isTesting, setIsTesting] = useState(false);
+  const [isVerifyingOffline, setIsVerifyingOffline] = useState(false);
   const [showGuide, setShowGuide] = useState(false);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
   const [filterTier, setFilterTier] = useState<'ALL' | 'ULTRA_DENSE' | 'HEAVY_POWER' | 'MOBILE_TABLET' | 'ZERO_WEIGHT'>('ALL');
@@ -77,13 +80,15 @@ export const OfflineAIManagerModal: React.FC<OfflineAIManagerModalProps> = ({
   const refreshStatus = async () => {
     const report = await BrowserOfflineAIManager.probeHardware();
     const resident = BrowserOfflineAIManager.getResidentModelId();
-    const map: Record<string, boolean> = {};
-    for (const model of PLAN_V4_MODELS) {
-      map[model.id] = await BrowserOfflineAIManager.isModelDownloaded(model.id);
-    }
+    const runtime = BrowserOfflineAIManager.getRuntimeStatus();
+    const entries = await Promise.all(PLAN_V4_MODELS.map(async model => [model.id, await BrowserOfflineAIManager.isModelDownloaded(model.id), await BrowserOfflineAIManager.isModelSupported(model.id)] as const));
+    const map = Object.fromEntries(entries.map(([id, downloaded]) => [id, downloaded]));
+    const supported = Object.fromEntries(entries.map(([id, , isSupported]) => [id, isSupported]));
     setHardwareReport(report);
     setResidentModelId(resident);
+    setRuntimeState(runtime.state);
     setDownloadedMap(map);
+    setSupportedMap(supported);
   };
 
   useEffect(() => {
@@ -93,14 +98,16 @@ export const OfflineAIManagerModal: React.FC<OfflineAIManagerModalProps> = ({
     const runProbe = async () => {
       const report = await BrowserOfflineAIManager.probeHardware();
       const resident = BrowserOfflineAIManager.getResidentModelId();
-      const map: Record<string, boolean> = {};
-      for (const model of PLAN_V4_MODELS) {
-        map[model.id] = await BrowserOfflineAIManager.isModelDownloaded(model.id);
-      }
+      const runtime = BrowserOfflineAIManager.getRuntimeStatus();
+      const entries = await Promise.all(PLAN_V4_MODELS.map(async model => [model.id, await BrowserOfflineAIManager.isModelDownloaded(model.id), await BrowserOfflineAIManager.isModelSupported(model.id)] as const));
+      const map = Object.fromEntries(entries.map(([id, downloaded]) => [id, downloaded]));
+      const supported = Object.fromEntries(entries.map(([id, , isSupported]) => [id, isSupported]));
       if (isSubscribed) {
         setHardwareReport(report);
         setResidentModelId(resident);
+        setRuntimeState(runtime.state);
         setDownloadedMap(map);
+        setSupportedMap(supported);
       }
     };
 
@@ -115,7 +122,7 @@ export const OfflineAIManagerModal: React.FC<OfflineAIManagerModalProps> = ({
 
   // شروع دانلود واقعی و بارگذاری در WebGPU با تایید کاربر
   const handleStartDownload = async (model: BrowserAIModelRecord) => {
-    if (model.isBuiltIn) {
+    if (model.runtime === 'Core-Deterministic') {
       onSelectModel(model.id);
       setActionMessage(`موتور قطعی ${model.name} فعال شد.`);
       return;
@@ -161,32 +168,44 @@ export const OfflineAIManagerModal: React.FC<OfflineAIManagerModalProps> = ({
   // بارگذاری مدل در رم گرافیک
   const handleLoadModel = async (modelId: string) => {
     setActionMessage('در حال بارگذاری شیدرهای WebGPU و خط لوله استنتاج...');
-    const result = await BrowserOfflineAIManager.loadModelToMemory(modelId);
-    await refreshStatus();
-    if (result.success) {
-      onSelectModel(modelId);
-      setActionMessage(result.messageFa);
-    } else {
-      alert(result.messageFa);
+    try {
+      const result = await BrowserOfflineAIManager.loadModelToMemory(modelId);
+      await refreshStatus();
+      if (result.success) {
+        onSelectModel(modelId);
+        setActionMessage(result.messageFa);
+      } else {
+        setActionMessage(result.messageFa);
+      }
+    } catch (error) {
+      setActionMessage(`خطای بارگذاری: ${(error as Error).message}`);
     }
   };
 
   // تخلیه مدل از رم گرافیک
   const handleUnloadModel = async () => {
-    const result = await BrowserOfflineAIManager.unloadModelFromMemory();
-    await refreshStatus();
-    setActionMessage(result.messageFa);
+    try {
+      const result = await BrowserOfflineAIManager.unloadModelFromMemory();
+      await refreshStatus();
+      setActionMessage(result.messageFa);
+    } catch (error) {
+      setActionMessage(`خطای تخلیه مدل: ${(error as Error).message}`);
+    }
   };
 
   // حذف فایل‌های مدل از CacheStorage
   const handleDeleteModel = async (modelId: string) => {
     if (confirm('آیا مطمئن هستید می‌خواهید فایل‌های کش این مدل را از مرورگر پاک کنید؟')) {
-      await BrowserOfflineAIManager.deleteModel(modelId);
-      await refreshStatus();
-      if (selectedModelId === modelId) {
-        onSelectModel('s0-deterministic');
+      try {
+        const deleted = await BrowserOfflineAIManager.deleteModel(modelId);
+        await refreshStatus();
+        if (deleted && selectedModelId === modelId) {
+          onSelectModel('s0-deterministic');
+        }
+        setActionMessage(deleted ? 'فایل‌های مدل از حافظه کش مرورگر پاک شدند.' : 'حذف فایل مدل انجام نشد.');
+      } catch (error) {
+        setActionMessage(`خطای حذف مدل: ${(error as Error).message}`);
       }
-      setActionMessage('فایل‌های مدل با موفقیت از حافظه کش مرورگر پاک شدند.');
     }
   };
 
@@ -213,7 +232,7 @@ export const OfflineAIManagerModal: React.FC<OfflineAIManagerModalProps> = ({
         text: output.text,
         latencyMs: output.latencyMs,
         ttftMs: output.ttftMs,
-        tokensPerSec: output.tokensPerSec,
+        chunksPerSec: output.chunksPerSec,
       });
       await refreshStatus();
     } catch (err) {
@@ -231,6 +250,17 @@ export const OfflineAIManagerModal: React.FC<OfflineAIManagerModalProps> = ({
   const handleStopTest = () => {
     BrowserOfflineAIManager.stopInference();
     setIsTesting(false);
+  };
+
+  const handleVerifyOffline = async (modelId: string) => {
+    setIsVerifyingOffline(true);
+    try {
+      const result = await BrowserOfflineAIManager.verifyCachedModelOffline(modelId);
+      setActionMessage(result.messageFa);
+      await refreshStatus();
+    } finally {
+      setIsVerifyingOffline(false);
+    }
   };
 
   return (
@@ -255,7 +285,7 @@ export const OfflineAIManagerModal: React.FC<OfflineAIManagerModalProps> = ({
                 </span>
               </div>
               <p className="text-xs text-zinc-400 mt-0.5">
-                اجرای ۱۰۰٪ مستقل در وب‌ورکر مرورگر بدون نیاز به سرور پایتون، Ollama یا کلود
+                استنتاج محلی در مرورگر؛ دانلود اولیه مدل ممکن است به شبکه نیاز داشته باشد.
               </p>
             </div>
           </div>
@@ -305,11 +335,14 @@ export const OfflineAIManagerModal: React.FC<OfflineAIManagerModalProps> = ({
                     {hardwareReport.hasWebGPU ? 'WebGPU ACTIVE' : 'NO WEBGPU (FALLBACK TO CORE)'}
                   </span>
                 </div>
-                <div className="text-[11px] text-zinc-400">
-                  مدل مقیم فعلی در رم گرافیک:{' '}
-                  <span className="font-bold text-amber-300 font-mono">
-                    {residentModelId || 'خالی (هیچ مدلی در رم نیست)'}
-                  </span>
+                <div className="text-[11px] text-zinc-400 space-y-1">
+                  <div>
+                    مدل مقیم فعلی در رم گرافیک:{' '}
+                    <span className="font-bold text-amber-300 font-mono">
+                      {residentModelId || 'خالی (هیچ مدلی در رم نیست)'}
+                    </span>
+                  </div>
+                  <div>وضعیت عملیات: <span className="font-mono text-cyan-300">{runtimeState}</span></div>
                 </div>
               </div>
 
@@ -338,7 +371,9 @@ export const OfflineAIManagerModal: React.FC<OfflineAIManagerModalProps> = ({
                 </div>
                 <div className="bg-[#12151e] p-2.5 rounded-xl border border-[#212735]">
                   <span className="text-zinc-400 block text-[10px]">ورکر پس‌زمینه (Dedicated Worker):</span>
-                  <span className="text-emerald-400 font-bold">آماده در ترد مجزا</span>
+                  <span className={hardwareReport.isDedicatedWorkerSupported ? 'text-emerald-400 font-bold' : 'text-amber-400 font-bold'}>
+                    {hardwareReport.isDedicatedWorkerSupported ? 'قابل استفاده در ترد مجزا' : 'در این مرورگر در دسترس نیست'}
+                  </span>
                 </div>
               </div>
 
@@ -483,7 +518,8 @@ export const OfflineAIManagerModal: React.FC<OfflineAIManagerModalProps> = ({
                 return true;
               }).map((model) => {
                 const isSelected = selectedModelId === model.id;
-                const isDownloaded = downloadedMap[model.id] || model.isBuiltIn;
+                const isSupported = supportedMap[model.id] ?? model.runtime === 'Core-Deterministic';
+                const isDownloaded = downloadedMap[model.id] || model.runtime === 'Core-Deterministic';
                 const isResident = residentModelId === model.id;
                 const isCurrentlyDownloading = downloadingModelId === model.id;
                 const isVerified = BrowserOfflineAIManager.isOfflineVerified(model.id);
@@ -503,7 +539,7 @@ export const OfflineAIManagerModal: React.FC<OfflineAIManagerModalProps> = ({
                         <div>
                           <div className="flex items-center gap-2 flex-wrap">
                             <h4 className="font-bold text-zinc-100 text-xs">{model.name}</h4>
-                            {model.isBuiltIn && (
+                            {model.runtime === 'Core-Deterministic' && (
                               <span className="px-1.5 py-0.5 text-[9px] bg-emerald-950 text-emerald-300 rounded font-bold border border-emerald-800">
                                 توکار
                               </span>
@@ -541,6 +577,11 @@ export const OfflineAIManagerModal: React.FC<OfflineAIManagerModalProps> = ({
                             <span className="px-2 py-0.5 rounded-full text-[9px] bg-emerald-950/80 text-emerald-300 border border-emerald-800 flex items-center gap-1">
                               <ShieldCheck className="w-2.5 h-2.5" />
                               <span>آفلاین تاییدشده</span>
+                            </span>
+                          )}
+                          {!isSupported && (
+                            <span className="px-2 py-0.5 rounded-full text-[9px] bg-rose-950/80 text-rose-300 border border-rose-800">
+                              artifact پشتیبانی نمی‌شود
                             </span>
                           )}
                         </div>
@@ -597,7 +638,11 @@ export const OfflineAIManagerModal: React.FC<OfflineAIManagerModalProps> = ({
 
                     {/* دکمه‌های کنترلی کارت */}
                     <div className="mt-4 pt-3 border-t border-[#232938] flex items-center justify-between gap-2">
-                      {!isDownloaded ? (
+                      {!isSupported ? (
+                        <div className="w-full py-2 px-3 rounded-xl bg-rose-950/30 text-rose-300 border border-rose-900 text-xs text-center">
+                          این مدل در WebLLM registry یا runtime فعلی قابل اجرا نیست.
+                        </div>
+                      ) : !isDownloaded ? (
                         <button
                           type="button"
                           onClick={() => handleStartDownload(model)}
@@ -640,9 +685,19 @@ export const OfflineAIManagerModal: React.FC<OfflineAIManagerModalProps> = ({
                             onClick={() => handleRunTest(model.id)}
                             disabled={isTesting}
                             className="p-1.5 rounded-xl bg-[#202736] hover:bg-[#2c364b] text-zinc-300 border border-[#2f394f] text-[11px]"
-                            title="آزمون پاسخ آفلاین با استریم توکن"
+                            title="آزمون استنتاج محلی؛ تأیید آفلاین به اجرای جداگانه با شبکه قطع‌شده نیاز دارد"
                           >
-                            تست آفلاین
+                            تست محلی
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => handleVerifyOffline(model.id)}
+                            disabled={isVerifyingOffline || model.runtime === 'Core-Deterministic'}
+                            className="p-1.5 rounded-xl bg-emerald-950/60 hover:bg-emerald-900/80 text-emerald-300 border border-emerald-800/80 text-[11px] disabled:opacity-40"
+                            title="تنها با شبکه قطع‌شده، cache مدل را برای اجرای محلی تأیید می‌کند"
+                          >
+                            تأیید آفلاین
                           </button>
 
                           {/* دکمه حذف مدل از حافظه */}
@@ -670,7 +725,7 @@ export const OfflineAIManagerModal: React.FC<OfflineAIManagerModalProps> = ({
             <div className="flex items-center justify-between">
               <h3 className="font-bold text-zinc-200 flex items-center gap-2 text-xs">
                 <Sparkles className="w-4 h-4 text-amber-400" />
-                <span>آزمون اعتبار آفلاین: استنتاج عصبی زنده (Real In-Browser Generation)</span>
+                <span>آزمون استنتاج محلی در مرورگر (Real In-Browser Generation)</span>
               </h3>
               {isTesting && (
                 <button
@@ -704,7 +759,7 @@ export const OfflineAIManagerModal: React.FC<OfflineAIManagerModalProps> = ({
                   className="px-4 py-2 bg-amber-600 hover:bg-amber-500 text-white font-bold rounded-xl text-xs transition-colors flex items-center gap-1.5 disabled:opacity-50 shadow-md"
                 >
                   {isTesting ? <RotateCcw className="w-3.5 h-3.5 animate-spin" /> : <Play className="w-3.5 h-3.5" />}
-                  <span>{isTesting ? 'در حال استنتاج...' : 'اجرای تست آفلاین'}</span>
+                  <span>{isTesting ? 'در حال استنتاج...' : 'اجرای تست محلی'}</span>
                 </button>
               </div>
             </div>
@@ -720,8 +775,8 @@ export const OfflineAIManagerModal: React.FC<OfflineAIManagerModalProps> = ({
                     {testResult.ttftMs !== undefined && (
                       <span>TTFT: {testResult.ttftMs}ms</span>
                     )}
-                    {testResult.tokensPerSec !== undefined && testResult.tokensPerSec > 0 && (
-                      <span className="text-cyan-400 font-bold">{testResult.tokensPerSec} tok/s</span>
+                    {testResult.chunksPerSec !== undefined && testResult.chunksPerSec > 0 && (
+                      <span className="text-cyan-400 font-bold">{testResult.chunksPerSec} chunk/s</span>
                     )}
                     <span>زمان کل: {testResult.latencyMs}ms</span>
                   </div>

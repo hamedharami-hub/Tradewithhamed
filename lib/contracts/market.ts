@@ -2,7 +2,7 @@
  * قراردادهای پایه داده‌های بازار، کندل‌ها و مشخصات نمادها
  */
 
-export type SymbolId = 'XAUUSD' | 'EURUSD';
+export type SymbolId = 'XAUUSD' | 'EURUSD' | 'GBPUSD' | 'USDJPY';
 
 export type Timeframe = '1M' | '5M' | '15M' | '1H' | '4H' | 'D1';
 
@@ -56,5 +56,31 @@ export const SYMBOL_SPECS: Record<SymbolId, SymbolMetadata> = {
     lotStep: 0.01,
     commissionPerLot: 6.0,
     typicalSpreadPips: 0.8,
+  },
+  GBPUSD: {
+    id: 'GBPUSD',
+    name: 'British Pound vs US Dollar',
+    category: 'FOREX',
+    contractSize: 100000,
+    pipSize: 0.0001,
+    tickSize: 0.00001,
+    minLots: 0.01,
+    maxLots: 20.0,
+    lotStep: 0.01,
+    commissionPerLot: 6.0,
+    typicalSpreadPips: 1.2,
+  },
+  USDJPY: {
+    id: 'USDJPY',
+    name: 'US Dollar vs Japanese Yen',
+    category: 'FOREX',
+    contractSize: 100000,
+    pipSize: 0.01,
+    tickSize: 0.001,
+    minLots: 0.01,
+    maxLots: 20.0,
+    lotStep: 0.01,
+    commissionPerLot: 6.0,
+    typicalSpreadPips: 1.0,
   },
 };

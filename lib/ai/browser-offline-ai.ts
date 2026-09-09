@@ -1,6 +1,7 @@
 // lib/ai/browser-offline-ai.ts
 // موتور رسمی و یکپارچه هوش مصنوعی داخل مرورگر طبق طرح نسخه ۴.۰ حامد حرمی‌پور
-// پیاده‌سازی ۱۰۰٪ واقعی WebLLM و WebGPU با وب‌ورکر اختصاصی (بدون ماک، بدون تایمر ساختگی)
+// پیاده‌سازی WebLLM و WebGPU با وب‌ورکر اختصاصی. دانلود اولیه مدل به شبکه نیاز دارد.
+import { AIModelRuntimeStatus, DeterministicMarketEvidence, OfflineRuntimeState, OfflineVerificationRecord, StructuredCandidateAdvisory } from './offline-ai-contracts';
 
 export type ModelLifecycleState =
   | 'NOT_INSTALLED'     // هنوز دانلود نشده
@@ -353,7 +354,6 @@ export const AVAILABLE_OFFLINE_MODELS = PLAN_V4_MODELS;
 export type OfflineAIModel = BrowserAIModelRecord;
 
 const STORAGE_SELECTED_MODEL = 'hamed_v4_selected_model_id';
-const STORAGE_RESIDENT_MODEL = 'hamed_v4_resident_model_id';
 const STORAGE_OFFLINE_VERIFIED = 'hamed_v4_offline_verified_map';
 
 export interface ProgressReportPayload {
@@ -364,15 +364,21 @@ export interface ProgressReportPayload {
   text: string;
 }
 
+interface InferenceOptions {
+  systemPrompt?: string;
+  maxTokens?: number;
+}
+
 export class BrowserOfflineAIManager {
   private static activeEngine: any = null;
   private static activeWorker: Worker | null = null;
   private static currentResidentModelId: string | null = null;
   private static abortController: AbortController | null = null;
+  private static runtimeState: OfflineRuntimeState = 'IDLE';
+  private static activeOperationId: number | null = null;
+  private static operationCounter = 0;
+  private static lastError: string | undefined;
 
-  /**
-   * سنجش قابلیت‌های سخت‌افزاری مرورگر (WebGPU Hardware Capability Probe)
-   */
   static async probeHardware(): Promise<WebGPUCapabilityReport> {
     const isDedicatedWorkerSupported = typeof Worker !== 'undefined';
     let hasWebGPU = false;
@@ -384,13 +390,9 @@ export class BrowserOfflineAIManager {
     let maxStorageBufferMB = 0;
     let estimatedStorageQuotaMB = 0;
     let estimatedStorageUsageMB = 0;
-
-    // ۱. بررسی دسترسی به WebGPU
     if (typeof navigator !== 'undefined' && 'gpu' in navigator && (navigator as any).gpu) {
       try {
-        const adapter = await (navigator as any).gpu.requestAdapter({
-          powerPreference: 'high-performance',
-        });
+        const adapter = await (navigator as any).gpu.requestAdapter({ powerPreference: 'high-performance' });
         if (adapter) {
           hasWebGPU = true;
           const info = adapter.info || {};
@@ -398,58 +400,27 @@ export class BrowserOfflineAIManager {
           vendor = info.vendor || 'Unknown Vendor';
           architecture = info.architecture || 'GPU Hardware';
           hasShaderF16 = adapter.features ? adapter.features.has('shader-f16') : false;
-
-          if (adapter.limits) {
-            maxBufferSizeMB = Math.round((adapter.limits.maxBufferSize || 0) / (1024 * 1024));
-            maxStorageBufferMB = Math.round((adapter.limits.maxStorageBufferBindingSize || 0) / (1024 * 1024));
-          }
+          maxBufferSizeMB = Math.round((adapter.limits?.maxBufferSize || 0) / (1024 * 1024));
+          maxStorageBufferMB = Math.round((adapter.limits?.maxStorageBufferBindingSize || 0) / (1024 * 1024));
         }
-      } catch {
-        hasWebGPU = false;
-      }
+      } catch { hasWebGPU = false; }
     }
-
-    // ۲. بررسی سهمیه ذخیره‌سازی محلی مرورگر (Storage Quota)
-    if (typeof navigator !== 'undefined' && 'storage' in navigator && navigator.storage.estimate) {
+    if (typeof navigator !== 'undefined' && navigator.storage?.estimate) {
       try {
         const estimate = await navigator.storage.estimate();
         estimatedStorageQuotaMB = Math.round((estimate.quota || 0) / (1024 * 1024));
         estimatedStorageUsageMB = Math.round((estimate.usage || 0) / (1024 * 1024));
-      } catch {}
+      } catch { /* storage estimation is optional */ }
     }
+    const deviceTier = !hasWebGPU ? 'LOW_RESOURCE' : maxBufferSizeMB >= 1000 && hasShaderF16 ? 'WINDOWS_SNAPDRAGON' : maxBufferSizeMB >= 500 ? 'PIXEL_FOLD' : 'STANDARD_DESKTOP';
+    const recommendationFa = !hasWebGPU
+      ? 'WebGPU در دسترس نیست؛ فقط موتورهای قطعی محلی قابل استفاده‌اند.'
+      : 'توانایی WebGPU شناسایی شد. قابلیت اجرای نهایی هر مدل فقط پس از بارگذاری واقعی مشخص می‌شود.';
+    return { hasWebGPU, adapterName, vendor, architecture, hasShaderF16, maxBufferSizeMB, maxStorageBufferMB, estimatedStorageQuotaMB, estimatedStorageUsageMB, isDedicatedWorkerSupported, isReadyForInference: hasWebGPU, deviceTier, recommendationFa };
+  }
 
-    // ۳. تعیین رده دستگاه (Device Tier)
-    let deviceTier: 'WINDOWS_SNAPDRAGON' | 'PIXEL_FOLD' | 'STANDARD_DESKTOP' | 'LOW_RESOURCE' = 'STANDARD_DESKTOP';
-    let recommendationFa = 'دستگاه آماده اجرای مدل‌های سبک Qwen3.5-0.8B و موتور قطعی است.';
-
-    if (hasWebGPU) {
-      if (maxBufferSizeMB >= 1000 && hasShaderF16) {
-        deviceTier = 'WINDOWS_SNAPDRAGON';
-        recommendationFa = 'کارت گرافیک قدرتمند با پشتیبانی از shader-f16 تایید شد. مدل‌های 2B و 4B با حداکثر شتاب سخت‌افزاری اجرا می‌شوند.';
-      } else if (maxBufferSizeMB >= 500) {
-        deviceTier = 'PIXEL_FOLD';
-        recommendationFa = 'شتاب‌دهنده گرافیک موبایل شناسایی شد. مدل‌های Qwen3.5-0.8B و 2B پیشنهاد می‌شوند.';
-      }
-    } else {
-      deviceTier = 'LOW_RESOURCE';
-      recommendationFa = 'مرورگر فاقد WebGPU است. موتورهای قطعی S0 و Deep Critic به شکل ۱۰۰٪ آفلاین و آنی در دسترس هستند.';
-    }
-
-    return {
-      hasWebGPU,
-      adapterName,
-      vendor,
-      architecture,
-      hasShaderF16,
-      maxBufferSizeMB,
-      maxStorageBufferMB,
-      estimatedStorageQuotaMB,
-      estimatedStorageUsageMB,
-      isDedicatedWorkerSupported,
-      isReadyForInference: hasWebGPU,
-      deviceTier,
-      recommendationFa,
-    };
+  static getRuntimeStatus(): AIModelRuntimeStatus {
+    return { state: this.runtimeState, residentModelId: this.currentResidentModelId, selectedModelId: this.getSelectedModelId(), activeOperationId: this.activeOperationId, lastError: this.lastError };
   }
 
   static getSelectedModelId(): string {
@@ -458,333 +429,295 @@ export class BrowserOfflineAIManager {
   }
 
   static setSelectedModelId(id: string): void {
-    if (typeof window === 'undefined') return;
-    localStorage.setItem(STORAGE_SELECTED_MODEL, id);
+    if (typeof window !== 'undefined') localStorage.setItem(STORAGE_SELECTED_MODEL, id);
   }
 
   static getResidentModelId(): string | null {
-    if (typeof window === 'undefined') return 's0-deterministic';
-    return this.currentResidentModelId || localStorage.getItem(STORAGE_RESIDENT_MODEL) || 's0-deterministic';
+    return this.currentResidentModelId;
   }
 
-  static setResidentModelId(id: string | null): void {
-    if (typeof window === 'undefined') return;
-    this.currentResidentModelId = id;
-    if (id) {
-      localStorage.setItem(STORAGE_RESIDENT_MODEL, id);
-    } else {
-      localStorage.removeItem(STORAGE_RESIDENT_MODEL);
-    }
-  }
-
-  /**
-   * بررسی واقعی وضعیت دانلود بودن وزن‌های مدل در CacheStorage
-   */
-  static async isModelDownloaded(modelId: string): Promise<boolean> {
-    const model = PLAN_V4_MODELS.find(m => m.id === modelId);
+  static async isModelSupported(modelId: string): Promise<boolean> {
+    const model = PLAN_V4_MODELS.find(item => item.id === modelId);
     if (!model) return false;
-    if (model.isBuiltIn) return true;
-
-    if (typeof window === 'undefined') return false;
-
+    if (model.runtime === 'Core-Deterministic') return true;
+    if (model.runtime === 'Chrome-Builtin') return false;
     try {
       const webllm = await import('@mlc-ai/web-llm');
-      // انتخاب آیدی مناسب بر اساس پشتیبانی از f16
-      const mlcId = model.mlcModelId;
-      const isCached = await webllm.hasModelInCache(mlcId);
-      return isCached;
-    } catch {
-      return false;
-    }
+      return webllm.prebuiltAppConfig.model_list.some(item => item.model_id === model.mlcModelId);
+    } catch { return false; }
   }
 
-  /**
-   * بارگذاری و مقداردهی اولیه موتور WebLLM با ثبت پیشرفت بایت‌های واقعی
-   */
-  static async loadModelToMemory(
-    modelId: string,
-    onProgress?: (progress: ProgressReportPayload) => void
-  ): Promise<{ success: boolean; messageFa: string }> {
-    const model = PLAN_V4_MODELS.find(m => m.id === modelId);
-    if (!model) return { success: false, messageFa: 'مدل یافت نشد.' };
+  static async isModelDownloaded(modelId: string): Promise<boolean> {
+    const model = PLAN_V4_MODELS.find(item => item.id === modelId);
+    if (!model) return false;
+    if (model.runtime === 'Core-Deterministic') return true;
+    if (model.runtime === 'Chrome-Builtin') return false;
+    if (typeof window === 'undefined' || !(await this.isModelSupported(modelId))) return false;
+    try {
+      const webllm = await import('@mlc-ai/web-llm');
+      if (await webllm.hasModelInCache(model.mlcModelId)) return true;
+      const fallbackId = model.mlcModelId.replace('q4f16_1', 'q4f32_1');
+      return fallbackId !== model.mlcModelId &&
+        webllm.prebuiltAppConfig.model_list.some(item => item.model_id === fallbackId) &&
+        await webllm.hasModelInCache(fallbackId);
+    } catch { return false; }
+  }
 
-    if (model.isBuiltIn) {
-      this.setResidentModelId(modelId);
+  static async loadModelToMemory(modelId: string, onProgress?: (progress: ProgressReportPayload) => void): Promise<{ success: boolean; messageFa: string }> {
+    const model = PLAN_V4_MODELS.find(item => item.id === modelId);
+    if (!model) return { success: false, messageFa: 'مدل انتخاب‌شده در catalog یافت نشد.' };
+    if (model.runtime === 'Core-Deterministic') {
       this.setSelectedModelId(modelId);
-      return { success: true, messageFa: `موتور قطعی ${model.name} آماده به کار است.` };
+      return { success: true, messageFa: `موتور قطعی ${model.name} بدون مدل عصبی فعال است.` };
     }
-
-    if (typeof window === 'undefined') {
-      return { success: false, messageFa: 'محیط اجرای مرورگر در دسترس نیست.' };
-    }
-
-    // قانون تک‌مدل مقیم: اگر مدل دیگری در رم است، ابتدا آن را تخلیه کن
-    const currentResident = this.getResidentModelId();
-    if (currentResident && currentResident !== modelId && currentResident !== 's0-deterministic') {
-      await this.unloadModelFromMemory();
-    }
-
+    if (model.runtime === 'Chrome-Builtin') return { success: false, messageFa: 'Chrome Prompt API در این نسخه پیاده‌سازی نشده و قابل انتخاب نیست.' };
+    if (typeof window === 'undefined') return { success: false, messageFa: 'محیط اجرای مرورگر در دسترس نیست.' };
+    if (this.activeEngine && this.currentResidentModelId === modelId) return { success: true, messageFa: `مدل ${model.name} از قبل در حافظه اجراست.` };
+    const operationId = this.beginOperation('LOADING');
     try {
       const webllm = await import('@mlc-ai/web-llm');
       let mlcId = model.mlcModelId;
-
-      // بررسی سخت‌افزاری shader-f16؛ در صورت عدم پشتیبانی سوئیچ به q4f32
+      if (!webllm.prebuiltAppConfig.model_list.some(item => item.model_id === mlcId)) throw new Error(`MODEL_NOT_SUPPORTED: مدل ${mlcId} در رجیستری WebLLM نصب‌شده وجود ندارد.`);
       const probe = await this.probeHardware();
+      if (!probe.hasWebGPU) throw new Error('WEBGPU_UNAVAILABLE: اجرای مدل عصبی بدون WebGPU مجاز نیست.');
       if (!probe.hasShaderF16) {
-        const fallbackF32 = mlcId.replace('q4f16_1', 'q4f32_1');
-        const existsF32 = webllm.prebuiltAppConfig.model_list.some(m => m.model_id === fallbackF32);
-        if (existsF32) {
-          mlcId = fallbackF32;
-        }
+        const fallback = mlcId.replace('q4f16_1', 'q4f32_1');
+        if (webllm.prebuiltAppConfig.model_list.some(item => item.model_id === fallback)) mlcId = fallback;
       }
-
-      let engine: any = null;
-      let startTime = Date.now();
-
-      const initProgressCallback = (report: any) => {
-        const percent = Math.min(100, Math.round((report.progress || 0) * 100));
-        const elapsedSec = (Date.now() - startTime) / 1000 || 0.1;
-        const downloadedMB = Number(((report.progress || 0) * model.downloadSizeMB).toFixed(1));
-        const speedMBs = Number((downloadedMB / elapsedSec).toFixed(1));
-
-        if (onProgress) {
-          onProgress({
-            percent,
-            downloadedMB,
-            totalMB: model.downloadSizeMB,
-            speedMBs,
-            text: report.text || 'در حال آماده‌سازی...',
-          });
-        }
+      await this.disposeActiveEngine();
+      const startedAt = performance.now();
+      const initProgressCallback = (report: { progress?: number; text?: string }) => {
+        const progress = Math.max(0, Math.min(1, report.progress || 0));
+        const elapsedSec = Math.max(0.1, (performance.now() - startedAt) / 1000);
+        onProgress?.({ percent: Math.round(progress * 100), downloadedMB: Number((progress * model.downloadSizeMB).toFixed(1)), totalMB: model.downloadSizeMB, speedMBs: Number(((progress * model.downloadSizeMB) / elapsedSec).toFixed(1)), text: report.text || 'در حال آماده‌سازی مدل محلی...' });
       };
-
-      // ۱. اولویت اول طرح v4.0: اجرای WebLLM در Dedicated Web Worker
+      let engine: any;
+      let worker: Worker | null = null;
       try {
         if (typeof Worker !== 'undefined') {
-          const worker = new Worker(new URL('./web-llm.worker.ts', import.meta.url), {
-            type: 'module',
-          });
-          engine = await webllm.CreateWebWorkerMLCEngine(worker, mlcId, {
-            initProgressCallback,
-          });
-          this.activeWorker = worker;
+          worker = new Worker(new URL('./web-llm.worker.ts', import.meta.url), { type: 'module' });
+          engine = await webllm.CreateWebWorkerMLCEngine(worker, mlcId, { initProgressCallback });
         }
-      } catch (workerErr) {
-        console.warn('Dedicated Worker not available, switching to direct MLCEngine:', workerErr);
+      } catch (error) {
+        worker?.terminate();
+        worker = null;
+        console.warn('WebLLM worker creation failed; direct engine is attempted.', error);
       }
-
-      // ۲. در صورت بروز محدودیت در ورکر، اجرای مستقیم در ترد اصلی
-      if (!engine) {
-        engine = await webllm.CreateMLCEngine(mlcId, {
-          initProgressCallback,
-        });
-      }
-
+      if (!engine) engine = await webllm.CreateMLCEngine(mlcId, { initProgressCallback });
+      this.assertOperation(operationId);
       this.activeEngine = engine;
-      this.setResidentModelId(modelId);
+      this.activeWorker = worker;
+      this.currentResidentModelId = modelId;
       this.setSelectedModelId(modelId);
-
-      return {
-        success: true,
-        messageFa: `مدل ${model.name} با موفقیت در WebGPU بارگذاری شد و در VRAM مقیم گردید.`,
-      };
-    } catch (err) {
-      console.error('Failed to load WebLLM model:', err);
-      return {
-        success: false,
-        messageFa: `خطا در بارگذاری WebGPU: ${(err as Error).message}`,
-      };
-    }
+      return { success: true, messageFa: `مدل ${model.name} به‌صورت محلی در WebGPU بارگذاری شد. دانلود اولیه ممکن است به شبکه نیاز داشته باشد.` };
+    } catch (error) {
+      this.lastError = error instanceof Error ? error.message : 'MODEL_LOAD_FAILED';
+      await this.disposeActiveEngine();
+      return { success: false, messageFa: `خطا در بارگذاری مدل: ${this.lastError}` };
+    } finally { this.finishOperation(operationId); }
   }
 
-  /**
-   * آزادسازی کامل حافظه گرافیک (VRAM) و توقف وب‌ورکر
-   */
   static async unloadModelFromMemory(): Promise<{ success: boolean; messageFa: string }> {
-    const current = this.getResidentModelId();
+    const operationId = this.beginOperation('UNLOADING');
+    const current = this.currentResidentModelId;
     try {
-      if (this.activeEngine) {
-        await this.activeEngine.unload();
-        this.activeEngine = null;
-      }
-      if (this.activeWorker) {
-        this.activeWorker.terminate();
-        this.activeWorker = null;
-      }
-    } catch (e) {
-      console.warn('Error during unload:', e);
-    }
+      await this.disposeActiveEngine();
+      return { success: true, messageFa: current ? `مدل ${current} از حافظه GPU تخلیه شد.` : 'هیچ مدل عصبی در حافظه GPU نبود.' };
+    } finally { this.finishOperation(operationId); }
+  }
 
-    this.setResidentModelId(null);
+  static async deleteModel(modelId: string): Promise<boolean> {
+    const model = PLAN_V4_MODELS.find(item => item.id === modelId);
+    if (!model || model.runtime !== 'WebLLM-WebGPU') return false;
+    const operationId = this.beginOperation('DELETING');
+    try {
+      if (this.currentResidentModelId === modelId) await this.disposeActiveEngine();
+      const webllm = await import('@mlc-ai/web-llm');
+      await webllm.deleteModelAllInfoInCache(model.mlcModelId);
+      const fallbackId = model.mlcModelId.replace('q4f16_1', 'q4f32_1');
+      if (fallbackId !== model.mlcModelId && webllm.prebuiltAppConfig.model_list.some(item => item.model_id === fallbackId)) {
+        await webllm.deleteModelAllInfoInCache(fallbackId);
+      }
+      this.removeOfflineVerification(modelId);
+      return true;
+    } catch (error) {
+      this.lastError = error instanceof Error ? error.message : 'MODEL_DELETE_FAILED';
+      return false;
+    } finally { this.finishOperation(operationId); }
+  }
+
+  static buildDeterministicAdvisory(modelId: string, evidence: DeterministicMarketEvidence): StructuredCandidateAdvisory {
+    const model = PLAN_V4_MODELS.find(item => item.id === modelId);
+    const flags: string[] = [];
+    const evidenceIds: string[] = [];
+    if (!Number.isFinite(evidence.currentPrice) || evidence.currentPrice <= 0) flags.push('INVALID_MARKET_PRICE');
+    if (!evidence.sweepDetected) flags.push('SWEEP_NOT_CONFIRMED'); else evidenceIds.push('SWEEP_CONFIRMED');
+    if (!evidence.fvgDetected) flags.push('FVG_NOT_CONFIRMED'); else evidenceIds.push('FVG_CONFIRMED');
+    if (!evidence.contextConfirmed) flags.push('CONTEXT_NOT_CONFIRMED'); else evidenceIds.push('CONTEXT_CONFIRMED');
+    if (!Number.isFinite(evidence.riskRewardRatio) || (evidence.riskRewardRatio || 0) < 2) flags.push('RISK_REWARD_INSUFFICIENT');
+    if (evidence.isHighImpactNewsUpcoming) flags.push('HIGH_IMPACT_NEWS');
+    if (Number.isFinite(evidence.spreadPips) && Number.isFinite(evidence.maxAllowedSpreadPips) && (evidence.spreadPips || 0) > (evidence.maxAllowedSpreadPips || 0)) flags.push('SPREAD_LIMIT_EXCEEDED');
+    const verdict = flags.length === 0 ? 'TRADE' : 'NO_TRADE';
     return {
-      success: true,
-      messageFa: current ? `مدل ${current} از حافظه رم گرافیک تخلیه شد.` : 'هیچ مدلی در رم نبود.',
+      modelId,
+      modelRevision: model?.artifactRevision || 'unknown',
+      source: 'DETERMINISTIC',
+      verdict,
+      confidence: verdict === 'TRADE' ? 0.7 : 0,
+      rationaleFa: verdict === 'TRADE' ? 'شواهد ساختاری، نسبت سود به زیان و قیود ورودی قطعی همگی برقرارند. این نتیجه صرفاً advisory است.' : `عدم تأیید معامله: ${flags.join('، ')}.`,
+      riskFlags: flags,
+      evidenceIds,
+      latencyMs: 0,
+      advisoryOnly: true,
     };
   }
 
-  /**
-   * حذف فایل‌های مدل از CacheStorage دیسک محلی
-   */
-  static async deleteModel(modelId: string): Promise<boolean> {
-    const model = PLAN_V4_MODELS.find(m => m.id === modelId);
-    if (!model || model.isBuiltIn) return false;
-
-    try {
-      if (this.getResidentModelId() === modelId) {
-        await this.unloadModelFromMemory();
-      }
-      const webllm = await import('@mlc-ai/web-llm');
-      await webllm.deleteModelAllInfoInCache(model.mlcModelId);
-      return true;
-    } catch (err) {
-      console.error('Error deleting model from cache:', err);
-      return false;
-    }
-  }
-
-  /**
-   * اجرای استنتاج عصبی یا قطعی به صورت ۱۰۰٪ آفلاین
-   * با استریم زنده توکن‌ها، محاسبه تأخیر، TTFT و سرعت (Tokens/sec)
-   */
-  static async runOfflineInferenceTest(
-    modelId: string,
-    customQuestion: string,
-    symbol: string,
-    currentPrice: number,
-    onToken?: (token: string) => void
-  ): Promise<{ text: string; latencyMs: number; ttftMs: number; tokensPerSec: number; isOfflineVerified: boolean }> {
-    const t0 = performance.now();
-    let ttftMs = 0;
-    const model = PLAN_V4_MODELS.find(m => m.id === modelId);
+  static async runOfflineInferenceTest(modelId: string, customQuestion: string, symbol: string, currentPrice: number, onToken?: (text: string) => void, options: InferenceOptions = {}): Promise<{ text: string; latencyMs: number; ttftMs: number; chunksPerSec: number; isOfflineVerified: boolean }> {
+    const model = PLAN_V4_MODELS.find(item => item.id === modelId);
     if (!model) throw new Error('مدل یافت نشد.');
-
-    // ۱. اگر مدل قطعی S0 یا Deep Critic است
-    if (model.isBuiltIn) {
-      let responseText = '';
-      if (model.id === 's0-deterministic') {
-        responseText = `[گزارش استنتاج موتور قطعی ${model.name}]\n` +
-          `• نماد: ${symbol} در نرخ ${currentPrice}\n` +
-          `• وضعیت نقدینگی: سوییپ آسیا تایید شد (عبور بیش از ۰.۱ ATR و بسته‌شدن داخل رنج).\n` +
-          `• ناحیه عدم تعادل: FVG پنج‌دقیقه‌ای در امتداد جهت چارچوب ۱ ساعته.\n` +
-          `• تحلیل سوال: "${customQuestion || 'بررسی اعتبار ستاپ'}"\n` +
-          `• تصمیم نهایی: ستاپ معتبر، حجم مجاز ۰.۱ لات با رعایت سقف ریسک ۰.۲۵٪.`;
-      } else {
-        responseText = `[گزارش منتقد سخت‌گیر نقدینگی - ${model.name}]\n` +
-          `• نماد: ${symbol} در نرخ ${currentPrice}\n` +
-          `• ارزیابی ریسک و اسلیپیج: R:R خالص بالاتر از ۱ به ۲.۰ احراز شد.\n` +
-          `• سوال ورودی: "${customQuestion || 'ارزیابی ریسک'}"\n` +
-          `• نتیجه فیلتر شواهد: هیچگونه واگرایی یا تداخل خبری در تقویم ۳۰ دقیقه گذشته مشاهده نشد. ستاپ مجاز به بررسی است.`;
-      }
-
-      if (onToken) {
-        onToken(responseText);
-      }
-      const latencyMs = Number((performance.now() - t0).toFixed(1));
-      this.markOfflineVerified(modelId);
-      return { text: responseText, latencyMs, ttftMs: 1, tokensPerSec: 100, isOfflineVerified: true };
+    if (model.runtime === 'Core-Deterministic') {
+      const startedAt = performance.now();
+      const advisory = this.buildDeterministicAdvisory(modelId, { symbol, currentPrice });
+      const text = `[ارزیابی قطعی محلی — صرفاً آموزشی]\n• نماد: ${symbol}، قیمت: ${currentPrice}\n• نتیجه: ${advisory.verdict}\n• دلایل: ${advisory.rationaleFa}\n• این خروجی فاقد داده کافی برای صدور مجوز سفارش است.`;
+      onToken?.(text);
+      return { text, latencyMs: Number((performance.now() - startedAt).toFixed(1)), ttftMs: 0, chunksPerSec: 0, isOfflineVerified: this.isOfflineVerified(modelId) };
     }
-
-    // ۲. مدل هوش مصنوعی عصبی (WebLLM)
-    if (!this.activeEngine || this.getResidentModelId() !== modelId) {
-      const loadRes = await this.loadModelToMemory(modelId);
-      if (!loadRes.success) {
-        throw new Error(loadRes.messageFa);
-      }
+    if (!this.activeEngine || this.currentResidentModelId !== modelId) {
+      const loaded = await this.loadModelToMemory(modelId);
+      if (!loaded.success) throw new Error(loaded.messageFa);
     }
-
-    if (!this.activeEngine) {
-      throw new Error('موتور استنتاج WebLLM در دسترس نیست.');
-    }
-
+    const operationId = this.beginOperation('GENERATING');
+    const startedAt = performance.now();
     this.abortController = new AbortController();
-
-    const systemPrompt = `شما دستیار هوشمند و منتقد تحلیل تکنیکال و پرایس‌اکشن هستید.
-پاسخ‌های شما باید کاملاً منطقی، دقیق، به زبان فارسی و با تکیه بر اطلاعات بازار زیر باشد:
-- نماد: ${symbol}
-- آخرین قیمت بازار: ${currentPrice}
-- استراتژی: سوییپ نقدینگی و پرایس‌اکشن (S0)
-- قانون سقف ریسک: ۰.۲۵٪ سرمایه در هر معامله
-به سوال معامله‌گر به شکل فشرده و مستدل پاسخ دهید.`;
-
-    const userPrompt = customQuestion.trim() || `وضعیت ورود معامله برای نماد ${symbol} را ارزیابی کن.`;
-
     try {
-      const responseStream = await this.activeEngine.chat.completions.create({
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: userPrompt },
-        ],
-        temperature: 0.2,
-        max_tokens: 384,
-        stream: true,
-      });
-
-      let fullText = '';
-      let tokenCount = 0;
-
+      const systemPrompt = options.systemPrompt || `شما یک دستیار آموزشی تحلیل بازار هستید. داده ناکافی را صریحاً اعلام کنید. هیچ‌گاه مجوز اجرای سفارش صادر نکنید. پاسخ را به فارسی و فشرده بنویسید. نماد: ${symbol}; قیمت: ${currentPrice}.`;
+      const responseStream = await this.activeEngine.chat.completions.create({ messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: customQuestion.trim() || 'داده کافی نیست؛ وضعیت را بررسی کن.' }], temperature: 0.1, max_tokens: options.maxTokens || 384, stream: true });
+      let text = '';
+      let chunkCount = 0;
+      let ttftMs = 0;
       for await (const chunk of responseStream) {
-        if (this.abortController?.signal.aborted) {
-          fullText += '\n[تولید پاسخ توسط کاربر متوقف شد.]';
-          break;
-        }
-
+        if (this.abortController?.signal.aborted) { text += '\n[تولید پاسخ متوقف شد.]'; break; }
         const delta = chunk.choices[0]?.delta?.content || '';
         if (delta) {
-          if (tokenCount === 0) {
-            ttftMs = Number((performance.now() - t0).toFixed(1));
-          }
-          tokenCount++;
-          fullText += delta;
-          if (onToken) {
-            onToken(fullText);
-          }
+          if (chunkCount === 0) ttftMs = Number((performance.now() - startedAt).toFixed(1));
+          chunkCount += 1;
+          text += delta;
+          onToken?.(text);
         }
       }
-
-      const totalElapsedMs = performance.now() - t0;
-      const latencyMs = Number(totalElapsedMs.toFixed(1));
-      const tokensPerSec = tokenCount > 0 ? Number(((tokenCount / totalElapsedMs) * 1000).toFixed(1)) : 0;
-
-      this.markOfflineVerified(modelId);
-
-      return {
-        text: fullText,
-        latencyMs,
-        ttftMs: ttftMs || latencyMs,
-        tokensPerSec,
-        isOfflineVerified: true,
-      };
-    } catch (err) {
-      console.error('Inference error:', err);
-      throw new Error(`خطا در طول استنتاج عصبی: ${(err as Error).message}`);
+      const latencyMs = Number((performance.now() - startedAt).toFixed(1));
+      return { text, latencyMs, ttftMs: ttftMs || latencyMs, chunksPerSec: chunkCount > 0 ? Number(((chunkCount / latencyMs) * 1000).toFixed(1)) : 0, isOfflineVerified: this.isOfflineVerified(modelId) };
+    } catch (error) {
+      this.lastError = error instanceof Error ? error.message : 'INFERENCE_FAILED';
+      throw new Error(`خطا در استنتاج محلی: ${this.lastError}`);
     } finally {
       this.abortController = null;
+      this.finishOperation(operationId);
     }
   }
 
-  static stopInference(): void {
-    if (this.abortController) {
-      this.abortController.abort();
-      this.abortController = null;
-    }
+  static async evaluateCandidateAdvisory(modelId: string, evidence: DeterministicMarketEvidence, customSystemPrompt?: string, customUserPrompt?: string): Promise<StructuredCandidateAdvisory> {
+    const model = PLAN_V4_MODELS.find(item => item.id === modelId);
+    if (!model) throw new Error('مدل انتخاب‌شده نامعتبر است.');
+    if (model.runtime === 'Core-Deterministic') return this.buildDeterministicAdvisory(modelId, evidence);
+    if (model.runtime === 'Chrome-Builtin') throw new Error('CHROME_PROMPT_API_UNIMPLEMENTED');
+    const systemPrompt = customSystemPrompt || 'فقط یک JSON معتبر و بدون markdown برگردان. شکل دقیق: {"verdict":"TRADE|NO_TRADE|REVIEW_REQUIRED","confidence":number,"rationaleFa":string,"riskFlags":string[]}. تو یک ابزار advisory هستی؛ هیچ‌گاه اجازه اجرای سفارش صادر نکن. اگر داده ناکافی، مبهم یا متناقض است verdict باید REVIEW_REQUIRED یا NO_TRADE باشد.';
+    const result = await this.runOfflineInferenceTest(modelId, customUserPrompt || JSON.stringify(evidence), evidence.symbol, evidence.currentPrice, undefined, { systemPrompt, maxTokens: 220 });
+    const parsed = this.parseStructuredAdvisory(result.text);
+    return {
+      modelId,
+      modelRevision: model.artifactRevision,
+      source: 'WEBLLM_WEBGPU',
+      verdict: parsed.verdict,
+      confidence: parsed.confidence,
+      rationaleFa: parsed.rationaleFa,
+      riskFlags: parsed.riskFlags,
+      evidenceIds: [],
+      latencyMs: result.latencyMs,
+      advisoryOnly: true,
+    };
   }
+
+  static async verifyCachedModelOffline(modelId: string, probeText = 'پاسخ کوتاه بده: آماده'): Promise<{ verified: boolean; messageFa: string }> {
+    if (typeof navigator === 'undefined' || navigator.onLine) return { verified: false, messageFa: 'برای تأیید آفلاین، ابتدا شبکه را قطع کنید و دوباره آزمون را اجرا کنید.' };
+    if (!(await this.isModelDownloaded(modelId))) return { verified: false, messageFa: 'فایل کامل مدل در cache محلی یافت نشد.' };
+    try {
+      await this.runOfflineInferenceTest(modelId, probeText, 'OFFLINE_TEST', 1);
+      this.markOfflineVerified(modelId);
+      return { verified: true, messageFa: 'مدل با شبکه قطع‌شده از cache محلی اجرا شد.' };
+    } catch (error) { return { verified: false, messageFa: `آزمون آفلاین ناموفق بود: ${(error as Error).message}` }; }
+  }
+
+  static stopInference(): void { this.abortController?.abort(); }
 
   static isOfflineVerified(modelId: string): boolean {
     if (typeof window === 'undefined') return false;
     try {
-      const data = JSON.parse(localStorage.getItem(STORAGE_OFFLINE_VERIFIED) || '{}');
-      return !!data[modelId];
-    } catch {
-      return false;
-    }
+      const data = JSON.parse(localStorage.getItem(STORAGE_OFFLINE_VERIFIED) || '{}') as Record<string, OfflineVerificationRecord>;
+      return data[modelId]?.browserOnlineAtVerification === false;
+    } catch { return false; }
   }
 
   static markOfflineVerified(modelId: string): void {
+    if (typeof window === 'undefined' || navigator.onLine) return;
+    const model = PLAN_V4_MODELS.find(item => item.id === modelId);
+    if (!model) return;
+    try {
+      const data = JSON.parse(localStorage.getItem(STORAGE_OFFLINE_VERIFIED) || '{}') as Record<string, OfflineVerificationRecord>;
+      data[modelId] = { verifiedAt: Date.now(), modelRevision: model.artifactRevision, browserOnlineAtVerification: false };
+      localStorage.setItem(STORAGE_OFFLINE_VERIFIED, JSON.stringify(data));
+    } catch { /* storage persistence is best effort */ }
+  }
+
+  private static parseStructuredAdvisory(text: string): { verdict: StructuredCandidateAdvisory['verdict']; confidence: number; rationaleFa: string; riskFlags: string[] } {
+    const first = text.indexOf('{');
+    const last = text.lastIndexOf('}');
+    if (first < 0 || last <= first) return { verdict: 'REVIEW_REQUIRED', confidence: 0, rationaleFa: 'خروجی مدل JSON معتبر نبود؛ بررسی انسانی لازم است.', riskFlags: ['INVALID_MODEL_OUTPUT'] };
+    try {
+      const data = JSON.parse(text.slice(first, last + 1)) as Record<string, unknown>;
+      const verdict = data.verdict === 'TRADE' || data.verdict === 'NO_TRADE' || data.verdict === 'REVIEW_REQUIRED' ? data.verdict : 'REVIEW_REQUIRED';
+      const confidence = typeof data.confidence === 'number' && Number.isFinite(data.confidence) ? Math.max(0, Math.min(1, data.confidence)) : 0;
+      const rationaleFa = typeof data.rationaleFa === 'string' && data.rationaleFa.trim() ? data.rationaleFa.slice(0, 1200) : 'مدل توضیح معتبر ارائه نکرد؛ بررسی انسانی لازم است.';
+      const riskFlags = Array.isArray(data.riskFlags) ? data.riskFlags.filter((value): value is string => typeof value === 'string').slice(0, 12) : ['MISSING_RISK_FLAGS'];
+      return { verdict, confidence, rationaleFa, riskFlags };
+    } catch { return { verdict: 'REVIEW_REQUIRED', confidence: 0, rationaleFa: 'خروجی مدل قابل parse نبود؛ بررسی انسانی لازم است.', riskFlags: ['INVALID_MODEL_JSON'] }; }
+  }
+
+  private static beginOperation(state: OfflineRuntimeState): number {
+    if (this.runtimeState !== 'IDLE') throw new Error(`AI_OPERATION_BUSY: عملیات ${this.runtimeState} هنوز کامل نشده است.`);
+    const id = ++this.operationCounter;
+    this.runtimeState = state;
+    this.activeOperationId = id;
+    this.lastError = undefined;
+    return id;
+  }
+
+  private static assertOperation(operationId: number): void {
+    if (this.activeOperationId !== operationId) throw new Error('AI_OPERATION_SUPERSEDED: نتیجه عملیات قدیمی پذیرفته نشد.');
+  }
+
+  private static finishOperation(operationId: number): void {
+    if (this.activeOperationId === operationId) {
+      this.runtimeState = 'IDLE';
+      this.activeOperationId = null;
+    }
+  }
+
+  private static async disposeActiveEngine(): Promise<void> {
+    const engine = this.activeEngine;
+    const worker = this.activeWorker;
+    this.activeEngine = null;
+    this.activeWorker = null;
+    this.currentResidentModelId = null;
+    try { if (engine?.unload) await engine.unload(); } finally { worker?.terminate(); }
+  }
+
+  private static removeOfflineVerification(modelId: string): void {
     if (typeof window === 'undefined') return;
     try {
-      const data = JSON.parse(localStorage.getItem(STORAGE_OFFLINE_VERIFIED) || '{}');
-      data[modelId] = Date.now();
+      const data = JSON.parse(localStorage.getItem(STORAGE_OFFLINE_VERIFIED) || '{}') as Record<string, OfflineVerificationRecord>;
+      delete data[modelId];
       localStorage.setItem(STORAGE_OFFLINE_VERIFIED, JSON.stringify(data));
-    } catch {}
+    } catch { /* best effort */ }
   }
 }

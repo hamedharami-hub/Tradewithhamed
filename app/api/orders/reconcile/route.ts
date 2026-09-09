@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { CTraderOMS } from '@/lib/server/ctrader-oms';
+import { CTraderDemoGateway } from '@/lib/gateway/ctrader-gateway';
+import { registerDemoExecutionBridge } from '@/lib/server/demo-execution-bridge';
 import { RateLimiter } from '@/lib/server/rate-limiter';
 import { getOperatorSession } from '@/lib/server/operator-session';
 
@@ -15,25 +17,28 @@ export async function POST(request: NextRequest) {
     return RateLimiter.createBlockedResponse(rateLimitResult);
   }
 
+  registerDemoExecutionBridge();
+
   try {
-    const { intentId } = await request.json();
-
-    if (!intentId) {
-      return NextResponse.json(
-        { error: 'شناسه اینتنت برای بازتطبیق الزامی است.' },
-        { status: 400 }
-      );
-    }
-
-    const result = await CTraderOMS.reconcileOrder(intentId);
-    return NextResponse.json(result);
+    const { intentId } = await request.json() as { intentId?: string };
+    const snapshot = await CTraderDemoGateway.getInstance().requestReconcile();
+    const report = CTraderOMS.reconcileSnapshot(snapshot);
+    if (!intentId) return NextResponse.json(report);
+    const record = CTraderOMS.getRecord(intentId);
+    const matched = report.matchedIntentIds.includes(intentId);
+    return NextResponse.json({
+      ...report,
+      requestedIntentId: intentId,
+      reconciled: matched && !report.unresolvedIntentIds.includes(intentId),
+      record: record || null,
+    });
   } catch (error) {
     return NextResponse.json(
       {
         reconciled: false,
         error: (error as Error).message,
       },
-      { status: 500 }
+      { status: 503 }
     );
   }
 }

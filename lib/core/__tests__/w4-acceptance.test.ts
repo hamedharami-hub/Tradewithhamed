@@ -223,7 +223,7 @@ export async function runW4AcceptanceSuite(): Promise<W4AcceptanceTestResult[]> 
 
   // تست ۵: کلید قطع اسپرد غیرعادی (Spread Spike Circuit Breaker)
   try {
-    const guardian = new RiskGuardianEngine({}, { maxSpreadPips: { XAUUSD: 3.5, EURUSD: 2.5 } }, 10000);
+    const guardian = new RiskGuardianEngine({}, { maxSpreadPips: { XAUUSD: 3.5, EURUSD: 2.5, GBPUSD: 3.0, USDJPY: 2.5 } }, 10000);
     const ledger = createDummyLedger(0, 10000);
 
     // اسپرد ۵.۰ پیپ در طلا (0.50 دلار اختلاف بین Bid و Ask)
@@ -286,6 +286,8 @@ export async function runW4AcceptanceSuite(): Promise<W4AcceptanceTestResult[]> 
     const quotes = {
       XAUUSD: { bid: 2665.5, ask: 2665.65 },
       EURUSD: { bid: 1.0850, ask: 1.0851 },
+      GBPUSD: { bid: 1.2700, ask: 1.2702 },
+      USDJPY: { bid: 145.00, ask: 145.02 },
     };
 
     const events = guardian.applyProtectionsToPositions([position], quotes);

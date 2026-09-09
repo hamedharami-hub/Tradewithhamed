@@ -3,8 +3,10 @@ import { CTraderOMS } from '@/lib/server/ctrader-oms';
 import { OrderSubmissionRequest } from '@/lib/contracts/execution';
 import { RateLimiter } from '@/lib/server/rate-limiter';
 import { getOperatorSession } from '@/lib/server/operator-session';
+import { registerDemoExecutionBridge } from '@/lib/server/demo-execution-bridge';
 
 export async function POST(request: NextRequest) {
+  registerDemoExecutionBridge();
   if (!getOperatorSession(request)) {
     return NextResponse.json({ success: false, error: 'UNAUTHENTICATED_SESSION: ثبت سفارش به نشست اپراتور نیاز دارد.' }, { status: 401 });
   }
