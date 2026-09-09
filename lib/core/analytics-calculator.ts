@@ -24,6 +24,7 @@ export function calculateStrategyStatistics(
     EURUSD: { tradesCount: 0, winRatePercent: 0, netProfit: 0, profitFactor: 0, grossWins: 0, grossLosses: 0, winsCount: 0 },
     GBPUSD: { tradesCount: 0, winRatePercent: 0, netProfit: 0, profitFactor: 0, grossWins: 0, grossLosses: 0, winsCount: 0 },
     USDJPY: { tradesCount: 0, winRatePercent: 0, netProfit: 0, profitFactor: 0, grossWins: 0, grossLosses: 0, winsCount: 0 },
+    BTCUSD: { tradesCount: 0, winRatePercent: 0, netProfit: 0, profitFactor: 0, grossWins: 0, grossLosses: 0, winsCount: 0 },
   };
 
   if (closedPositions.length === 0) {
@@ -50,6 +51,7 @@ export function calculateStrategyStatistics(
         EURUSD: { tradesCount: 0, winRatePercent: 0, netProfit: 0, profitFactor: 0 },
         GBPUSD: { tradesCount: 0, winRatePercent: 0, netProfit: 0, profitFactor: 0 },
         USDJPY: { tradesCount: 0, winRatePercent: 0, netProfit: 0, profitFactor: 0 },
+        BTCUSD: { tradesCount: 0, winRatePercent: 0, netProfit: 0, profitFactor: 0 },
       },
     };
   }
@@ -187,6 +189,12 @@ export function calculateStrategyStatistics(
       winRatePercent: bySymbol.USDJPY.tradesCount > 0 ? (bySymbol.USDJPY.winsCount / bySymbol.USDJPY.tradesCount) * 100 : 0,
       netProfit: Number(bySymbol.USDJPY.netProfit.toFixed(2)),
       profitFactor: bySymbol.USDJPY.grossLosses > 0 ? Number((bySymbol.USDJPY.grossWins / bySymbol.USDJPY.grossLosses).toFixed(2)) : bySymbol.USDJPY.grossWins > 0 ? 99.9 : 0,
+    },
+    BTCUSD: {
+      tradesCount: bySymbol.BTCUSD.tradesCount,
+      winRatePercent: bySymbol.BTCUSD.tradesCount > 0 ? (bySymbol.BTCUSD.winsCount / bySymbol.BTCUSD.tradesCount) * 100 : 0,
+      netProfit: Number(bySymbol.BTCUSD.netProfit.toFixed(2)),
+      profitFactor: bySymbol.BTCUSD.grossLosses > 0 ? Number((bySymbol.BTCUSD.grossWins / bySymbol.BTCUSD.grossLosses).toFixed(2)) : bySymbol.BTCUSD.grossWins > 0 ? 99.9 : 0,
     },
   };
 

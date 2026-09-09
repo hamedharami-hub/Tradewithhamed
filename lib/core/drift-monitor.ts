@@ -30,6 +30,10 @@ export class DriftMonitor {
     switch (symbol) {
       case 'XAUUSD':
         return 0.1; // در انس طلا هر ۰.۱ دلار برابر ۱ پیپ است
+      case 'USDJPY':
+        return 0.01;
+      case 'BTCUSD':
+        return 1;
       case 'EURUSD':
       default:
         return 0.0001; // در یورو برابر ۰.۰۰۰۱ است

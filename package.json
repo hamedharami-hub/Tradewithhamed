@@ -24,6 +24,8 @@
     "research:optimize:s0": "tsx scripts/optimize-s0-parameters.ts",
     "research:monitor:30d": "tsx scripts/run-30d-paper-monitor.ts",
     "research:monitor:hybrid": "tsx scripts/run-hybrid-ctrader-paper-monitor.ts",
+    "research:monitor:stage8:readonly": "tsx scripts/run-stage8-readonly-paper-monitor.ts",
+    "research:analyze:stage8": "tsx scripts/analyze-stage8-paper-forward.ts",
     "research:benchmark:stage5": "tsx scripts/run-stage5-provider-benchmark.ts",
     "stage6:deploy:webgpu-ctrader": "bash scripts/deploy-stage6-webgpu-ctrader.sh",
     "research:plot:stage5-winrate": "python3 scripts/plot-stage5-winrate-ci.py",

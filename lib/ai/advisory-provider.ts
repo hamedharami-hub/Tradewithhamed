@@ -5,7 +5,8 @@ import { buildAgentPrompt, evidencePacketFromCandidate, judgeAgentReviews } from
 import { modelIdForAgentEngine } from './webllm-agent-adapter';
 import type { DeterministicMarketEvidence, StructuredCandidateAdvisory } from './offline-ai-contracts';
 
-export type AdvisoryProviderKind = 'DETERMINISTIC' | 'WEBLLM' | 'ONLINE' | 'HYBRID';
+export type AdvisoryProviderKind = 'DETERMINISTIC' | 'WEBLLM' | 'ONLINE' | 'GEMINI' | 'XAI' | 'HYBRID';
+export type OnlineAdvisoryProviderKind = Extract<AdvisoryProviderKind, 'ONLINE' | 'GEMINI' | 'XAI'>;
 
 export interface AdvisoryProviderRequest {
   candidate: StrategyCandidate;
@@ -21,6 +22,15 @@ export interface AdvisoryProviderResult {
   latencyMs: number;
   reasonCodes: string[];
   modelId?: string;
+}
+
+export interface OnlineProviderSettings {
+  provider: OnlineAdvisoryProviderKind;
+  configured: boolean;
+  apiKey?: string;
+  baseUrl?: string;
+  modelId: string;
+  missing: string[];
 }
 
 function deterministicEvidence(candidate: StrategyCandidate): DeterministicMarketEvidence {
@@ -40,6 +50,39 @@ function deterministicEvidence(candidate: StrategyCandidate): DeterministicMarke
 
 function blocked(provider: AdvisoryProviderKind, reason: string, modelId?: string): AdvisoryProviderResult {
   return { provider, status: 'BLOCKED', approved: false, advisory: null, latencyMs: 0, reasonCodes: [reason], ...(modelId ? { modelId } : {}) };
+}
+
+/** Resolves an opt-in provider only. It never falls through to another API. */
+export function getOnlineProviderSettings(kind: OnlineAdvisoryProviderKind, environment: Record<string, string | undefined> = process.env): OnlineProviderSettings {
+  const raw = kind === 'GEMINI'
+    ? {
+      apiKey: environment.GEMINI_API_KEY?.trim(),
+      baseUrl: (environment.GEMINI_API_BASE || 'https://generativelanguage.googleapis.com/v1beta/openai').replace(/\/$/, ''),
+      modelId: environment.TRADING_GEMINI_MODEL || 'gemini-2.5-flash',
+      apiKeyName: 'GEMINI_API_KEY',
+    }
+    : kind === 'XAI'
+      ? {
+        apiKey: environment.XAI_API_KEY?.trim(),
+        baseUrl: (environment.XAI_API_BASE || 'https://api.x.ai/v1').replace(/\/$/, ''),
+        modelId: environment.TRADING_XAI_MODEL || 'grok-4',
+        apiKeyName: 'XAI_API_KEY',
+      }
+      : {
+        apiKey: environment.OPENAI_API_KEY?.trim(),
+        baseUrl: environment.OPENAI_API_BASE?.replace(/\/$/, ''),
+        modelId: environment.TRADING_OPENAI_MODEL || environment.TRADING_ONLINE_MODEL || 'gpt-5-mini',
+        apiKeyName: 'OPENAI_API_KEY',
+      };
+  const missing = [!raw.apiKey ? raw.apiKeyName : null, !raw.baseUrl ? `${kind}_API_BASE` : null].filter((item): item is string => Boolean(item));
+  return {
+    provider: kind,
+    configured: missing.length === 0,
+    ...(raw.apiKey ? { apiKey: raw.apiKey } : {}),
+    ...(raw.baseUrl ? { baseUrl: raw.baseUrl } : {}),
+    modelId: raw.modelId,
+    missing,
+  };
 }
 
 export async function reviewWithDeterministicProvider(request: AdvisoryProviderRequest): Promise<AdvisoryProviderResult> {
@@ -77,19 +120,17 @@ function parseOnlineAdvisory(value: unknown, modelId: string, latencyMs: number)
   return { modelId, modelRevision: 'online-api', source: 'ONLINE_API', verdict, confidence, rationaleFa, riskFlags, evidenceIds, latencyMs, advisoryOnly: true };
 }
 
-export async function reviewWithOnlineProvider(request: AdvisoryProviderRequest): Promise<AdvisoryProviderResult> {
-  const apiKey = process.env.OPENAI_API_KEY;
-  const baseUrl = (process.env.OPENAI_API_BASE || '').replace(/\/$/, '');
-  const modelId = process.env.TRADING_ONLINE_MODEL || 'gpt-5-mini';
-  if (!apiKey || !baseUrl) return blocked('ONLINE', 'ONLINE_PROVIDER_NOT_CONFIGURED', modelId);
+export async function reviewWithOnlineProvider(request: AdvisoryProviderRequest, kind: OnlineAdvisoryProviderKind = 'ONLINE'): Promise<AdvisoryProviderResult> {
+  const settings = getOnlineProviderSettings(kind);
+  if (!settings.configured || !settings.apiKey || !settings.baseUrl) return blocked(kind, `${kind}_PROVIDER_NOT_CONFIGURED:${settings.missing.join(',')}`, settings.modelId);
   const packet = evidencePacketFromCandidate(request.candidate, request.config?.activeTradingStyle || 'S0_SWEEP_FVG', request.context);
   const started = performance.now();
   try {
-    const response = await fetch(`${baseUrl}/chat/completions`, {
+    const response = await fetch(`${settings.baseUrl}/chat/completions`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${settings.apiKey}` },
       body: JSON.stringify({
-        model: modelId,
+        model: settings.modelId,
         messages: [
           { role: 'system', content: 'You are an advisory-only trading candidate critic. Use only the JSON packet. Never invent facts, news, or prices. Return JSON only. TRADE is allowed only when evidence is complete and no risk flag exists.' },
           { role: 'user', content: JSON.stringify(packet) },
@@ -110,20 +151,20 @@ export async function reviewWithOnlineProvider(request: AdvisoryProviderRequest)
         max_completion_tokens: 300,
       }),
     });
-    if (!response.ok) return blocked('ONLINE', `ONLINE_HTTP_${response.status}`, modelId);
+    if (!response.ok) return blocked(kind, `${kind}_HTTP_${response.status}`, settings.modelId);
     const payload = await response.json() as { choices?: Array<{ message?: { content?: string } }> };
     const content = payload.choices?.[0]?.message?.content;
-    if (!content) return blocked('ONLINE', 'ONLINE_EMPTY_RESPONSE', modelId);
+    if (!content) return blocked(kind, `${kind}_EMPTY_RESPONSE`, settings.modelId);
     let parsed: unknown;
-    try { parsed = JSON.parse(content); } catch { return blocked('ONLINE', 'ONLINE_INVALID_JSON', modelId); }
-    const advisory = parseOnlineAdvisory(parsed, modelId, Number((performance.now() - started).toFixed(1)));
+    try { parsed = JSON.parse(content); } catch { return blocked(kind, `${kind}_INVALID_JSON`, settings.modelId); }
+    const advisory = parseOnlineAdvisory(parsed, settings.modelId, Number((performance.now() - started).toFixed(1)));
     const allowedEvidence = new Set(Object.values(request.candidate.evidenceIds).filter((value): value is string => Boolean(value)));
     const unknownEvidence = advisory.evidenceIds.some(id => !allowedEvidence.has(id));
     const approved = advisory.verdict === 'TRADE' && advisory.confidence >= 0.6 && !unknownEvidence && advisory.riskFlags.length === 0;
     const reasonCodes = [...advisory.riskFlags, ...(unknownEvidence ? ['UNKNOWN_EVIDENCE_ID'] : []), ...(approved ? [] : ['ONLINE_ADVISORY_NOT_HARD_AUTHORITY'])];
-    return { provider: 'ONLINE', status: approved ? 'APPROVED' : advisory.verdict === 'REVIEW_REQUIRED' ? 'REVIEW_REQUIRED' : 'REJECTED', approved, advisory, latencyMs: advisory.latencyMs, reasonCodes, modelId };
+    return { provider: kind, status: approved ? 'APPROVED' : advisory.verdict === 'REVIEW_REQUIRED' ? 'REVIEW_REQUIRED' : 'REJECTED', approved, advisory, latencyMs: advisory.latencyMs, reasonCodes, modelId: settings.modelId };
   } catch (error) {
-    return blocked('ONLINE', error instanceof Error ? `ONLINE_RUNTIME_ERROR:${error.message}` : 'ONLINE_RUNTIME_ERROR', modelId);
+    return blocked(kind, error instanceof Error ? `${kind}_RUNTIME_ERROR:${error.message}` : `${kind}_RUNTIME_ERROR`, settings.modelId);
   }
 }
 
@@ -142,5 +183,5 @@ export async function reviewWithProvider(kind: AdvisoryProviderKind, request: Ad
   if (kind === 'DETERMINISTIC') return reviewWithDeterministicProvider(request);
   if (kind === 'WEBLLM') return reviewWithWebLLMProvider(request);
   if (kind === 'HYBRID') return reviewWithHybridProvider(request);
-  return reviewWithOnlineProvider(request);
+  return reviewWithOnlineProvider(request, kind);
 }

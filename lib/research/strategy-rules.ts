@@ -46,11 +46,14 @@ interface FairValueGap {
 }
 
 function pricePrecision(symbol: SymbolId): number {
-  return symbol === 'XAUUSD' ? 2 : 5;
+  return symbol === 'XAUUSD' || symbol === 'BTCUSD' ? 2 : 5;
 }
 
 function pipSize(symbol: SymbolId): number {
-  return symbol === 'XAUUSD' ? 0.1 : 0.0001;
+  if (symbol === 'XAUUSD') return 0.1;
+  if (symbol === 'USDJPY') return 0.01;
+  if (symbol === 'BTCUSD') return 1;
+  return 0.0001;
 }
 
 function roundPrice(value: number, symbol: SymbolId): number {
