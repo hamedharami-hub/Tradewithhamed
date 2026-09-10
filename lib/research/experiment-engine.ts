@@ -203,6 +203,7 @@ function evaluateRun(candles: Candle[], config: ResearchExperimentConfig, varian
       ...(config.minSweepPenetrationAtr !== undefined ? { minSweepPenetrationAtr: config.minSweepPenetrationAtr } : {}),
       ...(config.minFvgSizeAtr !== undefined ? { minFvgSizeAtr: config.minFvgSizeAtr } : {}),
       ...(config.trendMinEmaDistanceAtr !== undefined ? { trendMinEmaDistanceAtr: config.trendMinEmaDistanceAtr } : {}),
+      ...config.ruleParameters,
     });
     if (!candidate) continue;
     totalSignals++;

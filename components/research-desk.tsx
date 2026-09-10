@@ -49,6 +49,8 @@ import { bundledDatasetForSymbol, bundledIntradayDatasetForSymbol } from '@/lib/
 import { createDatasetFromCandles } from '@/lib/research/dataset';
 import { createBaselineResearchConfig } from '@/lib/research/default-config';
 import { ResearchExperimentEngine } from '@/lib/research/experiment-engine';
+import { ParameterOptimizer, type ParameterOptimizationResult } from '@/lib/research/parameter-optimizer';
+import { WalkForwardEvaluator, type WalkForwardResult } from '@/lib/research/walk-forward';
 import type { AIReviewMode, ResearchExperimentResult, StrategyVariantId } from '@/lib/research/contracts';
 
 type DeskMode = 'BACKTEST' | 'REPLAY' | 'PAPER';
@@ -153,6 +155,8 @@ export function ResearchDesk() {
   const [commission, setCommission] = useState(SYMBOL_SPECS.XAUUSD.commissionPerLot);
   const [result, setResult] = useState<PerformanceMetrics | null>(null);
   const [matrixResult, setMatrixResult] = useState<ResearchExperimentResult | null>(null);
+  const [optimizationResult, setOptimizationResult] = useState<ParameterOptimizationResult | null>(null);
+  const [walkForwardResult, setWalkForwardResult] = useState<WalkForwardResult | null>(null);
   const [selectedVariants, setSelectedVariants] = useState<StrategyVariantId[]>(RESEARCH_VARIANTS.map(item => item.id));
   const [selectedAiModes, setSelectedAiModes] = useState<Array<Extract<AIReviewMode, 'OFF' | 'DETERMINISTIC_COUNCIL'>>>(['OFF', 'DETERMINISTIC_COUNCIL']);
   const [runMessage, setRunMessage] = useState<string | null>(null);
@@ -439,6 +443,38 @@ export function ResearchDesk() {
     }, 20);
   };
 
+  const handleRunParameterOptimization = () => {
+    if (!validation.isValid || !isRealData) {
+      setRunMessage('بهینه‌سازی و Walk-Forward فقط پس از ورود دادهٔ واقعی و عبور کیفیت داده اجرا می‌شود.');
+      return;
+    }
+    if (workingCandles.length > maximumMatrixBars || workingCandles.length < 300) {
+      setRunMessage('برای اجرای کنترل‌شده، بازه باید بین ۳۰۰ و ۳۰٬۰۰۰ کندل باشد.');
+      return;
+    }
+    setIsRunning(true);
+    window.setTimeout(() => {
+      try {
+        const dataset = createDatasetFromCandles({ candles: workingCandles, provider: sourceLabel, providerSymbol: symbol, canonicalSymbol: symbol, instrumentLabel: `${symbol} optimization`, timeframe: targetTimeframe, rawSourcePath: `browser-memory://${importedFileName || 'unknown'}`, contentSha256: `browser-${workingCandles.length}-${workingCandles[0]?.timestamp || 0}-${workingCandles.at(-1)?.timestamp || 0}`, sourceLicense: 'Local browser import or bundled public historical CSV; research use only.' });
+        const config = createBaselineResearchConfig({ datasetId: dataset.manifest.datasetId, symbol, timeframe: targetTimeframe, experimentId: `EXP-OPT-WF-${symbol}-${targetTimeframe}-${workingCandles.at(-1)?.timestamp || 0}` });
+        const variant = selectedVariants[0] || 'TREND_BREAKOUT_55_EMA200_V1';
+        const researchConfig = { ...config, initialCash, strategyVariants: [variant], aiModes: ['OFF' as const], costModel: { ...config.costModel, spreadPips, commissionPerLotRoundTrip: commission }, trendMinEmaDistanceAtr };
+        const searchSpace = { trendChannelLookback: [34, 55] as const, trendEmaPeriod: [100, 200] as const, trendStopAtrMultiple: [1.5, 2] as const, trendTargetAtrMultiple: [3, 4] as const };
+        const optimization = ParameterOptimizer.run(dataset, researchConfig, { method: 'GRID', searchSpace, maxEvaluations: 8, minTrades: 5, objective: 'CALMAR_LIKE' });
+        const trainBars = Math.max(220, Math.floor(workingCandles.length * 0.5));
+        const testBars = Math.max(80, Math.floor(workingCandles.length * 0.2));
+        const walkForward = WalkForwardEvaluator.run(dataset, researchConfig, { trainBars, testBars, stepBars: testBars, purgeBars: researchConfig.entryExpiryBars, parameterOptimization: { method: 'GRID', searchSpace, maxEvaluations: 8, minTrades: 5, objective: 'CALMAR_LIKE' } });
+        setOptimizationResult(optimization);
+        setWalkForwardResult(walkForward);
+        setRunMessage(`بهینه‌سازی ${optimization.evaluatedCandidates} حالت و ${walkForward.folds.length} fold Walk-Forward تکمیل شد؛ انتخاب‌ها فقط از train هر fold انجام شده‌اند.`);
+      } catch (error) {
+        setRunMessage(`خطای بهینه‌سازی: ${error instanceof Error ? error.message : 'نامشخص'}`);
+      } finally {
+        setIsRunning(false);
+      }
+    }, 20);
+  };
+
   const handleCreatePaperTicket = () => {
     if (!isRealData) {
       setRunMessage('ثبت Paper Ticket فقط پس از ورود دادهٔ واقعی مجاز است. نمونهٔ آموزشی برای تصمیم‌گیری استفاده نمی‌شود.');
@@ -706,6 +742,11 @@ export function ResearchDesk() {
                 <label className="label">حداقل فاصله قیمت از EMA200 (ATR)
                   <input type="number" min="0" step="0.05" value={trendMinEmaDistanceAtr} onChange={event => setTrendMinEmaDistanceAtr(Number(event.target.value))} className="field mt-1" />
                 </label>
+              </div>
+              <div className="mt-5 rounded-2xl border border-violet-500/20 bg-violet-500/5 p-4">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><div><h3 className="font-bold text-sm text-violet-100">بهینه‌سازی پارامتر و Walk-Forward</h3><p className="mt-1 text-[11px] leading-5 text-violet-200/60">Grid محدود روی کانال، EMA و نسبت‌های ATR؛ انتخاب هر fold فقط از train انجام می‌شود و OOS تا پایان پنهان می‌ماند.</p></div><button type="button" onClick={handleRunParameterOptimization} disabled={isRunning} className="secondary-button shrink-0">{isRunning ? <LoaderCircle className="w-4 h-4 animate-spin" /> : <Gauge className="w-4 h-4" />}{isRunning ? 'در حال بهینه‌سازی…' : 'اجرای Optimize + WF'}</button></div>
+                {optimizationResult && <div className="mt-3 grid grid-cols-2 lg:grid-cols-4 gap-2 text-[10px]"><div className="metric"><span>حالت‌های ارزیابی</span>{optimizationResult.evaluatedCandidates}</div><div className="metric"><span>هدف</span>{optimizationResult.objective}</div><div className="metric"><span>بهترین امتیاز train</span>{optimizationResult.best ? number.format(optimizationResult.best.score) : '—'}</div><div className="metric"><span>تعداد fold OOS</span>{walkForwardResult?.folds.length ?? 0}</div></div>}
+                {walkForwardResult && walkForwardResult.folds.length > 0 && <div className="mt-3 overflow-x-auto"><table className="w-full text-right text-[10px]"><thead className="border-b border-violet-500/20 text-violet-200/60"><tr><th className="p-1.5">Fold</th><th className="p-1.5">پارامتر انتخابی</th><th className="p-1.5">Train PnL</th><th className="p-1.5">OOS PnL</th><th className="p-1.5">OOS معامله</th></tr></thead><tbody>{walkForwardResult.folds.map(fold => <tr key={fold.fold} className="border-b border-slate-900"><td className="p-1.5 font-mono">{fold.fold}</td><td className="p-1.5 font-mono text-violet-100">{fold.selectedParameters ? `CH=${fold.selectedParameters.trendChannelLookback} EMA=${fold.selectedParameters.trendEmaPeriod} SL=${fold.selectedParameters.trendStopAtrMultiple} TP=${fold.selectedParameters.trendTargetAtrMultiple}` : 'baseline'}</td><td className="p-1.5 font-mono">{number.format(fold.trainSummary.netProfit)}</td><td className={`p-1.5 font-mono ${fold.outOfSampleSummary.netProfit >= 0 ? 'text-emerald-300' : 'text-rose-300'}`}>{number.format(fold.outOfSampleSummary.netProfit)}</td><td className="p-1.5 font-mono">{fold.outOfSampleSummary.totalTrades}</td></tr>)}</tbody></table></div>}
               </div>
               <div className="mt-5 border-t border-slate-800 pt-4">
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between"><div><h3 className="font-bold text-sm text-slate-200">ماتریس مقایسهٔ روش و AI</h3><p className="mt-1 text-[11px] leading-5 text-slate-500">هر خانه یک Backtest مستقل با ورود کندل بعدی، هزینه، روند/رژیم و خروج بدبینانه است. WebLLM یا API در batch به‌صورت ساختگی اجرا نمی‌شود؛ اینجا فقط baseline و فیلتر قطعی قابل بازتولید مقایسه می‌شوند.</p></div><button type="button" onClick={handleRunResearchMatrix} disabled={isRunning || selectedVariants.length === 0 || selectedAiModes.length === 0} className="primary-button shrink-0">{isRunning ? <LoaderCircle className="w-4 h-4 animate-spin" /> : <Layers3 className="w-4 h-4" />}{isRunning ? 'در حال اجرای ماتریس…' : `اجرای ${selectedVariants.length * selectedAiModes.length} آزمایش`}</button></div>

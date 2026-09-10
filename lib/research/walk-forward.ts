@@ -9,6 +9,8 @@ import type {
   AIReviewMode,
 } from './contracts';
 import { ResearchExperimentEngine } from './experiment-engine';
+import { ParameterOptimizer, type ParameterOptimizationOptions, type ParameterOptimizationResult } from './parameter-optimizer';
+import type { RuleParameters } from './strategy-rules';
 
 export interface WalkForwardFold {
   fold: number;
@@ -18,6 +20,8 @@ export interface WalkForwardFold {
   outOfSampleEndTime: number;
   selectedVariant: StrategyVariantId;
   selectedAiMode: AIReviewMode;
+  selectedParameters?: RuleParameters;
+  optimization?: ParameterOptimizationResult;
   trainSummary: StrategyRunResult['summary'];
   outOfSampleSummary: StrategyRunResult['summary'];
   outOfSampleAnalysis: StrategyRunResult['analysis'];
@@ -78,7 +82,7 @@ function datasetWindow(dataset: HistoricalDataset, candles: Candle[]): Historica
 }
 
 export class WalkForwardEvaluator {
-  public static run(dataset: HistoricalDataset, config: ResearchExperimentConfig, options: { trainBars?: number; testBars?: number; stepBars?: number; purgeBars?: number } = {}): WalkForwardResult {
+  public static run(dataset: HistoricalDataset, config: ResearchExperimentConfig, options: { trainBars?: number; testBars?: number; stepBars?: number; purgeBars?: number; parameterOptimization?: Omit<ParameterOptimizationOptions, 'variant' | 'aiMode'> } = {}): WalkForwardResult {
     const candles = dataset.candles.filter(candle => candle.isClosed);
     const trainBars = options.trainBars ?? Math.max(500, Math.floor(candles.length * 0.45));
     const testBars = options.testBars ?? Math.max(150, Math.floor(candles.length * 0.15));
@@ -96,13 +100,28 @@ export class WalkForwardEvaluator {
       const trainResult = ResearchExperimentEngine.run(trainData, { ...config, experimentId: `${config.experimentId}-WF${fold}-TRAIN` });
       const eligibleTrainRuns = trainResult.runs.filter(run => run.summary.totalTrades >= 10);
       const selected = [...(eligibleTrainRuns.length ? eligibleTrainRuns : trainResult.runs)].sort((a, b) => b.summary.netProfit - a.summary.netProfit)[0];
-      if (!selected) break;
+      let optimization: ParameterOptimizationResult | undefined;
+      let selectedParameters: RuleParameters | undefined;
+      let selectedRun = selected;
+      if (options.parameterOptimization) {
+        optimization = ParameterOptimizer.run(trainData, { ...config, experimentId: `${config.experimentId}-WF${fold}-OPT` }, {
+          ...options.parameterOptimization,
+          variant: config.strategyVariants[0],
+          aiMode: config.aiModes[0],
+        });
+        if (optimization.best) {
+          selectedParameters = optimization.best.parameters;
+          selectedRun = trainResult.runs.find(run => run.summary.variant === optimization?.best?.summary.variant && run.summary.aiMode === optimization?.best?.summary.aiMode) || selected;
+        }
+      }
+      if (!selectedRun) break;
       const oosData = datasetWindow(dataset, candles.slice(0, oosEndIndex));
       const oosConfig: ResearchExperimentConfig = {
         ...config,
         experimentId: `${config.experimentId}-WF${fold}-OOS`,
-        strategyVariants: [selected.summary.variant],
-        aiModes: [selected.summary.aiMode],
+        strategyVariants: [optimization?.best?.summary.variant || selectedRun.summary.variant],
+        aiModes: [optimization?.best?.summary.aiMode || selectedRun.summary.aiMode],
+        ...(selectedParameters ? { ruleParameters: selectedParameters } : {}),
         evaluationStartTime: candles[oosStartIndex].timestamp,
       };
       const oosResult = ResearchExperimentEngine.run(oosData, oosConfig);
@@ -114,9 +133,11 @@ export class WalkForwardEvaluator {
         trainEndTime: candles[trainEndIndex - 1].timestamp,
         outOfSampleStartTime: candles[oosStartIndex].timestamp,
         outOfSampleEndTime: candles[oosEndIndex - 1].timestamp,
-        selectedVariant: selected.summary.variant,
-        selectedAiMode: selected.summary.aiMode,
-        trainSummary: selected.summary,
+        selectedVariant: optimization?.best?.summary.variant || selectedRun.summary.variant,
+        selectedAiMode: optimization?.best?.summary.aiMode || selectedRun.summary.aiMode,
+        ...(selectedParameters ? { selectedParameters } : {}),
+        ...(optimization ? { optimization } : {}),
+        trainSummary: optimization?.best?.summary || selectedRun.summary,
         outOfSampleSummary: oosRun.summary,
         outOfSampleAnalysis: oosRun.analysis,
       });

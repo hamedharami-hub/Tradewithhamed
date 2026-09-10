@@ -2,6 +2,7 @@ import type { Candle, SymbolId, Timeframe } from '@/lib/contracts/market';
 import type { MarketRegimeType, TradingStyleType } from '@/lib/contracts/regimes';
 import type { PositionLedgerEntry } from '@/lib/core/ports';
 import type { TradingEnvironment } from '@/lib/core/ports';
+import type { RuleParameters } from './strategy-rules';
 
 export type DatasetKind = 'HISTORICAL_BAR' | 'HISTORICAL_TICK' | 'PAPER_FORWARD_BAR';
 export type DatasetStatus = 'READY' | 'REJECTED' | 'PARTIAL' | 'UNVERIFIED';
@@ -75,6 +76,8 @@ export interface ResearchExperimentConfig {
   stopLossAtrBuffer: number;
   targetRiskReward: number;
   entryExpiryBars: number;
+  /** Optional per-experiment rule overrides; never inferred from OOS candles. */
+  ruleParameters?: Partial<RuleParameters>;
   minSweepPenetrationAtr?: number;
   minFvgSizeAtr?: number;
   /** Minimum absolute distance between close and trend EMA, measured in ATR. */

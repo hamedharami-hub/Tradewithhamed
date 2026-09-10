@@ -24,6 +24,7 @@ const suiteModules = [
   '../lib/research/__tests__/paper-forward-ledger.test',
   '../lib/research/__tests__/stage8-analysis.test',
   '../lib/research/__tests__/walk-forward.test',
+  '../lib/research/__tests__/parameter-optimizer.test',
 ];
 
 export {};
