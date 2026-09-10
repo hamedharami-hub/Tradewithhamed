@@ -532,8 +532,8 @@ export function ResearchDesk() {
     : [];
 
   return (
-    <main className="min-h-screen bg-[#090d14] text-slate-100" dir="rtl">
-      <div className="max-w-[1600px] mx-auto px-4 py-5 md:px-8 md:py-7 space-y-5">
+    <div className="w-full space-y-5" dir="rtl">
+      <div className="w-full space-y-5">
         <header className="rounded-3xl border border-slate-800 bg-gradient-to-br from-[#111827] via-[#0c1420] to-[#0b1820] p-5 md:p-7 shadow-xl shadow-black/20">
           <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
             <div className="max-w-3xl">
@@ -788,7 +788,7 @@ export function ResearchDesk() {
 
         <footer className="rounded-2xl border border-slate-800 bg-slate-950/40 px-4 py-3 text-[11px] leading-6 text-slate-500 flex gap-2"><ShieldCheck className="w-4 h-4 shrink-0 mt-0.5 text-emerald-400" />این ابزار برای پژوهش، backtest، replay و paper trading محلی است. عملکرد گذشته تضمین آینده نیست و هیچ‌یک از خروجی‌ها توصیهٔ شخصی سرمایه‌گذاری یا مجوز معاملهٔ زنده نیست.</footer>
       </div>
-    </main>
+    </div>
   );
 }
 

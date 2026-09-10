@@ -1,4 +1,4 @@
-﻿@import "tailwindcss";
+@import "tailwindcss";
 @import "tw-animate-css";
 
 :root {
@@ -71,9 +71,13 @@ html.light [class*="text-zinc-400"] {
   color: var(--text-secondary) !important;
 }
 
+button, a, input, select {
+  touch-action: manipulation;
+}
+
 @media (max-width: 639px) {
-  button {
-    min-height: 44px;
+  button:not([class*="p-0"]):not([class*="p-1"]):not([class*="py-0"]):not([class*="py-1"]):not([class*="h-"]) {
+    min-height: 40px;
   }
 }
 

@@ -209,11 +209,11 @@ export const InstantExecutionPad: React.FC<InstantExecutionPadProps> = React.mem
         {/* کلید خرید ۱-کلیکی BUY */}
         <button
           type="button"
-          disabled={!isCapitalSufficient}
           onClick={() => onExecuteInstantOrder('BUY', selectedRisk, false, partialConfig)}
           className={`p-3 bg-gradient-to-r from-emerald-950 to-[#102920] hover:from-emerald-900 hover:to-[#15382b] border border-emerald-600/80 rounded-xl flex items-center justify-between transition-all group shadow-sm active:scale-[0.99] ${
-            !isCapitalSufficient ? 'opacity-50 cursor-not-allowed pointer-events-none' : ''
+            !isCapitalSufficient ? 'opacity-60 cursor-pointer' : ''
           }`}
+          title={!isCapitalSufficient ? 'سرمایه برای حداقل لات بروکر کافی نیست - کلیک برای مشاهده جزئیات' : 'خرید فوری'}
         >
           <div className="flex items-center gap-2.5">
             <div className="p-2 bg-emerald-500/20 text-emerald-400 rounded-lg group-hover:bg-emerald-500/30 transition-colors">
@@ -238,11 +238,11 @@ export const InstantExecutionPad: React.FC<InstantExecutionPadProps> = React.mem
         {/* کلید فروش ۱-کلیکی SELL */}
         <button
           type="button"
-          disabled={!isCapitalSufficient}
           onClick={() => onExecuteInstantOrder('SELL', selectedRisk, false, partialConfig)}
           className={`p-3 bg-gradient-to-r from-rose-950 to-[#291216] hover:from-rose-900 hover:to-[#38151c] border border-rose-600/80 rounded-xl flex items-center justify-between transition-all group shadow-sm active:scale-[0.99] ${
-            !isCapitalSufficient ? 'opacity-50 cursor-not-allowed pointer-events-none' : ''
+            !isCapitalSufficient ? 'opacity-60 cursor-pointer' : ''
           }`}
+          title={!isCapitalSufficient ? 'سرمایه برای حداقل لات بروکر کافی نیست - کلیک برای مشاهده جزئیات' : 'فروش فوری'}
         >
           <div className="flex items-center gap-2.5">
             <div className="p-2 bg-rose-500/20 text-rose-400 rounded-lg group-hover:bg-rose-500/30 transition-colors">

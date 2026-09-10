@@ -5,13 +5,14 @@ import {
   LineChart,
   Brain,
   BarChart3,
+  FlaskConical,
   ShieldCheck,
   ChevronRight,
   ChevronLeft,
 } from 'lucide-react';
 import { useTheme } from '@/context/theme-context';
 
-export type WorkspaceKey = 'trade' | 'ai' | 'analytics' | 'system';
+export type WorkspaceKey = 'trade' | 'ai' | 'analytics' | 'research' | 'system';
 
 export interface WorkspaceItem {
   id: WorkspaceKey;
@@ -45,7 +46,7 @@ export const AppNavigation: React.FC<AppNavigationProps> = ({
   const { actualTheme } = useTheme();
   const [isCollapsed, setIsCollapsed] = useState(false);
 
-  // تعریف ۴ حوزه کاری جامع سامانه
+  // تعریف ۵ حوزه کاری جامع سامانه
   const workspaces: WorkspaceItem[] = [
     {
       id: 'trade',
@@ -81,13 +82,24 @@ export const AppNavigation: React.FC<AppNavigationProps> = ({
       badgeColor: 'bg-amber-500/10 text-amber-500 border-amber-500/30',
     },
     {
+      id: 'research',
+      labelFa: 'میز پژوهش، داده و بک‌تست',
+      shortLabelFa: 'پژوهش',
+      labelEn: 'Research Desk',
+      descriptionFa: 'کاتالوگ داده‌ها، ماتریس و آزمون پذیرش',
+      icon: FlaskConical,
+      shortcut: '4',
+      badge: 'داده ۲۰۲۴',
+      badgeColor: 'bg-violet-500/10 text-violet-500 border-violet-500/30',
+    },
+    {
       id: 'system',
       labelFa: 'مرکز کنترل، امنیت و سلامت',
       shortLabelFa: 'کنترل و امنیت',
       labelEn: 'System Control',
       descriptionFa: 'صندوق سفارشات، تک‌مجری و تست‌ها',
       icon: ShieldCheck,
-      shortcut: '4',
+      shortcut: '5',
       badge: outboxPendingCount > 0 ? `${outboxPendingCount} در صف` : '۱۳۱ تست OK',
       badgeColor:
         outboxPendingCount > 0
@@ -96,7 +108,7 @@ export const AppNavigation: React.FC<AppNavigationProps> = ({
     },
   ];
 
-  // پشتیبانی از کلیدهای میانبر در دسکتاپ (Alt + 1..4 یا Ctrl + 1..4)
+  // پشتیبانی از کلیدهای میانبر در دسکتاپ (Alt + 1..5 یا Ctrl + 1..5)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.altKey) && !e.shiftKey) {
@@ -110,6 +122,9 @@ export const AppNavigation: React.FC<AppNavigationProps> = ({
           e.preventDefault();
           onSelectWorkspace('analytics');
         } else if (e.key === '4') {
+          e.preventDefault();
+          onSelectWorkspace('research');
+        } else if (e.key === '5') {
           e.preventDefault();
           onSelectWorkspace('system');
         }
@@ -215,7 +230,7 @@ export const AppNavigation: React.FC<AppNavigationProps> = ({
               <span>طراحی ویندوز</span>
               <span className="text-cyan-500 font-bold">Snapdragon X+</span>
             </div>
-            <p className="text-[9px] opacity-70">کلیدهای میانبر: Ctrl + 1..4</p>
+            <p className="text-[9px] opacity-70">کلیدهای میانبر: Ctrl + 1..5</p>
           </div>
         )}
       </aside>

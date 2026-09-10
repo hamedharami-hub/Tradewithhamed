@@ -109,6 +109,32 @@ export const SymbolReplayToolbar: React.FC<SymbolReplayToolbarProps> = React.mem
           <DollarSign className="w-4 h-4 text-cyan-400" />
           <span dir="ltr" className="tracking-wide">EURUSD (Euro)</span>
         </button>
+        <button
+          type="button"
+          onClick={() => onSymbolChange('GBPUSD')}
+          className={`px-3 py-1.5 rounded-xl font-mono font-bold flex items-center gap-2 border transition-all ${
+            symbol === 'GBPUSD'
+              ? 'bg-[#251833] border-violet-500/70 text-violet-300 shadow-sm'
+              : 'bg-[#12151b] border-[#252b38] text-zinc-400 hover:text-zinc-200 hover:bg-[#1a1f29]'
+          }`}
+          title="پوند بریتانیا در برابر دلار آمریکا"
+        >
+          <DollarSign className="w-4 h-4 text-violet-400" />
+          <span dir="ltr" className="tracking-wide">GBPUSD (Pound)</span>
+        </button>
+        <button
+          type="button"
+          onClick={() => onSymbolChange('USDJPY')}
+          className={`px-3 py-1.5 rounded-xl font-mono font-bold flex items-center gap-2 border transition-all ${
+            symbol === 'USDJPY'
+              ? 'bg-[#122822] border-emerald-500/70 text-emerald-300 shadow-sm'
+              : 'bg-[#12151b] border-[#252b38] text-zinc-400 hover:text-zinc-200 hover:bg-[#1a1f29]'
+          }`}
+          title="دلار آمریکا در برابر ین ژاپن"
+        >
+          <Coins className="w-4 h-4 text-emerald-400" />
+          <span dir="ltr" className="tracking-wide">USDJPY (Yen)</span>
+        </button>
       </div>
 
       {/* انتخاب فیلتر سبک معاملاتی ۴ گانه */}
