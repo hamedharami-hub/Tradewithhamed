@@ -48,6 +48,7 @@ import {
 import { bundledDatasetForSymbol, bundledIntradayDatasetForSymbol } from '@/lib/research/bundled-historical-datasets';
 import { createDatasetFromCandles } from '@/lib/research/dataset';
 import { createBaselineResearchConfig } from '@/lib/research/default-config';
+import { evaluateAcceptanceGate, type AcceptanceGateResult } from '@/lib/research/acceptance-gate';
 import { ResearchExperimentEngine } from '@/lib/research/experiment-engine';
 import { ParameterOptimizer, type ParameterOptimizationResult } from '@/lib/research/parameter-optimizer';
 import { WalkForwardEvaluator, type WalkForwardResult } from '@/lib/research/walk-forward';
@@ -157,6 +158,7 @@ export function ResearchDesk() {
   const [matrixResult, setMatrixResult] = useState<ResearchExperimentResult | null>(null);
   const [optimizationResult, setOptimizationResult] = useState<ParameterOptimizationResult | null>(null);
   const [walkForwardResult, setWalkForwardResult] = useState<WalkForwardResult | null>(null);
+  const [acceptanceGateResult, setAcceptanceGateResult] = useState<AcceptanceGateResult | null>(null);
   const [selectedVariants, setSelectedVariants] = useState<StrategyVariantId[]>(RESEARCH_VARIANTS.map(item => item.id));
   const [selectedAiModes, setSelectedAiModes] = useState<Array<Extract<AIReviewMode, 'OFF' | 'DETERMINISTIC_COUNCIL'>>>(['OFF', 'DETERMINISTIC_COUNCIL']);
   const [runMessage, setRunMessage] = useState<string | null>(null);
@@ -464,8 +466,18 @@ export function ResearchDesk() {
         const trainBars = Math.max(220, Math.floor(workingCandles.length * 0.5));
         const testBars = Math.max(80, Math.floor(workingCandles.length * 0.2));
         const walkForward = WalkForwardEvaluator.run(dataset, researchConfig, { trainBars, testBars, stepBars: testBars, purgeBars: researchConfig.entryExpiryBars, parameterOptimization: { method: 'GRID', searchSpace, maxEvaluations: 8, minTrades: 5, objective: 'CALMAR_LIKE' } });
+        const oosNetProfit = walkForward.folds.reduce((sum, fold) => sum + fold.outOfSampleSummary.netProfit, 0);
+        const oosTrades = walkForward.outOfSampleTrades.length;
+        const acceptance = evaluateAcceptanceGate({
+          candidateId: `${symbol}-${targetTimeframe}-${variant}-BROWSER`,
+          symbol,
+          timeframe: targetTimeframe,
+          optimized: { oosNetProfit, oosTrades, oosProfitFactor: Math.min(...walkForward.folds.map(fold => fold.outOfSampleSummary.profitFactor)), oosMaxDrawdownPercent: Math.max(...walkForward.folds.map(fold => fold.outOfSampleSummary.maxDrawdownPercent)), stressNetProfits: [oosNetProfit] },
+          folds: walkForward.folds.map(fold => ({ trainNetProfit: fold.trainSummary.netProfit, oosNetProfit: fold.outOfSampleSummary.netProfit, oosTrades: fold.outOfSampleSummary.totalTrades, oosProfitFactor: fold.outOfSampleSummary.profitFactor, oosMaxDrawdownPercent: fold.outOfSampleSummary.maxDrawdownPercent, stressNetProfits: [fold.outOfSampleSummary.netProfit] })),
+        });
         setOptimizationResult(optimization);
         setWalkForwardResult(walkForward);
+        setAcceptanceGateResult(acceptance);
         setRunMessage(`بهینه‌سازی ${optimization.evaluatedCandidates} حالت و ${walkForward.folds.length} fold Walk-Forward تکمیل شد؛ انتخاب‌ها فقط از train هر fold انجام شده‌اند.`);
       } catch (error) {
         setRunMessage(`خطای بهینه‌سازی: ${error instanceof Error ? error.message : 'نامشخص'}`);
@@ -746,6 +758,7 @@ export function ResearchDesk() {
               <div className="mt-5 rounded-2xl border border-violet-500/20 bg-violet-500/5 p-4">
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><div><h3 className="font-bold text-sm text-violet-100">بهینه‌سازی پارامتر و Walk-Forward</h3><p className="mt-1 text-[11px] leading-5 text-violet-200/60">Grid محدود روی کانال، EMA و نسبت‌های ATR؛ انتخاب هر fold فقط از train انجام می‌شود و OOS تا پایان پنهان می‌ماند.</p></div><button type="button" onClick={handleRunParameterOptimization} disabled={isRunning} className="secondary-button shrink-0">{isRunning ? <LoaderCircle className="w-4 h-4 animate-spin" /> : <Gauge className="w-4 h-4" />}{isRunning ? 'در حال بهینه‌سازی…' : 'اجرای Optimize + WF'}</button></div>
                 {optimizationResult && <div className="mt-3 grid grid-cols-2 lg:grid-cols-4 gap-2 text-[10px]"><div className="metric"><span>حالت‌های ارزیابی</span>{optimizationResult.evaluatedCandidates}</div><div className="metric"><span>هدف</span>{optimizationResult.objective}</div><div className="metric"><span>بهترین امتیاز train</span>{optimizationResult.best ? number.format(optimizationResult.best.score) : '—'}</div><div className="metric"><span>تعداد fold OOS</span>{walkForwardResult?.folds.length ?? 0}</div></div>}
+                {acceptanceGateResult && <div className="mt-3 rounded-xl border border-cyan-500/20 bg-cyan-500/5 p-3"><div className="flex items-center justify-between gap-2"><div><div className="text-[10px] text-slate-500">دروازهٔ پذیرش پژوهشی</div><div className={`mt-1 text-sm font-bold ${acceptanceGateResult.status === 'PAPER_FORWARD_ELIGIBLE' ? 'text-emerald-300' : acceptanceGateResult.status === 'RESEARCH_CANDIDATE' ? 'text-amber-300' : 'text-rose-300'}`}>{acceptanceGateResult.status === 'PAPER_FORWARD_ELIGIBLE' ? 'مجاز برای Paper-Forward تاریخی' : acceptanceGateResult.status === 'RESEARCH_CANDIDATE' ? 'فقط candidate پژوهشی' : 'رد شده'}</div></div><span className="font-mono text-xs text-cyan-200">امتیاز {acceptanceGateResult.score}/100</span></div><div className="mt-2 grid grid-cols-2 lg:grid-cols-4 gap-2 text-[10px]"><div className="metric"><span>OOS PnL</span>{number.format(acceptanceGateResult.metrics.oosNetProfit)}</div><div className="metric"><span>OOS معامله</span>{acceptanceGateResult.metrics.oosTrades}</div><div className="metric"><span>Stress مثبت</span>{acceptanceGateResult.metrics.positiveStressScenarios}</div><div className="metric"><span>ثبات fold</span>{acceptanceGateResult.metrics.stableFoldsPercent}%</div></div><div className="mt-2 text-[10px] leading-5 text-slate-400">{acceptanceGateResult.reasonsFa.slice(0, 2).join(' ')}</div><div className="mt-2 text-[10px] text-amber-200/80">این وضعیت فقط پژوهشی است و مجوز معاملهٔ زنده یا broker write نیست.</div></div>}
                 {walkForwardResult && walkForwardResult.folds.length > 0 && <div className="mt-3 overflow-x-auto"><table className="w-full text-right text-[10px]"><thead className="border-b border-violet-500/20 text-violet-200/60"><tr><th className="p-1.5">Fold</th><th className="p-1.5">پارامتر انتخابی</th><th className="p-1.5">Train PnL</th><th className="p-1.5">OOS PnL</th><th className="p-1.5">OOS معامله</th></tr></thead><tbody>{walkForwardResult.folds.map(fold => <tr key={fold.fold} className="border-b border-slate-900"><td className="p-1.5 font-mono">{fold.fold}</td><td className="p-1.5 font-mono text-violet-100">{fold.selectedParameters ? `CH=${fold.selectedParameters.trendChannelLookback} EMA=${fold.selectedParameters.trendEmaPeriod} SL=${fold.selectedParameters.trendStopAtrMultiple} TP=${fold.selectedParameters.trendTargetAtrMultiple}` : 'baseline'}</td><td className="p-1.5 font-mono">{number.format(fold.trainSummary.netProfit)}</td><td className={`p-1.5 font-mono ${fold.outOfSampleSummary.netProfit >= 0 ? 'text-emerald-300' : 'text-rose-300'}`}>{number.format(fold.outOfSampleSummary.netProfit)}</td><td className="p-1.5 font-mono">{fold.outOfSampleSummary.totalTrades}</td></tr>)}</tbody></table></div>}
               </div>
               <div className="mt-5 border-t border-slate-800 pt-4">

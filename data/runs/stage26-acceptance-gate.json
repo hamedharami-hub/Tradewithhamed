@@ -1,0 +1,132 @@
+{
+  "stage": 26,
+  "version": "acceptance-gate-v1",
+  "generatedAt": "2026-09-10T06:57:07.919Z",
+  "thresholds": {
+    "minOosTrades": 30,
+    "minProfitFactor": 1.05,
+    "maxDrawdownPercent": 8,
+    "minPositiveStressScenarios": 2,
+    "minStableFoldsPercent": 60,
+    "maxTrainToOosGapRatio": 4
+  },
+  "results": [
+    {
+      "candidateId": "EURUSD-4H-OPT",
+      "symbol": "EURUSD",
+      "timeframe": "4H",
+      "status": "REJECTED",
+      "score": 10,
+      "reasonsFa": [
+        "سود خالص OOS غیرمثبت است.",
+        "Profit Factor (0.22) کمتر از 1.05 است.",
+        "فقط 0 سناریوی Cost Stress مثبت است.",
+        "ثبات foldها (33.3٪) کمتر از 60٪ است.",
+        "شکاف train/OOS (231.05) بیش از حد مجاز است."
+      ],
+      "metrics": {
+        "oosNetProfit": -231.05,
+        "oosTrades": 35,
+        "positiveStressScenarios": 0,
+        "stableFoldsPercent": 33.3,
+        "maxDrawdownPercent": 2.38,
+        "profitFactor": 0.22,
+        "trainToOosGapRatio": 231.05
+      },
+      "thresholds": {
+        "minOosTrades": 30,
+        "minProfitFactor": 1.05,
+        "maxDrawdownPercent": 8,
+        "minPositiveStressScenarios": 2,
+        "minStableFoldsPercent": 60,
+        "maxTrainToOosGapRatio": 4
+      }
+    },
+    {
+      "candidateId": "BTCUSD-D1-OPT",
+      "symbol": "BTCUSD",
+      "timeframe": "D1",
+      "status": "PAPER_FORWARD_ELIGIBLE",
+      "score": 100,
+      "reasonsFa": [
+        "همهٔ شروط پذیرش فعلی برقرار است؛ این وضعیت همچنان مجوز معاملهٔ زنده نیست."
+      ],
+      "metrics": {
+        "oosNetProfit": 292.86,
+        "oosTrades": 42,
+        "positiveStressScenarios": 3,
+        "stableFoldsPercent": 60,
+        "maxDrawdownPercent": 1.11,
+        "profitFactor": 0,
+        "trainToOosGapRatio": 0.72
+      },
+      "thresholds": {
+        "minOosTrades": 30,
+        "minProfitFactor": 1.05,
+        "maxDrawdownPercent": 8,
+        "minPositiveStressScenarios": 2,
+        "minStableFoldsPercent": 60,
+        "maxTrainToOosGapRatio": 4
+      }
+    },
+    {
+      "candidateId": "GBPUSD-4H-TRANSFERRED",
+      "symbol": "GBPUSD",
+      "timeframe": "4H",
+      "status": "REJECTED",
+      "score": 86,
+      "reasonsFa": [
+        "ثبات foldها (0٪) کمتر از 60٪ است."
+      ],
+      "metrics": {
+        "oosNetProfit": 246.44,
+        "oosTrades": 45,
+        "positiveStressScenarios": 3,
+        "stableFoldsPercent": 0,
+        "maxDrawdownPercent": 1.36,
+        "profitFactor": 1.35,
+        "trainToOosGapRatio": 0
+      },
+      "thresholds": {
+        "minOosTrades": 30,
+        "minProfitFactor": 1.05,
+        "maxDrawdownPercent": 8,
+        "minPositiveStressScenarios": 2,
+        "minStableFoldsPercent": 60,
+        "maxTrainToOosGapRatio": 4
+      }
+    },
+    {
+      "candidateId": "USDJPY-4H-TRANSFERRED",
+      "symbol": "USDJPY",
+      "timeframe": "4H",
+      "status": "REJECTED",
+      "score": 86,
+      "reasonsFa": [
+        "ثبات foldها (0٪) کمتر از 60٪ است."
+      ],
+      "metrics": {
+        "oosNetProfit": 400,
+        "oosTrades": 47,
+        "positiveStressScenarios": 3,
+        "stableFoldsPercent": 0,
+        "maxDrawdownPercent": 1.6,
+        "profitFactor": 1.59,
+        "trainToOosGapRatio": 0
+      },
+      "thresholds": {
+        "minOosTrades": 30,
+        "minProfitFactor": 1.05,
+        "maxDrawdownPercent": 8,
+        "minPositiveStressScenarios": 2,
+        "minStableFoldsPercent": 60,
+        "maxTrainToOosGapRatio": 4
+      }
+    }
+  ],
+  "warnings": [
+    "PAPER_FORWARD_ELIGIBLE فقط به معنای مجاز بودن برای Paper-Forward تاریخی read-only است و مجوز live trading نیست.",
+    "GBPUSD و USDJPY در این gate فقط portability دارند و تا اجرای WF مستقل، برای eligibility کامل کافی نیستند.",
+    "مدل هزینهٔ BTCUSD هنوز broker-specific نیست."
+  ]
+}

@@ -1,0 +1,233 @@
+{
+  "stage": 28,
+  "version": "historical-paper-forward-readonly-v1",
+  "generatedAt": "2026-09-10T06:58:31.580Z",
+  "eligibility": [
+    {
+      "candidateId": "BTCUSD-D1-OPT",
+      "symbol": "BTCUSD",
+      "timeframe": "D1",
+      "status": "PAPER_FORWARD_ELIGIBLE",
+      "score": 100,
+      "reasonsFa": [
+        "همهٔ شروط پذیرش فعلی برقرار است؛ این وضعیت همچنان مجوز معاملهٔ زنده نیست."
+      ],
+      "metrics": {
+        "oosNetProfit": 292.86,
+        "oosTrades": 42,
+        "positiveStressScenarios": 3,
+        "stableFoldsPercent": 60,
+        "maxDrawdownPercent": 1.11,
+        "profitFactor": 0,
+        "trainToOosGapRatio": 0.72
+      },
+      "thresholds": {
+        "minOosTrades": 30,
+        "minProfitFactor": 1.05,
+        "maxDrawdownPercent": 8,
+        "minPositiveStressScenarios": 2,
+        "minStableFoldsPercent": 60,
+        "maxTrainToOosGapRatio": 4
+      }
+    }
+  ],
+  "events": [
+    {
+      "eventType": "HISTORICAL_PAPER_FORWARD_OOS_SUMMARY",
+      "candidateId": "BTCUSD-D1-OPT",
+      "symbol": "BTCUSD",
+      "timeframe": "D1",
+      "fold": 1,
+      "trainWindow": {
+        "start": 1473465600000,
+        "end": 1559779200000
+      },
+      "oosWindow": {
+        "start": 1560297600000,
+        "end": 1603411200000
+      },
+      "selectedParameters": {
+        "stopLossAtrBuffer": 0.2,
+        "targetRiskReward": 2,
+        "expiryBars": 5,
+        "minSweepPenetrationAtr": 0.1,
+        "minFvgSizeAtr": 0.3,
+        "meanReversionLookback": 20,
+        "meanReversionEntryZScore": 2,
+        "trendChannelLookback": 34,
+        "trendEmaPeriod": 200,
+        "trendStopAtrMultiple": 2,
+        "trendTargetAtrMultiple": 4,
+        "trendMinEmaDistanceAtr": 0
+      },
+      "hypothetical": true,
+      "brokerWrites": false,
+      "orderSubmitted": false,
+      "totalTrades": 15,
+      "netProfit": 176.61,
+      "profitFactor": 2.11,
+      "maxDrawdownPercent": 0.96,
+      "decision": "READ_ONLY_REPLAY_SUMMARY"
+    },
+    {
+      "eventType": "HISTORICAL_PAPER_FORWARD_OOS_SUMMARY",
+      "candidateId": "BTCUSD-D1-OPT",
+      "symbol": "BTCUSD",
+      "timeframe": "D1",
+      "fold": 2,
+      "trainWindow": {
+        "start": 1516665600000,
+        "end": 1602979200000
+      },
+      "oosWindow": {
+        "start": 1603497600000,
+        "end": 1646611200000
+      },
+      "selectedParameters": {
+        "stopLossAtrBuffer": 0.2,
+        "targetRiskReward": 2,
+        "expiryBars": 5,
+        "minSweepPenetrationAtr": 0.1,
+        "minFvgSizeAtr": 0.3,
+        "meanReversionLookback": 20,
+        "meanReversionEntryZScore": 2,
+        "trendChannelLookback": 34,
+        "trendEmaPeriod": 200,
+        "trendStopAtrMultiple": 2,
+        "trendTargetAtrMultiple": 4,
+        "trendMinEmaDistanceAtr": 0
+      },
+      "hypothetical": true,
+      "brokerWrites": false,
+      "orderSubmitted": false,
+      "totalTrades": 8,
+      "netProfit": 143.89,
+      "profitFactor": 3.67,
+      "maxDrawdownPercent": 0.35,
+      "decision": "READ_ONLY_REPLAY_SUMMARY"
+    },
+    {
+      "eventType": "HISTORICAL_PAPER_FORWARD_OOS_SUMMARY",
+      "candidateId": "BTCUSD-D1-OPT",
+      "symbol": "BTCUSD",
+      "timeframe": "D1",
+      "fold": 3,
+      "trainWindow": {
+        "start": 1559865600000,
+        "end": 1646179200000
+      },
+      "oosWindow": {
+        "start": 1646697600000,
+        "end": 1689811200000
+      },
+      "selectedParameters": {
+        "stopLossAtrBuffer": 0.2,
+        "targetRiskReward": 2,
+        "expiryBars": 5,
+        "minSweepPenetrationAtr": 0.1,
+        "minFvgSizeAtr": 0.3,
+        "meanReversionLookback": 20,
+        "meanReversionEntryZScore": 2,
+        "trendChannelLookback": 34,
+        "trendEmaPeriod": 200,
+        "trendStopAtrMultiple": 2,
+        "trendTargetAtrMultiple": 4,
+        "trendMinEmaDistanceAtr": 0
+      },
+      "hypothetical": true,
+      "brokerWrites": false,
+      "orderSubmitted": false,
+      "totalTrades": 8,
+      "netProfit": -91.48,
+      "profitFactor": 0.27,
+      "maxDrawdownPercent": 1.11,
+      "decision": "READ_ONLY_REPLAY_SUMMARY"
+    },
+    {
+      "eventType": "HISTORICAL_PAPER_FORWARD_OOS_SUMMARY",
+      "candidateId": "BTCUSD-D1-OPT",
+      "symbol": "BTCUSD",
+      "timeframe": "D1",
+      "fold": 4,
+      "trainWindow": {
+        "start": 1603065600000,
+        "end": 1689379200000
+      },
+      "oosWindow": {
+        "start": 1689897600000,
+        "end": 1733011200000
+      },
+      "selectedParameters": {
+        "stopLossAtrBuffer": 0.2,
+        "targetRiskReward": 2,
+        "expiryBars": 5,
+        "minSweepPenetrationAtr": 0.1,
+        "minFvgSizeAtr": 0.3,
+        "meanReversionLookback": 20,
+        "meanReversionEntryZScore": 2,
+        "trendChannelLookback": 34,
+        "trendEmaPeriod": 100,
+        "trendStopAtrMultiple": 1.5,
+        "trendTargetAtrMultiple": 3,
+        "trendMinEmaDistanceAtr": 0
+      },
+      "hypothetical": true,
+      "brokerWrites": false,
+      "orderSubmitted": false,
+      "totalTrades": 11,
+      "netProfit": 63.84,
+      "profitFactor": 1.53,
+      "maxDrawdownPercent": 0.87,
+      "decision": "READ_ONLY_REPLAY_SUMMARY"
+    },
+    {
+      "eventType": "HISTORICAL_PAPER_FORWARD_OOS_SUMMARY",
+      "candidateId": "BTCUSD-D1-OPT",
+      "symbol": "BTCUSD",
+      "timeframe": "D1",
+      "fold": 5,
+      "trainWindow": {
+        "start": 1646265600000,
+        "end": 1732579200000
+      },
+      "oosWindow": {
+        "start": 1733097600000,
+        "end": 1776211200000
+      },
+      "selectedParameters": {
+        "stopLossAtrBuffer": 0.2,
+        "targetRiskReward": 2,
+        "expiryBars": 5,
+        "minSweepPenetrationAtr": 0.1,
+        "minFvgSizeAtr": 0.3,
+        "meanReversionLookback": 20,
+        "meanReversionEntryZScore": 2,
+        "trendChannelLookback": 34,
+        "trendEmaPeriod": 100,
+        "trendStopAtrMultiple": 2,
+        "trendTargetAtrMultiple": 3,
+        "trendMinEmaDistanceAtr": 0
+      },
+      "hypothetical": true,
+      "brokerWrites": false,
+      "orderSubmitted": false,
+      "totalTrades": 0,
+      "netProfit": 0,
+      "profitFactor": 0,
+      "maxDrawdownPercent": 0,
+      "decision": "READ_ONLY_REPLAY_SUMMARY"
+    }
+  ],
+  "summary": {
+    "eligibleCandidates": 1,
+    "historicalFoldEvents": 5,
+    "brokerWrites": false,
+    "ordersSubmitted": false,
+    "liveTrading": false
+  },
+  "warnings": [
+    "این artifact خلاصهٔ replay تاریخی OOS است و سفارش واقعی یا اتصال نوشتاری به broker ندارد.",
+    "candidate فقط بر اساس gate فعلی انتخاب شده است؛ مثبت بودن نتیجه تضمین آینده نیست.",
+    "BTCUSD هنوز مدل هزینهٔ broker-specific و funding ندارد."
+  ]
+}
