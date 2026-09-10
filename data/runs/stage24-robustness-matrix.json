@@ -1,0 +1,500 @@
+{
+  "stage": 24,
+  "version": "robustness-matrix-v1",
+  "generatedAt": "2026-09-10T05:57:53.969Z",
+  "cases": [
+    {
+      "symbol": "EURUSD",
+      "timeframe": "4H"
+    },
+    {
+      "symbol": "GBPUSD",
+      "timeframe": "4H"
+    },
+    {
+      "symbol": "USDJPY",
+      "timeframe": "4H"
+    },
+    {
+      "symbol": "BTCUSD",
+      "timeframe": "D1"
+    }
+  ],
+  "scenarios": [
+    {
+      "id": "BASE",
+      "spreadMultiplier": 1,
+      "slippagePips": 0.2,
+      "commissionMultiplier": 1
+    },
+    {
+      "id": "STRESSED",
+      "spreadMultiplier": 2,
+      "slippagePips": 0.4,
+      "commissionMultiplier": 2
+    },
+    {
+      "id": "ADVERSE",
+      "spreadMultiplier": 3,
+      "slippagePips": 0.5,
+      "commissionMultiplier": 1.5
+    }
+  ],
+  "optimizedParameters": {
+    "trendChannelLookback": 34,
+    "trendEmaPeriod": 200,
+    "trendStopAtrMultiple": 1.5,
+    "trendTargetAtrMultiple": 4
+  },
+  "reports": [
+    {
+      "symbol": "EURUSD",
+      "timeframe": "4H",
+      "bars": 1615,
+      "scenario": "BASE",
+      "variant": "BASELINE",
+      "parameters": "DEFAULT_RULE_PARAMETERS",
+      "totalTrades": 39,
+      "winRatePercent": 28.2,
+      "netProfit": -157.48,
+      "profitFactor": 0.76,
+      "maxDrawdownPercent": 1.96,
+      "totalCommission": 12.48,
+      "totalSlippagePips": 15.6,
+      "status": "COMPLETE"
+    },
+    {
+      "symbol": "EURUSD",
+      "timeframe": "4H",
+      "bars": 1615,
+      "scenario": "BASE",
+      "variant": "OPTIMIZED",
+      "parameters": {
+        "trendChannelLookback": 34,
+        "trendEmaPeriod": 200,
+        "trendStopAtrMultiple": 1.5,
+        "trendTargetAtrMultiple": 4
+      },
+      "totalTrades": 50,
+      "winRatePercent": 22,
+      "netProfit": -292.96,
+      "profitFactor": 0.7,
+      "maxDrawdownPercent": 3.75,
+      "totalCommission": 22.38,
+      "totalSlippagePips": 20,
+      "status": "COMPLETE"
+    },
+    {
+      "symbol": "EURUSD",
+      "timeframe": "4H",
+      "bars": 1615,
+      "scenario": "STRESSED",
+      "variant": "BASELINE",
+      "parameters": "DEFAULT_RULE_PARAMETERS",
+      "totalTrades": 39,
+      "winRatePercent": 28.2,
+      "netProfit": -194.92,
+      "profitFactor": 0.72,
+      "maxDrawdownPercent": 2.13,
+      "totalCommission": 24.96,
+      "totalSlippagePips": 31.2,
+      "status": "COMPLETE"
+    },
+    {
+      "symbol": "EURUSD",
+      "timeframe": "4H",
+      "bars": 1615,
+      "scenario": "STRESSED",
+      "variant": "OPTIMIZED",
+      "parameters": {
+        "trendChannelLookback": 34,
+        "trendEmaPeriod": 200,
+        "trendStopAtrMultiple": 1.5,
+        "trendTargetAtrMultiple": 4
+      },
+      "totalTrades": 50,
+      "winRatePercent": 22,
+      "netProfit": -359.02,
+      "profitFactor": 0.65,
+      "maxDrawdownPercent": 4.26,
+      "totalCommission": 44.76,
+      "totalSlippagePips": 40,
+      "status": "COMPLETE"
+    },
+    {
+      "symbol": "EURUSD",
+      "timeframe": "4H",
+      "bars": 1615,
+      "scenario": "ADVERSE",
+      "variant": "BASELINE",
+      "parameters": "DEFAULT_RULE_PARAMETERS",
+      "totalTrades": 39,
+      "winRatePercent": 28.2,
+      "netProfit": -209.48,
+      "profitFactor": 0.7,
+      "maxDrawdownPercent": 2.2,
+      "totalCommission": 18.72,
+      "totalSlippagePips": 39,
+      "status": "COMPLETE"
+    },
+    {
+      "symbol": "EURUSD",
+      "timeframe": "4H",
+      "bars": 1615,
+      "scenario": "ADVERSE",
+      "variant": "OPTIMIZED",
+      "parameters": {
+        "trendChannelLookback": 34,
+        "trendEmaPeriod": 200,
+        "trendStopAtrMultiple": 1.5,
+        "trendTargetAtrMultiple": 4
+      },
+      "totalTrades": 50,
+      "winRatePercent": 22,
+      "netProfit": -384.71,
+      "profitFactor": 0.63,
+      "maxDrawdownPercent": 4.46,
+      "totalCommission": 33.57,
+      "totalSlippagePips": 50,
+      "status": "COMPLETE"
+    },
+    {
+      "symbol": "GBPUSD",
+      "timeframe": "4H",
+      "bars": 1615,
+      "scenario": "BASE",
+      "variant": "BASELINE",
+      "parameters": "DEFAULT_RULE_PARAMETERS",
+      "totalTrades": 40,
+      "winRatePercent": 37.5,
+      "netProfit": 78.48,
+      "profitFactor": 1.14,
+      "maxDrawdownPercent": 2.36,
+      "totalCommission": 9.9,
+      "totalSlippagePips": 16,
+      "status": "COMPLETE"
+    },
+    {
+      "symbol": "GBPUSD",
+      "timeframe": "4H",
+      "bars": 1615,
+      "scenario": "BASE",
+      "variant": "OPTIMIZED",
+      "parameters": {
+        "trendChannelLookback": 34,
+        "trendEmaPeriod": 200,
+        "trendStopAtrMultiple": 1.5,
+        "trendTargetAtrMultiple": 4
+      },
+      "totalTrades": 45,
+      "winRatePercent": 35.6,
+      "netProfit": 246.44,
+      "profitFactor": 1.35,
+      "maxDrawdownPercent": 1.36,
+      "totalCommission": 14.76,
+      "totalSlippagePips": 18,
+      "status": "COMPLETE"
+    },
+    {
+      "symbol": "GBPUSD",
+      "timeframe": "4H",
+      "bars": 1615,
+      "scenario": "STRESSED",
+      "variant": "BASELINE",
+      "parameters": "DEFAULT_RULE_PARAMETERS",
+      "totalTrades": 40,
+      "winRatePercent": 37.5,
+      "netProfit": 42.84,
+      "profitFactor": 1.07,
+      "maxDrawdownPercent": 2.52,
+      "totalCommission": 19.8,
+      "totalSlippagePips": 32,
+      "status": "COMPLETE"
+    },
+    {
+      "symbol": "GBPUSD",
+      "timeframe": "4H",
+      "bars": 1615,
+      "scenario": "STRESSED",
+      "variant": "OPTIMIZED",
+      "parameters": {
+        "trendChannelLookback": 34,
+        "trendEmaPeriod": 200,
+        "trendStopAtrMultiple": 1.5,
+        "trendTargetAtrMultiple": 4
+      },
+      "totalTrades": 45,
+      "winRatePercent": 35.6,
+      "netProfit": 192.32,
+      "profitFactor": 1.26,
+      "maxDrawdownPercent": 1.5,
+      "totalCommission": 29.52,
+      "totalSlippagePips": 36,
+      "status": "COMPLETE"
+    },
+    {
+      "symbol": "GBPUSD",
+      "timeframe": "4H",
+      "bars": 1615,
+      "scenario": "ADVERSE",
+      "variant": "BASELINE",
+      "parameters": "DEFAULT_RULE_PARAMETERS",
+      "totalTrades": 40,
+      "winRatePercent": 37.5,
+      "netProfit": 25.02,
+      "profitFactor": 1.04,
+      "maxDrawdownPercent": 2.6,
+      "totalCommission": 14.85,
+      "totalSlippagePips": 40,
+      "status": "COMPLETE"
+    },
+    {
+      "symbol": "GBPUSD",
+      "timeframe": "4H",
+      "bars": 1615,
+      "scenario": "ADVERSE",
+      "variant": "OPTIMIZED",
+      "parameters": {
+        "trendChannelLookback": 34,
+        "trendEmaPeriod": 200,
+        "trendStopAtrMultiple": 1.5,
+        "trendTargetAtrMultiple": 4
+      },
+      "totalTrades": 45,
+      "winRatePercent": 35.6,
+      "netProfit": 165.26,
+      "profitFactor": 1.22,
+      "maxDrawdownPercent": 1.57,
+      "totalCommission": 22.14,
+      "totalSlippagePips": 45,
+      "status": "COMPLETE"
+    },
+    {
+      "symbol": "USDJPY",
+      "timeframe": "4H",
+      "bars": 1612,
+      "scenario": "BASE",
+      "variant": "BASELINE",
+      "parameters": "DEFAULT_RULE_PARAMETERS",
+      "totalTrades": 41,
+      "winRatePercent": 43.9,
+      "netProfit": 296.56,
+      "profitFactor": 1.62,
+      "maxDrawdownPercent": 1.77,
+      "totalCommission": 8.94,
+      "totalSlippagePips": 16.4,
+      "status": "COMPLETE"
+    },
+    {
+      "symbol": "USDJPY",
+      "timeframe": "4H",
+      "bars": 1612,
+      "scenario": "BASE",
+      "variant": "OPTIMIZED",
+      "parameters": {
+        "trendChannelLookback": 34,
+        "trendEmaPeriod": 200,
+        "trendStopAtrMultiple": 1.5,
+        "trendTargetAtrMultiple": 4
+      },
+      "totalTrades": 47,
+      "winRatePercent": 38.3,
+      "netProfit": 400,
+      "profitFactor": 1.59,
+      "maxDrawdownPercent": 1.6,
+      "totalCommission": 14.46,
+      "totalSlippagePips": 18.8,
+      "status": "COMPLETE"
+    },
+    {
+      "symbol": "USDJPY",
+      "timeframe": "4H",
+      "bars": 1612,
+      "scenario": "STRESSED",
+      "variant": "BASELINE",
+      "parameters": "DEFAULT_RULE_PARAMETERS",
+      "totalTrades": 41,
+      "winRatePercent": 43.9,
+      "netProfit": 274.44,
+      "profitFactor": 1.56,
+      "maxDrawdownPercent": 1.84,
+      "totalCommission": 17.88,
+      "totalSlippagePips": 32.8,
+      "status": "COMPLETE"
+    },
+    {
+      "symbol": "USDJPY",
+      "timeframe": "4H",
+      "bars": 1612,
+      "scenario": "STRESSED",
+      "variant": "OPTIMIZED",
+      "parameters": {
+        "trendChannelLookback": 34,
+        "trendEmaPeriod": 200,
+        "trendStopAtrMultiple": 1.5,
+        "trendTargetAtrMultiple": 4
+      },
+      "totalTrades": 47,
+      "winRatePercent": 38.3,
+      "netProfit": 364.15,
+      "profitFactor": 1.53,
+      "maxDrawdownPercent": 1.66,
+      "totalCommission": 28.92,
+      "totalSlippagePips": 37.6,
+      "status": "COMPLETE"
+    },
+    {
+      "symbol": "USDJPY",
+      "timeframe": "4H",
+      "bars": 1612,
+      "scenario": "ADVERSE",
+      "variant": "BASELINE",
+      "parameters": "DEFAULT_RULE_PARAMETERS",
+      "totalTrades": 41,
+      "winRatePercent": 43.9,
+      "netProfit": 267.38,
+      "profitFactor": 1.54,
+      "maxDrawdownPercent": 1.87,
+      "totalCommission": 13.41,
+      "totalSlippagePips": 41,
+      "status": "COMPLETE"
+    },
+    {
+      "symbol": "USDJPY",
+      "timeframe": "4H",
+      "bars": 1612,
+      "scenario": "ADVERSE",
+      "variant": "OPTIMIZED",
+      "parameters": {
+        "trendChannelLookback": 34,
+        "trendEmaPeriod": 200,
+        "trendStopAtrMultiple": 1.5,
+        "trendTargetAtrMultiple": 4
+      },
+      "totalTrades": 47,
+      "winRatePercent": 38.3,
+      "netProfit": 352.73,
+      "profitFactor": 1.5,
+      "maxDrawdownPercent": 1.68,
+      "totalCommission": 21.69,
+      "totalSlippagePips": 47,
+      "status": "COMPLETE"
+    },
+    {
+      "symbol": "BTCUSD",
+      "timeframe": "D1",
+      "bars": 3652,
+      "scenario": "BASE",
+      "variant": "BASELINE",
+      "parameters": "DEFAULT_RULE_PARAMETERS",
+      "totalTrades": 65,
+      "winRatePercent": 53.8,
+      "netProfit": 767.09,
+      "profitFactor": 2.21,
+      "maxDrawdownPercent": 1.33,
+      "totalCommission": 0,
+      "totalSlippagePips": 26,
+      "status": "COMPLETE"
+    },
+    {
+      "symbol": "BTCUSD",
+      "timeframe": "D1",
+      "bars": 3652,
+      "scenario": "BASE",
+      "variant": "OPTIMIZED",
+      "parameters": {
+        "trendChannelLookback": 34,
+        "trendEmaPeriod": 200,
+        "trendStopAtrMultiple": 1.5,
+        "trendTargetAtrMultiple": 4
+      },
+      "totalTrades": 83,
+      "winRatePercent": 44.6,
+      "netProfit": 921.34,
+      "profitFactor": 1.86,
+      "maxDrawdownPercent": 2,
+      "totalCommission": 0,
+      "totalSlippagePips": 33.2,
+      "status": "COMPLETE"
+    },
+    {
+      "symbol": "BTCUSD",
+      "timeframe": "D1",
+      "bars": 3652,
+      "scenario": "STRESSED",
+      "variant": "BASELINE",
+      "parameters": "DEFAULT_RULE_PARAMETERS",
+      "totalTrades": 65,
+      "winRatePercent": 53.8,
+      "netProfit": 592.21,
+      "profitFactor": 1.88,
+      "maxDrawdownPercent": 1.38,
+      "totalCommission": 0,
+      "totalSlippagePips": 52,
+      "status": "COMPLETE"
+    },
+    {
+      "symbol": "BTCUSD",
+      "timeframe": "D1",
+      "bars": 3652,
+      "scenario": "STRESSED",
+      "variant": "OPTIMIZED",
+      "parameters": {
+        "trendChannelLookback": 34,
+        "trendEmaPeriod": 200,
+        "trendStopAtrMultiple": 1.5,
+        "trendTargetAtrMultiple": 4
+      },
+      "totalTrades": 83,
+      "winRatePercent": 44.6,
+      "netProfit": 657.7,
+      "profitFactor": 1.56,
+      "maxDrawdownPercent": 2.15,
+      "totalCommission": 0,
+      "totalSlippagePips": 66.4,
+      "status": "COMPLETE"
+    },
+    {
+      "symbol": "BTCUSD",
+      "timeframe": "D1",
+      "bars": 3652,
+      "scenario": "ADVERSE",
+      "variant": "BASELINE",
+      "parameters": "DEFAULT_RULE_PARAMETERS",
+      "totalTrades": 65,
+      "winRatePercent": 50.8,
+      "netProfit": 418.05,
+      "profitFactor": 1.58,
+      "maxDrawdownPercent": 1.44,
+      "totalCommission": 0,
+      "totalSlippagePips": 65,
+      "status": "COMPLETE"
+    },
+    {
+      "symbol": "BTCUSD",
+      "timeframe": "D1",
+      "bars": 3652,
+      "scenario": "ADVERSE",
+      "variant": "OPTIMIZED",
+      "parameters": {
+        "trendChannelLookback": 34,
+        "trendEmaPeriod": 200,
+        "trendStopAtrMultiple": 1.5,
+        "trendTargetAtrMultiple": 4
+      },
+      "totalTrades": 83,
+      "winRatePercent": 42.2,
+      "netProfit": 395.2,
+      "profitFactor": 1.31,
+      "maxDrawdownPercent": 2.31,
+      "totalCommission": 0,
+      "totalSlippagePips": 83,
+      "status": "COMPLETE"
+    }
+  ],
+  "warnings": [
+    "این ماتریس portability و sensitivity را بررسی می‌کند و جایگزین Walk-Forward کامل برای هر نماد نیست.",
+    "داده‌ها عمومی هستند و broker-match نیستند؛ هیچ live trading یا broker write اجرا نشده است.",
+    "Cost Stress فقط هزینه‌های spread، slippage و commission را تغییر می‌دهد؛ مدل نقدشوندگی و اخبار واقعی در آن نیست."
+  ]
+}
