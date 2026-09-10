@@ -44,6 +44,7 @@
     "research:wf:higher-tf": "tsx scripts/run-bundled-higher-timeframe-walk-forward.ts",
     "research:stage23:limited": "tsx scripts/run-stage23-limited-optimization.ts",
     "research:stage24:robustness": "tsx scripts/run-stage24-robustness-matrix.ts",
+    "research:stage25:independent-wf": "tsx scripts/run-stage25-independent-walk-forward.ts",
     "research:stress:gbpusd-4h": "tsx scripts/run-gbpusd-4h-cost-stress.ts",
     "research:ai:gbpusd-4h-smoke": "tsx scripts/run-gbpusd-4h-agentic-smoke.ts",
     "research:ai:gbpusd-4h-ablation": "tsx scripts/run-agent-comparison.ts",
