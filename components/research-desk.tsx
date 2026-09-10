@@ -45,6 +45,11 @@ import {
   formatDatasetDateRange,
   type HistoricalDatasetCatalogItem,
 } from '@/lib/research/dataset-catalog';
+import { bundledDatasetForSymbol } from '@/lib/research/bundled-historical-datasets';
+import { createDatasetFromCandles } from '@/lib/research/dataset';
+import { createBaselineResearchConfig } from '@/lib/research/default-config';
+import { ResearchExperimentEngine } from '@/lib/research/experiment-engine';
+import type { AIReviewMode, ResearchExperimentResult, StrategyVariantId } from '@/lib/research/contracts';
 
 type DeskMode = 'BACKTEST' | 'REPLAY' | 'PAPER';
 
@@ -85,6 +90,20 @@ const MODEL_CHOICES = [
   'qwen3.5-0.8b-mlc',
   'llama-3.2-3b-instruct-mlc',
   'phi-4-mini-instruct-mlc',
+];
+
+const RESEARCH_VARIANTS: Array<{ id: StrategyVariantId; labelFa: string; descriptionFa: string }> = [
+  { id: 'S0_SWEEP_ONLY', labelFa: 'S0 · سوییپ', descriptionFa: 'reclaim پس از سوییپ پیوت تاییدشده' },
+  { id: 'S0_SWEEP_FVG', labelFa: 'S0 · سوییپ + FVG', descriptionFa: 'سوییپ هم‌جهت همراه شکاف ارزش منصفانه' },
+  { id: 'BOS_ORDER_BLOCK_V1', labelFa: 'BOS / Order Block', descriptionFa: 'عبور ساختار و آخرین کندل مخالف' },
+  { id: 'FVG_EQUILIBRIUM_V1', labelFa: 'FVG Equilibrium', descriptionFa: 'بازگشت به میانه شکاف تشکیل‌شده' },
+  { id: 'MEAN_REVERSION_V1', labelFa: 'Mean Reversion', descriptionFa: 'بازگشت Z-score فقط در رنج' },
+  { id: 'TREND_BREAKOUT_55_EMA200_V1', labelFa: 'Breakout 55 / EMA200', descriptionFa: 'Donchian 55 با فیلتر جهت EMA200' },
+];
+
+const BATCH_AI_MODES: Array<{ id: Extract<AIReviewMode, 'OFF' | 'DETERMINISTIC_COUNCIL'>; labelFa: string; descriptionFa: string }> = [
+  { id: 'OFF', labelFa: 'بدون AI', descriptionFa: 'baseline قوانین بدون فیلتر AI' },
+  { id: 'DETERMINISTIC_COUNCIL', labelFa: 'شورای قطعی', descriptionFa: 'قواعد محافظه‌کارانهٔ ریسک و رژیم' },
 ];
 
 const number = new Intl.NumberFormat('en-US', { maximumFractionDigits: 2 });
@@ -132,6 +151,9 @@ export function ResearchDesk() {
   const [spreadPips, setSpreadPips] = useState(SYMBOL_SPECS.XAUUSD.typicalSpreadPips);
   const [commission, setCommission] = useState(SYMBOL_SPECS.XAUUSD.commissionPerLot);
   const [result, setResult] = useState<PerformanceMetrics | null>(null);
+  const [matrixResult, setMatrixResult] = useState<ResearchExperimentResult | null>(null);
+  const [selectedVariants, setSelectedVariants] = useState<StrategyVariantId[]>(RESEARCH_VARIANTS.map(item => item.id));
+  const [selectedAiModes, setSelectedAiModes] = useState<Array<Extract<AIReviewMode, 'OFF' | 'DETERMINISTIC_COUNCIL'>>>(['OFF', 'DETERMINISTIC_COUNCIL']);
   const [runMessage, setRunMessage] = useState<string | null>(null);
   const [isRunning, setIsRunning] = useState(false);
   const [paperTickets, setPaperTickets] = useState<PaperTicket[]>([]);
@@ -179,11 +201,13 @@ export function ResearchDesk() {
   const selectedSymbol = SYMBOL_SPECS[symbol];
   const isRealData = importedFileName !== null;
   const maximumInteractiveBars = 12_000;
+  const maximumMatrixBars = 30_000;
   const replayRunning = isPlaying && replayIndex < workingCandles.length;
 
   const resetReplaySession = (nextLength = workingCandles.length) => {
     setReplayIndex(Math.min(20, nextLength));
     setResult(null);
+    setMatrixResult(null);
     setRunMessage(null);
     setIsPlaying(false);
   };
@@ -234,6 +258,37 @@ export function ResearchDesk() {
     setRunMessage(item.status === 'IMPORT_REQUIRED' ? item.noteFa : `کاتالوگ ${formatDatasetDateRange(item)} انتخاب شد. اکنون فایل OHLCV متناظر را وارد کنید.`);
   };
 
+  const handleLoadBundledDataset = async () => {
+    const dataset = bundledDatasetForSymbol(symbol);
+    if (!dataset) {
+      setRunMessage('برای این نماد هنوز فایل بلندمدت آماده وجود ندارد؛ CSV/OHLCV خود را وارد کنید.');
+      return;
+    }
+    setIsRunning(true);
+    try {
+      const response = await fetch(dataset.url, { cache: 'no-store' });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const parsed = DataWorkbench.parseCSV(await response.text(), 'D1', 0);
+      if (parsed.candles.length < 200) throw new Error('دادهٔ روزانهٔ آماده کافی نیست.');
+      setBaseCandles(parsed.candles);
+      setBaseTimeframe('D1');
+      setTargetTimeframe('D1');
+      setImportedFileName(dataset.id);
+      setSourceLabel(`${dataset.labelFa} · ${dataset.source} · ${dataset.providerSymbol}`);
+      setStartDate('');
+      setEndDate('');
+      setReplayIndex(Math.min(220, parsed.candles.length));
+      setResult(null);
+      setMatrixResult(null);
+      setIsPlaying(false);
+      setRunMessage(dataset.caveatFa || `${number.format(parsed.candles.length)} کندل روزانهٔ واقعی در مرورگر بارگذاری شد. برای ماتریس بلندمدت آماده است.`);
+    } catch (error) {
+      setRunMessage(`بارگذاری دادهٔ آماده ناموفق بود: ${error instanceof Error ? error.message : 'خطای ناشناخته'}`);
+    } finally {
+      setIsRunning(false);
+    }
+  };
+
   const handleUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
@@ -252,6 +307,7 @@ export function ResearchDesk() {
       setEndDate('');
       setReplayIndex(Math.min(20, parsed.candles.length));
       setResult(null);
+      setMatrixResult(null);
       setIsPlaying(false);
       setRunMessage(`${number.format(parsed.candles.length)} کندل از فایل وارد شد. گزارش کیفیت را پیش از بک‌تست بررسی کنید.`);
     };
@@ -287,6 +343,64 @@ export function ResearchDesk() {
         setRunMessage(`بک‌تست ${selectedStrategy.nameFa} با ${number.format(workingCandles.length)} کندل پایان یافت. اجرای سفارش فقط در موتور شبیه‌سازی محلی بوده است.`);
       } catch (error) {
         setRunMessage(`خطای بک‌تست: ${error instanceof Error ? error.message : 'نامشخص'}`);
+      } finally {
+        setIsRunning(false);
+      }
+    }, 20);
+  };
+
+  const toggleVariant = (variant: StrategyVariantId) => {
+    setSelectedVariants(current => current.includes(variant) ? current.filter(item => item !== variant) : [...current, variant]);
+  };
+
+  const toggleBatchAiMode = (aiMode: Extract<AIReviewMode, 'OFF' | 'DETERMINISTIC_COUNCIL'>) => {
+    setSelectedAiModes(current => current.includes(aiMode) ? current.filter(item => item !== aiMode) : [...current, aiMode]);
+  };
+
+  const handleRunResearchMatrix = () => {
+    if (!validation.isValid || !isRealData) {
+      setRunMessage('ماتریس پژوهش فقط پس از بارگذاری دادهٔ واقعی و عبور گزارش کیفیت اجرا می‌شود.');
+      return;
+    }
+    if (workingCandles.length > maximumMatrixBars) {
+      setRunMessage(`برای جلوگیری از قفل مرورگر، بازه را به کمتر از ${number.format(maximumMatrixBars)} کندل کاهش دهید.`);
+      return;
+    }
+    if (selectedVariants.length === 0 || selectedAiModes.length === 0) {
+      setRunMessage('حداقل یک روش و یک حالت AI برای ماتریس انتخاب کنید.');
+      return;
+    }
+    if (selectedAiModes.includes('DETERMINISTIC_COUNCIL') && (!enabledRoles.includes('CRITIC') || !enabledRoles.includes('JUDGE'))) {
+      setRunMessage('شورای قطعی بدون نقش‌های منتقد و داور اجرا نمی‌شود؛ آن‌ها را فعال کنید یا فقط baseline بدون AI را انتخاب کنید.');
+      return;
+    }
+    setIsRunning(true);
+    window.setTimeout(() => {
+      try {
+        const dataset = createDatasetFromCandles({
+          candles: workingCandles,
+          provider: sourceLabel,
+          providerSymbol: symbol,
+          canonicalSymbol: symbol,
+          instrumentLabel: `${symbol} browser research import`,
+          timeframe: targetTimeframe,
+          rawSourcePath: `browser-memory://${importedFileName || 'unknown'}`,
+          contentSha256: `browser-${workingCandles.length}-${workingCandles[0]?.timestamp || 0}-${workingCandles.at(-1)?.timestamp || 0}`,
+          sourceLicense: 'Local browser import or bundled public historical CSV; research use only.',
+        });
+        const config = createBaselineResearchConfig({ datasetId: dataset.manifest.datasetId, symbol, timeframe: targetTimeframe, experimentId: `EXP-BROWSER-${symbol}-${targetTimeframe}-${workingCandles.at(-1)?.timestamp || 0}` });
+        const matrix = ResearchExperimentEngine.run(dataset, {
+          ...config,
+          initialCash,
+          riskPerTradePercent: 0.25,
+          strategyVariants: selectedVariants,
+          aiModes: selectedAiModes,
+          costModel: { ...config.costModel, spreadPips, commissionPerLotRoundTrip: commission },
+        });
+        setMatrixResult(matrix);
+        setRunMessage(`ماتریس ${matrix.runs.length} اجرای پژوهشی تکمیل شد. این نتایج comparative هستند و هیچ سفارش یا اتصال broker ایجاد نشده است.`);
+      } catch (error) {
+        setRunMessage(`خطای ماتریس پژوهش: ${error instanceof Error ? error.message : 'نامشخص'}`);
       } finally {
         setIsRunning(false);
       }
@@ -427,6 +541,10 @@ export function ResearchDesk() {
                 <Upload className="w-4 h-4" /> ورود فایل CSV / OHLCV
                 <input type="file" accept=".csv,.txt" className="hidden" onChange={handleUpload} />
               </label>
+              <button type="button" onClick={handleLoadBundledDataset} disabled={isRunning || !bundledDatasetForSymbol(symbol)} className="w-full secondary-button disabled:opacity-40">
+                <Database className="w-4 h-4" /> بارگذاری دادهٔ روزانهٔ بلندمدت آماده
+              </button>
+              <p className="-mt-2 text-[10px] leading-5 text-slate-500">برای هر پنج نماد، یک CSV روزانهٔ حدود ده‌ساله از منبع عمومی آماده شده است. برای M1 تا H1 همچنان CSV معتبر خودتان را وارد کنید.</p>
               <p className="text-[10px] leading-5 text-slate-500">{DATASET_IMPORT_GUIDANCE_FA}</p>
               <div className="grid grid-cols-2 gap-2">
                 <label className="label">شروع UTC
@@ -551,7 +669,15 @@ export function ResearchDesk() {
                   <input type="number" min="0" step="0.1" value={commission} onChange={event => setCommission(Number(event.target.value))} className="field mt-1" />
                 </label>
               </div>
+              <div className="mt-5 border-t border-slate-800 pt-4">
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between"><div><h3 className="font-bold text-sm text-slate-200">ماتریس مقایسهٔ روش و AI</h3><p className="mt-1 text-[11px] leading-5 text-slate-500">هر خانه یک Backtest مستقل با ورود کندل بعدی، هزینه، روند/رژیم و خروج بدبینانه است. WebLLM یا API در batch به‌صورت ساختگی اجرا نمی‌شود؛ اینجا فقط baseline و فیلتر قطعی قابل بازتولید مقایسه می‌شوند.</p></div><button type="button" onClick={handleRunResearchMatrix} disabled={isRunning || selectedVariants.length === 0 || selectedAiModes.length === 0} className="primary-button shrink-0">{isRunning ? <LoaderCircle className="w-4 h-4 animate-spin" /> : <Layers3 className="w-4 h-4" />}{isRunning ? 'در حال اجرای ماتریس…' : `اجرای ${selectedVariants.length * selectedAiModes.length} آزمایش`}</button></div>
+                <div className="mt-4 grid grid-cols-1 lg:grid-cols-2 gap-3">
+                  <div><div className="label mb-2">روش‌های واردشده در مقایسه</div><div className="grid grid-cols-1 sm:grid-cols-2 gap-2">{RESEARCH_VARIANTS.map(item => { const active = selectedVariants.includes(item.id); return <button type="button" key={item.id} onClick={() => toggleVariant(item.id)} className={`rounded-xl border p-2.5 text-right transition ${active ? 'border-cyan-400/40 bg-cyan-400/10 text-cyan-100' : 'border-slate-800 bg-slate-950/30 text-slate-500'}`}><div className="flex items-center justify-between gap-2"><span className="text-[11px] font-bold">{item.labelFa}</span><span className={`text-[10px] ${active ? 'text-emerald-300' : 'text-slate-600'}`}>{active ? 'فعال' : 'خاموش'}</span></div><div className="mt-1 text-[10px] leading-5 text-slate-500">{item.descriptionFa}</div></button>; })}</div></div>
+                  <div><div className="label mb-2">حالت‌های AI قابل آزمایش امروز</div><div className="space-y-2">{BATCH_AI_MODES.map(item => { const active = selectedAiModes.includes(item.id); return <button type="button" key={item.id} onClick={() => toggleBatchAiMode(item.id)} className={`w-full rounded-xl border p-3 text-right transition ${active ? 'border-violet-400/40 bg-violet-400/10 text-violet-100' : 'border-slate-800 bg-slate-950/30 text-slate-500'}`}><div className="flex items-center justify-between gap-2"><span className="text-xs font-bold">{item.labelFa}</span><span className={`text-[10px] ${active ? 'text-emerald-300' : 'text-slate-600'}`}>{active ? 'فعال' : 'خاموش'}</span></div><div className="mt-1 text-[10px] leading-5 text-slate-500">{item.descriptionFa}</div></button>; })}<div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-3 text-[10px] leading-5 text-amber-100">مدل‌های WebLLM و API فقط برای review یک ستاپ با شواهد کامل هستند. در Backtest دسته‌ای، نبود یک provider واقعی به‌درستی NO TRADE تلقی می‌شود، نه نتیجهٔ شبیه‌سازی‌شده.</div></div></div>
+                </div>
+              </div>
               {metricCards.length > 0 ? <div className="mt-4 grid grid-cols-2 lg:grid-cols-4 gap-3">{metricCards.map(item => <div key={item.label} className="rounded-xl border border-slate-800 bg-slate-950/40 p-3"><div className="text-[10px] text-slate-500">{item.label}</div><div className={`mt-1 text-lg font-mono font-bold ${item.tone}`}>{item.value}</div></div>)}</div> : <div className="mt-4 rounded-xl border border-dashed border-slate-800 p-4 text-center text-xs text-slate-500">ابتدا دادهٔ CSV را وارد و بازهٔ مناسب را تعیین کنید. نتیجهٔ بک‌تست بدون دادهٔ واقعی نمایش داده نمی‌شود.</div>}
+              {matrixResult && <div className="mt-5 rounded-2xl border border-slate-800 bg-slate-950/30 p-4"><div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2"><div><h3 className="font-bold text-slate-200">نتایج ماتریس پژوهش</h3><p className="mt-1 text-[10px] text-slate-500">مرتب‌شده بر مبنای سود خالص؛ انتخاب نهایی فقط پس از بررسی تعداد معامله، PF، افت سرمایه و OOS معتبر است.</p></div><span className="font-mono text-[10px] text-cyan-300">{matrixResult.runs.length} run · {workingCandles.length} bars</span></div><div className="mt-3 overflow-x-auto"><table className="w-full text-right text-[11px]"><thead className="border-b border-slate-800 text-slate-500"><tr><th className="p-2">روش / AI</th><th className="p-2">معامله</th><th className="p-2">Win Rate</th><th className="p-2">Net PnL</th><th className="p-2">PF</th><th className="p-2">Holding</th><th className="p-2">Max DD</th><th className="p-2">وضعیت</th></tr></thead><tbody>{matrixResult.comparisons.map(comparison => { const run = matrixResult.runs.find(item => `${item.summary.variant}::${item.summary.aiMode}` === comparison.key); return <tr key={comparison.key} className="border-b border-slate-900"><td className="p-2 text-slate-200">{comparison.labelFa}</td><td className="p-2 font-mono">{comparison.tradesCount}</td><td className="p-2 font-mono">{comparison.winRatePercent}%</td><td className={`p-2 font-mono font-bold ${comparison.netProfit >= 0 ? 'text-emerald-300' : 'text-rose-300'}`}>{comparison.netProfit >= 0 ? '+' : ''}{number.format(comparison.netProfit)}</td><td className="p-2 font-mono text-cyan-200">{comparison.profitFactor.toFixed(2)}</td><td className="p-2 font-mono text-slate-300">{comparison.averageHoldingBars.toFixed(1)} bars</td><td className="p-2 font-mono text-amber-200">{comparison.maxDrawdownPercent.toFixed(2)}%</td><td className="p-2 text-slate-400">{run?.summary.status || '—'}</td></tr>; })}</tbody></table></div><div className="mt-3 grid gap-2 md:grid-cols-2">{matrixResult.warnings.slice(0, 4).map(warning => <div key={warning} className="rounded-lg bg-amber-500/5 border border-amber-500/15 p-2 text-[10px] leading-5 text-amber-100">{warning}</div>)}</div></div>}
             </section>}
 
             {mode === 'REPLAY' && <section className="rounded-2xl border border-slate-800 bg-[#101722] p-4"><div className="flex items-center gap-2"><LineChart className="w-5 h-5 text-violet-300" /><h2 className="font-bold">قواعد بازپخش</h2></div><div className="mt-3 grid grid-cols-1 md:grid-cols-3 gap-3 text-xs"><InfoCard icon={CheckCircle2} title="بدون نگاه به آینده" text="موتور فقط تا کندل جاری را دریافت می‌کند؛ کندل‌های بعدی پنهان هستند." /><InfoCard icon={CheckCircle2} title="تحلیل قابل توضیح" text="رژیم، سبک و دلیل ستاپ در پنل کنار نمودار ثبت می‌شود." /><InfoCard icon={ShieldCheck} title="فقط پژوهش" text="بازپخش هیچ API معاملاتی، سفارش یا ارتباط نوشتاری با کارگزار ندارد." /></div></section>}

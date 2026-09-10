@@ -119,6 +119,19 @@ export function runResearchEngineSuite(): ResearchEngineTestResult[] {
     details: fvgCandidate ? `${fvgCandidate.id} / ${fvgCandidate.evidenceIds.fvgId}` : 'no candidate on fixture; no invalid output',
   });
 
+  const breakoutCandles: Candle[] = Array.from({ length: 230 }, (_, index) => {
+    const base = 1.1 + index * 0.00004;
+    return candle(index, base, base + 0.00026, base - 0.00015, base + 0.00022);
+  });
+  const breakoutCandidate = evaluateResearchStrategy(breakoutCandles, 'EURUSD', '5M', 'TREND_BREAKOUT_55_EMA200_V1');
+  results.push({
+    name: '55-channel EMA200 breakout rule records prior-channel evidence without lookahead',
+    passed: breakoutCandidate?.style === 'TREND_BREAKOUT'
+      && Boolean(breakoutCandidate.evidenceIds.contextSwingId)
+      && breakoutCandidate.createdAtTimestamp === breakoutCandles.at(-1)?.timestamp,
+    details: breakoutCandidate ? `${breakoutCandidate.id} / ${breakoutCandidate.evidenceIds.contextSwingId}` : 'no candidate',
+  });
+
   const first = ResearchExperimentEngine.run(dataset, baselineConfig(dataset.manifest.datasetId));
   const second = ResearchExperimentEngine.run(dataset, baselineConfig(dataset.manifest.datasetId));
   const firstOff = first.runs.find(run => run.summary.variant === 'S0_SWEEP_ONLY' && run.summary.aiMode === 'OFF');

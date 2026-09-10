@@ -1,7 +1,7 @@
 // lib/core/event-driven-engine.ts
 // موتور شبیه‌ساز رویدادمحور و حسابداری پرتفوی بدون وابستگی به فریم‌ورک کلاینت
 
-import { Candle, SymbolId } from '../contracts/market';
+import { Candle, SYMBOL_SPECS, SymbolId } from '../contracts/market';
 import {
   TradingEnvironment,
   IntrabarAmbiguityPolicy,
@@ -142,7 +142,7 @@ export class EventDrivenExecutionEngine implements IExecutionPort {
   }
 
   private pnlInAccountCurrency(symbol: SymbolId, volumeLots: number, priceDiff: number, conversionPrice: number): number {
-    const contractSize = symbol === 'XAUUSD' ? 100 : 100_000;
+    const contractSize = SYMBOL_SPECS[symbol].contractSize;
     const quotePnl = volumeLots * priceDiff * contractSize;
     return symbol === 'USDJPY' ? quotePnl / Math.max(conversionPrice, 0.000001) : quotePnl;
   }
@@ -224,7 +224,7 @@ export class EventDrivenExecutionEngine implements IExecutionPort {
       if (order.orderType === 'MARKET') {
         // خرید از Ask و فروش از Bid (عدم محاسبه مجدد دوبرابری اسپرد)
         slippagePips = this.config.slippageModel.baseSlippagePips;
-        const pipVal = order.symbol === 'XAUUSD' ? 0.1 : 0.0001;
+        const pipVal = SYMBOL_SPECS[order.symbol].pipSize;
         fillPrice =
           order.direction === 'BUY'
             ? quote.ask + slippagePips * pipVal
@@ -268,7 +268,7 @@ export class EventDrivenExecutionEngine implements IExecutionPort {
   public processCandle(candle: Candle, symbol: SymbolId): ExecutionEventPayload[] {
     this.clock.advanceTo(candle.timestamp);
     const events: ExecutionEventPayload[] = [];
-    const pipVal = symbol === 'XAUUSD' ? 0.1 : 0.0001;
+    const pipVal = SYMBOL_SPECS[symbol].pipSize;
     const spreadPoints = this.config.defaultSpreadPips * pipVal;
 
     // ۱. بررسی انقضای سفارش‌های معلق (Setup Expiry - مثلاً حداکثر ۳ الی ۶ کندل)
@@ -351,7 +351,7 @@ export class EventDrivenExecutionEngine implements IExecutionPort {
     spreadPoints: number,
     events: ExecutionEventPayload[]
   ): void {
-    const pipVal = symbol === 'XAUUSD' ? 0.1 : 0.0001;
+    const pipVal = SYMBOL_SPECS[symbol].pipSize;
     // محاسبه اکستریم‌های معامله جهت ثبت MAE و MFE
     if (pos.direction === 'BUY') {
       const adversePips = Math.max(0, (pos.entryPrice - candle.low) / pipVal);
@@ -488,7 +488,7 @@ export class EventDrivenExecutionEngine implements IExecutionPort {
       if (pos.isOpen) {
         totalUnrealized += pos.unrealizedPnl;
         // مارجین تقریبی ۱:۱۰۰
-        const notional = pos.symbol === 'XAUUSD' ? pos.entryPrice * 100 : 100000;
+        const notional = pos.entryPrice * SYMBOL_SPECS[pos.symbol].contractSize;
         marginUsed += (pos.volumeLots * notional) / 100;
       }
     }

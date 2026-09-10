@@ -1,4 +1,4 @@
-import type { SymbolId, Timeframe } from '@/lib/contracts/market';
+import { SYMBOL_SPECS, type SymbolId, type Timeframe } from '@/lib/contracts/market';
 import type { HistoricalDatasetManifest, ResearchExperimentConfig } from './contracts';
 
 export function createBaselineResearchConfig(input: {
@@ -13,7 +13,7 @@ export function createBaselineResearchConfig(input: {
     environment: 'BACKTEST',
     symbol: input.symbol,
     timeframe: input.timeframe,
-    strategyVariants: ['S0_SWEEP_ONLY', 'S0_SWEEP_FVG', 'BOS_ORDER_BLOCK_V1', 'FVG_EQUILIBRIUM_V1', 'MEAN_REVERSION_V1'],
+    strategyVariants: ['S0_SWEEP_ONLY', 'S0_SWEEP_FVG', 'BOS_ORDER_BLOCK_V1', 'FVG_EQUILIBRIUM_V1', 'MEAN_REVERSION_V1', 'TREND_BREAKOUT_55_EMA200_V1'],
     aiModes: ['OFF', 'DETERMINISTIC_COUNCIL'],
     initialCash: 10_000,
     riskPerTradePercent: 0.25,
@@ -24,9 +24,9 @@ export function createBaselineResearchConfig(input: {
     entryExpiryBars: input.timeframe === 'D1' ? 5 : 12,
     costModel: {
       modelVersion: 'cost-model-v1',
-      spreadPips: input.symbol === 'EURUSD' ? 0.8 : 2.0,
+      spreadPips: SYMBOL_SPECS[input.symbol].typicalSpreadPips,
       slippagePips: 0.2,
-      commissionPerLotRoundTrip: 6.0,
+      commissionPerLotRoundTrip: SYMBOL_SPECS[input.symbol].commissionPerLot,
       adverseFillOnly: true,
     },
     seed: 20260909,

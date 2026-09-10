@@ -218,8 +218,8 @@ export class ResearchLab {
     symbol: SymbolId = 'XAUUSD'
   ): StressTestScenarioResult[] {
     const baseRun = this.runBacktest(candles, symbol, {
-      defaultSpreadPips: 1.5,
-      commissionPerLot: 6.0,
+      defaultSpreadPips: SYMBOL_SPECS[symbol].typicalSpreadPips,
+      commissionPerLot: SYMBOL_SPECS[symbol].commissionPerLot,
     });
 
     const scenarios: StressTestScenarioResult[] = [
@@ -238,8 +238,8 @@ export class ResearchLab {
 
     // تنش ۱: افزایش اسپرد به ۳ پیپ (زمان اخبار اقتصادی)
     const wideSpreadRun = this.runBacktest(candles, symbol, {
-      defaultSpreadPips: 3.0,
-      commissionPerLot: 6.0,
+      defaultSpreadPips: SYMBOL_SPECS[symbol].typicalSpreadPips * 2,
+      commissionPerLot: SYMBOL_SPECS[symbol].commissionPerLot,
     });
     scenarios.push({
       scenarioName: 'اسپرد فشرده اخبار (+100% Spread)',
@@ -255,8 +255,8 @@ export class ResearchLab {
 
     // تنش ۲: لغزش شدید قیمت (Slippage Stress)
     const slippageRun = this.runBacktest(candles, symbol, {
-      defaultSpreadPips: 2.5,
-      commissionPerLot: 9.0, // کارمزد و هزینه اضافی
+      defaultSpreadPips: SYMBOL_SPECS[symbol].typicalSpreadPips * 1.6,
+      commissionPerLot: SYMBOL_SPECS[symbol].commissionPerLot * 1.5, // کارمزد و هزینه اضافی
     });
     scenarios.push({
       scenarioName: 'لغزش و گپ اجرایی شدید',
