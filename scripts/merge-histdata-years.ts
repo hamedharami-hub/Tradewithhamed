@@ -31,6 +31,10 @@ async function main(): Promise<void> {
       }
     }
     const unique = [...new Map(all.sort((a,b)=>a.timestamp-b.timestamp).map(c=>[c.timestamp,c])).values()];
+    if (unique.length === 0) {
+      console.log(JSON.stringify({ symbol, status: 'SKIPPED_NO_RAW_FILES', years }));
+      continue;
+    }
     const sourceHash = createHash('sha256').update(JSON.stringify(unique.map(c=>[c.timestamp,c.open,c.high,c.low,c.close,c.volume]))).digest('hex');
     const base = createDatasetFromCandles({ candles: unique, provider: 'HistData multi-year', providerSymbol: symbol, canonicalSymbol: symbol, instrumentLabel: `${symbol} multi-year HistData M1`, timeframe: '1M', rawSourcePath: `data/raw/histdata/multi-year/${symbol}`, contentSha256: sourceHash, sourceLicense: 'HistData public historical data; research use; verify redistribution terms before publication.' });
     base.manifest.notes.unshift(`Merged years: ${years.join(',')}; fixed EST (UTC-05:00) converted to UTC.`);

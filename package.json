@@ -37,6 +37,8 @@
     "data:merge:histdata:years": "tsx scripts/merge-histdata-years.ts",
     "data:build:bundled-history": "tsx scripts/build-bundled-yahoo-datasets.ts",
     "research:matrix:bundled-d1": "tsx scripts/run-bundled-d1-research-matrix.ts",
+    "research:walk-forward:shortlist": "tsx scripts/run-bundled-shortlist-walk-forward.ts",
+    "research:stress:oos-cost": "tsx scripts/run-bundled-oos-cost-stress.ts",
     "clean": "next clean"
   },
   "dependencies": {
