@@ -43,6 +43,7 @@
     "research:summary:higher-tf": "tsx scripts/summarize-higher-timeframes.ts",
     "research:wf:higher-tf": "tsx scripts/run-bundled-higher-timeframe-walk-forward.ts",
     "research:stress:gbpusd-4h": "tsx scripts/run-gbpusd-4h-cost-stress.ts",
+    "research:ai:gbpusd-4h-smoke": "tsx scripts/run-gbpusd-4h-agentic-smoke.ts",
     "research:walk-forward:shortlist": "tsx scripts/run-bundled-shortlist-walk-forward.ts",
     "research:stress:oos-cost": "tsx scripts/run-bundled-oos-cost-stress.ts",
     "data:export:ctrader-usdjpy:gate1": "tsx scripts/export-ctrader-usdjpy-history.ts",
