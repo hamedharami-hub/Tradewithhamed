@@ -90,6 +90,8 @@ artifactهای خام محلی و ignored هستند تا دادهٔ حجیم و
 | `data/runs/usdjpy-histdata-d1-2020-2024-fvg-walk-forward-20260910.json` | Walk-Forward مستقل USDJPY با HistData |
 | `data/datasets/histdata/multi-year/` | دادهٔ M1 و تجمیع‌های USDJPY، ۲۰۲۰–۲۰۲۴؛ فایل‌های محلی و ignored |
 
+مسیر اجرایی، قالب CSV و معیار دقیق دریافت دادهٔ هم‌منبع برای Gate 1 در [راهنمای Gate 1](gate1-usdjpy-broker-data-fa.md) ثبت شده است. یک CSV نمونه فقط برای کنترل parser در [پوشهٔ examples](examples/usdjpy-broker-csv-template.csv) وجود دارد و دادهٔ broker محسوب نمی‌شود.
+
 فرمان‌های بازتولید به‌ترتیب زیرند:
 
 ```bash

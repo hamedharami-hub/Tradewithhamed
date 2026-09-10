@@ -21,6 +21,8 @@ export const READ_ONLY_PAYLOAD = {
   SYMBOL_BY_ID_RESPONSE: 2117,
   GET_ACCOUNTS_REQUEST: 2149,
   GET_ACCOUNTS_RESPONSE: 2150,
+  GET_TRENDBARS_REQUEST: 2137,
+  GET_TRENDBARS_RESPONSE: 2138,
   SUBSCRIBE_SPOTS_REQUEST: 2127,
   SUBSCRIBE_SPOTS_RESPONSE: 2128,
   UNSUBSCRIBE_SPOTS_REQUEST: 2129,
@@ -38,6 +40,7 @@ const READ_ONLY_OUTBOUND = new Set<number>([
   READ_ONLY_PAYLOAD.SYMBOLS_LIST_REQUEST,
   READ_ONLY_PAYLOAD.SYMBOL_BY_ID_REQUEST,
   READ_ONLY_PAYLOAD.GET_ACCOUNTS_REQUEST,
+  READ_ONLY_PAYLOAD.GET_TRENDBARS_REQUEST,
   READ_ONLY_PAYLOAD.SUBSCRIBE_SPOTS_REQUEST,
   READ_ONLY_PAYLOAD.UNSUBSCRIBE_SPOTS_REQUEST,
 ]);
@@ -95,6 +98,31 @@ export interface ReadOnlyQuote {
   providerSymbol: string;
 }
 
+export type CTraderHistoryPeriod = 'M1' | 'M5';
+
+export interface ReadOnlyHistoricalBar {
+  symbol: SymbolId;
+  providerSymbol: string;
+  timeframe: CTraderHistoryPeriod;
+  timestamp: number;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+}
+
+export interface ReadOnlyHistoricalBarsResponse {
+  requestId: string;
+  symbol: SymbolId;
+  providerSymbol: string;
+  timeframe: CTraderHistoryPeriod;
+  fromTimestamp: number;
+  toTimestamp: number;
+  hasMore: boolean;
+  bars: ReadOnlyHistoricalBar[];
+}
+
 export interface ReadOnlyGatewayStatus {
   state: ReadOnlyGatewayState;
   connected: boolean;
@@ -121,6 +149,40 @@ const SYMBOL_ALIASES: Record<SymbolId, string[]> = {
 
 function normaliseSymbol(value: string): string {
   return value.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+}
+
+const HISTORY_PERIOD_CODE: Record<CTraderHistoryPeriod, number> = { M1: 1, M5: 5 };
+
+export function historicalBarsFromPayload(input: {
+  payload: Record<string, unknown>;
+  symbol: SymbolId;
+  providerSymbol: string;
+  timeframe: CTraderHistoryPeriod;
+}): { bars: ReadOnlyHistoricalBar[]; hasMore: boolean } {
+  const trendbars = asArray(input.payload.trendbar);
+  const bars = trendbars.flatMap((value): ReadOnlyHistoricalBar[] => {
+    if (!value || typeof value !== 'object') return [];
+    const trendbar = value as Record<string, unknown>;
+    const timestampMinutes = Number(trendbar.utcTimestampInMinutes);
+    const lowRelative = Number(trendbar.low);
+    const deltaOpen = Number(trendbar.deltaOpen);
+    const deltaHigh = Number(trendbar.deltaHigh);
+    const deltaClose = Number(trendbar.deltaClose);
+    const volume = Number(trendbar.volume);
+    if (![timestampMinutes, lowRelative, deltaOpen, deltaHigh, deltaClose].every(Number.isFinite) || timestampMinutes <= 0) return [];
+    return [{
+      symbol: input.symbol,
+      providerSymbol: input.providerSymbol,
+      timeframe: input.timeframe,
+      timestamp: timestampMinutes * 60_000,
+      low: lowRelative / 100_000,
+      open: (lowRelative + deltaOpen) / 100_000,
+      high: (lowRelative + deltaHigh) / 100_000,
+      close: (lowRelative + deltaClose) / 100_000,
+      volume: Number.isFinite(volume) ? volume : 0,
+    }];
+  }).sort((left, right) => left.timestamp - right.timestamp);
+  return { bars, hasMore: input.payload.hasMore === true };
 }
 
 export function canonicalMonitorSymbol(value: string): SymbolId | null {
@@ -264,6 +326,8 @@ export class ReadOnlyCTraderClient {
   private readonly quoteListeners = new Set<(quote: ReadOnlyQuote) => void>();
   private readonly statusListeners = new Set<(status: ReadOnlyGatewayStatus) => void>();
   private readonly discoveryListeners = new Set<(symbols: { available: DiscoveredSymbol[]; unavailable: SymbolId[] }) => void>();
+  private readonly historicalBarsListeners = new Set<(response: ReadOnlyHistoricalBarsResponse) => void>();
+  private readonly historicalRequests = new Map<string, Omit<ReadOnlyHistoricalBarsResponse, 'bars' | 'hasMore'>>();
 
   public constructor(private readonly config: ReadOnlyCTraderConfig) {}
 
@@ -280,6 +344,11 @@ export class ReadOnlyCTraderClient {
   public onSymbolDiscovery(listener: (symbols: { available: DiscoveredSymbol[]; unavailable: SymbolId[] }) => void): () => void {
     this.discoveryListeners.add(listener);
     return () => this.discoveryListeners.delete(listener);
+  }
+
+  public onHistoricalBars(listener: (response: ReadOnlyHistoricalBarsResponse) => void): () => void {
+    this.historicalBarsListeners.add(listener);
+    return () => this.historicalBarsListeners.delete(listener);
   }
 
   public getStatus(): ReadOnlyGatewayStatus {
@@ -332,6 +401,39 @@ export class ReadOnlyCTraderClient {
     return this.getStatus();
   }
 
+  public requestHistoricalBars(input: {
+    symbol: SymbolId;
+    timeframe: CTraderHistoryPeriod;
+    fromTimestamp: number;
+    toTimestamp: number;
+    count?: number;
+  }): string {
+    if (!this.accountAuthorized) throw new Error('CTRADER_READ_ONLY_HISTORY_ACCOUNT_NOT_AUTHORIZED');
+    if (!Number.isFinite(input.fromTimestamp) || !Number.isFinite(input.toTimestamp) || input.fromTimestamp < 0 || input.toTimestamp <= input.fromTimestamp) {
+      throw new Error('CTRADER_READ_ONLY_HISTORY_TIME_RANGE_INVALID');
+    }
+    const discovered = this.discovered.find(item => item.symbol === input.symbol);
+    if (!discovered) throw new Error(`CTRADER_READ_ONLY_HISTORY_SYMBOL_UNAVAILABLE:${input.symbol}`);
+    const requestId = `readonly_history_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    this.historicalRequests.set(requestId, {
+      requestId,
+      symbol: input.symbol,
+      providerSymbol: discovered.providerSymbol,
+      timeframe: input.timeframe,
+      fromTimestamp: Math.floor(input.fromTimestamp),
+      toTimestamp: Math.floor(input.toTimestamp),
+    });
+    this.sendReadOnly(READ_ONLY_PAYLOAD.GET_TRENDBARS_REQUEST, {
+      ctidTraderAccountId: this.config.accountId,
+      symbolId: discovered.cTraderSymbolId,
+      period: HISTORY_PERIOD_CODE[input.timeframe],
+      fromTimestamp: Math.floor(input.fromTimestamp),
+      toTimestamp: Math.floor(input.toTimestamp),
+      ...(input.count ? { count: Math.floor(input.count) } : {}),
+    }, requestId);
+    return requestId;
+  }
+
   private startHeartbeat(): void {
     if (this.heartbeat) clearInterval(this.heartbeat);
     this.heartbeat = setInterval(() => {
@@ -340,7 +442,7 @@ export class ReadOnlyCTraderClient {
     }, this.config.heartbeatMs);
   }
 
-  private sendReadOnly(payloadType: number, payload: Record<string, unknown>): void {
+  private sendReadOnly(payloadType: number, payload: Record<string, unknown>, clientMsgId?: string): void {
     assertReadOnlyOutboundPayload(payloadType);
     if (!this.socket || this.socket.readyState !== WebSocket.OPEN) {
       this.fail('CTRADER_READ_ONLY_SOCKET_NOT_OPEN');
@@ -348,7 +450,7 @@ export class ReadOnlyCTraderClient {
     }
     this.socket.send(JSON.stringify({
       payloadType,
-      clientMsgId: `readonly_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+      clientMsgId: clientMsgId || `readonly_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
       payload,
     }));
   }
@@ -413,6 +515,19 @@ export class ReadOnlyCTraderClient {
       });
       this.state = 'SUBSCRIBED';
       this.emitStatus();
+      return;
+    }
+    if (payloadType === READ_ONLY_PAYLOAD.GET_TRENDBARS_RESPONSE) {
+      const requestId = typeof message.clientMsgId === 'string' ? message.clientMsgId : '';
+      const request = this.historicalRequests.get(requestId);
+      if (!request) {
+        this.fail('CTRADER_READ_ONLY_HISTORY_RESPONSE_UNMATCHED');
+        return;
+      }
+      this.historicalRequests.delete(requestId);
+      const decoded = historicalBarsFromPayload({ payload, symbol: request.symbol, providerSymbol: request.providerSymbol, timeframe: request.timeframe });
+      const response: ReadOnlyHistoricalBarsResponse = { ...request, ...decoded };
+      for (const listener of this.historicalBarsListeners) listener(response);
       return;
     }
     if (payloadType === READ_ONLY_PAYLOAD.SPOT_EVENT) {
