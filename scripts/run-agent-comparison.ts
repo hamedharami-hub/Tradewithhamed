@@ -15,7 +15,7 @@ async function main(): Promise<void> {
   if (!datasetPath || !outputPath) throw new Error('Usage: tsx scripts/run-agent-comparison.ts --dataset <dataset.json> --output <result.json>');
   const dataset = JSON.parse(await readFile(resolve(datasetPath), 'utf8')) as HistoricalDataset;
   const base = createBaselineFromManifest(dataset.manifest);
-  const variant = 'S0_SWEEP_FVG' as const;
+  const variant = 'TREND_BREAKOUT_55_EMA200_V1' as const;
   const candidateIds = new Set<string>();
   const reviewResults: Awaited<ReturnType<typeof reviewCandidateWithFourAgents>>[] = [];
   for (let i = Math.max(base.warmupBars, 20); i < dataset.candles.length; i++) {
