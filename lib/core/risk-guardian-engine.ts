@@ -12,6 +12,7 @@ import {
 } from '../contracts/w4-risk-guardian';
 import { TrailingStopManager } from './trailing-stop-manager';
 import { DriftMonitor } from './drift-monitor';
+import { EconomicCalendarEngine } from './economic-calendar';
 
 export class RiskGuardianEngine {
   private riskConfig: RiskBudgetConfig;
@@ -278,29 +279,69 @@ export class RiskGuardianEngine {
       }
     }
 
-    // ۸. محاسبه دقیق مقدار ریسک دلاری و درصدی سفارش
+    // ۷.۱ بررسی بلک‌اوت اخبار پرریسک تقویم اقتصادی (High-Impact Economic Calendar Blackout)
+    if (this.circuitConfig.blockNewsWindowsMinutesBefore > 0 || this.circuitConfig.blockNewsWindowsMinutesAfter > 0) {
+      const newsCheck = EconomicCalendarEngine.isNewsBlackout(
+        now,
+        intent.symbol,
+        this.circuitConfig.blockNewsWindowsMinutesBefore,
+        this.circuitConfig.blockNewsWindowsMinutesAfter
+      );
+      if (newsCheck.inBlackout) {
+        this.state.activeCircuitBreakers.newsSpike = true;
+        return {
+          isApproved: false,
+          rejectReasonCode: 'NEWS_BLACKOUT_ACTIVE',
+          messageFa: newsCheck.reasonFa || 'ورود به معامله در زمان انتشار اخبار پرریسک اقتصادی مسدود است.',
+          evaluatedRiskDollars: 0,
+          evaluatedRiskPercent: 0,
+          maxAllowedVolumeLots: 0,
+        };
+      } else {
+        this.state.activeCircuitBreakers.newsSpike = false;
+      }
+    }
+
+    // ۸. محاسبه دقیق مقدار ریسک دلاری و درصدی سفارش با اعمال ریسک تطبیقی (Adaptive Anti-Martingale)
     const slDistance = Math.abs(intent.entryPrice - intent.stopLossPrice);
     const riskDollars = Number((slDistance * intent.volumeLots * contractMultiplier).toFixed(2));
     const equity = ledger.equity > 0 ? ledger.equity : ledger.initialCash;
     const riskPercent = Number(((riskDollars / equity) * 100).toFixed(2));
 
-    // محاسبه حداکثر حجم مجاز بر اساس ۱ درصد ریسک
+    // محاسبه سقف ریسک با در نظر گرفتن کاهش تطبیقی (Adaptive Risk Scaling) در صورت زیان متوالی
+    let allowedRiskPercent = this.riskConfig.maxRiskPerTradePercent;
+    let allowedRiskAmount = this.riskConfig.maxRiskPerTradeAmount;
+
+    if (this.riskConfig.enableAdaptiveRiskScaling && this.state.consecutiveLossCount > 0) {
+      if (this.state.consecutiveLossCount === 1) {
+        allowedRiskPercent = Number((allowedRiskPercent * 0.75).toFixed(2));
+        allowedRiskAmount = Number((allowedRiskAmount * 0.75).toFixed(2));
+      } else if (this.state.consecutiveLossCount >= 2) {
+        allowedRiskPercent = Number((allowedRiskPercent * 0.50).toFixed(2));
+        allowedRiskAmount = Number((allowedRiskAmount * 0.50).toFixed(2));
+      }
+    }
+
+    // محاسبه حداکثر حجم مجاز بر اساس سقف ریسک
     const maxRiskDollarsAllowed = Math.min(
-      this.riskConfig.maxRiskPerTradeAmount,
-      (equity * this.riskConfig.maxRiskPerTradePercent) / 100
+      allowedRiskAmount,
+      (equity * allowedRiskPercent) / 100
     );
     const maxAllowedLots = Number(
       (maxRiskDollarsAllowed / (slDistance * contractMultiplier)).toFixed(2)
     );
 
     if (
-      riskDollars > this.riskConfig.maxRiskPerTradeAmount ||
-      riskPercent > this.riskConfig.maxRiskPerTradePercent
+      riskDollars > allowedRiskAmount ||
+      riskPercent > allowedRiskPercent
     ) {
+      const adaptiveNote = this.riskConfig.enableAdaptiveRiskScaling && this.state.consecutiveLossCount > 0
+        ? ` (کاهش یافته به علت ${this.state.consecutiveLossCount} زیان متوالی قبلی)`
+        : '';
       return {
         isApproved: false,
         rejectReasonCode: 'MAX_RISK_PER_TRADE_EXCEEDED',
-        messageFa: `ریسک معامله ($${riskDollars} معادل ${riskPercent}%) بیشتر از سقف مجاز (${this.riskConfig.maxRiskPerTradePercent}% معادل $${maxRiskDollarsAllowed}) است.`,
+        messageFa: `ریسک معامله ($${riskDollars} معادل ${riskPercent}%) بیشتر از سقف مجاز (${allowedRiskPercent}% معادل $${maxRiskDollarsAllowed}${adaptiveNote}) است.`,
         evaluatedRiskDollars: riskDollars,
         evaluatedRiskPercent: riskPercent,
         maxAllowedVolumeLots: Math.max(0.01, maxAllowedLots),

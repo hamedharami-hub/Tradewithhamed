@@ -23,6 +23,8 @@ import {
   getSessionForTimestamp,
   resolveIntraBarExit,
 } from './market-microstructure';
+import { EconomicCalendarEngine } from './economic-calendar';
+import { EquityCurveMonteCarloEngine } from './equity-curve-monte-carlo';
 
 interface ActivePosition {
   tradeId: string;
@@ -59,6 +61,7 @@ export class MultiStyleBacktester {
     let peakEquity = currentCash;
     let maxDrawdownDollar = 0;
     let maxDrawdownPercent = 0;
+    let consecutiveLossCount = 0;
 
     const completedTrades: BacktestTrade[] = [];
     const equityCurve: EquityCurvePoint[] = [
@@ -238,6 +241,11 @@ export class MultiStyleBacktester {
           });
 
           tradeReturns.push(pnlPercent);
+          if (totalPnlDollar < 0) {
+            consecutiveLossCount++;
+          } else if (totalPnlDollar > 0) {
+            consecutiveLossCount = 0;
+          }
           activePos = null;
 
           if (currentCash > peakEquity) peakEquity = currentCash;
@@ -263,6 +271,10 @@ export class MultiStyleBacktester {
           continue;
         }
         if (inRollover) {
+          continue;
+        }
+        const inNewsBlackout = config.newsFilter && EconomicCalendarEngine.isNewsBlackout(currentCandle.timestamp, config.symbol).inBlackout;
+        if (inNewsBlackout) {
           continue;
         }
         const evalRes = MultiStyleEngine.evaluate(slice, config.symbol, config.style);
@@ -292,7 +304,16 @@ export class MultiStyleBacktester {
             });
 
             if (mcRes.probabilityHittingTarget >= config.minMonteCarloTpProbability) {
-              const dollarRisk = currentCash * (config.riskPerTradePercent / 100);
+              let effectiveRiskPercent = config.riskPerTradePercent;
+              if (config.adaptiveRiskScaling && consecutiveLossCount > 0) {
+                if (consecutiveLossCount === 1) {
+                  effectiveRiskPercent = Number((effectiveRiskPercent * 0.75).toFixed(2));
+                } else if (consecutiveLossCount >= 2) {
+                  effectiveRiskPercent = Number((effectiveRiskPercent * 0.50).toFixed(2));
+                }
+              }
+
+              const dollarRisk = currentCash * (effectiveRiskPercent / 100);
               const priceDistance = Math.abs(candidate.entryPrice - candidate.stopLossPrice);
               const rawVolume = priceDistance > 0 ? dollarRisk / (priceDistance * contractMultiplier) : 0;
               if (rawVolume < 0.01) {
@@ -421,6 +442,12 @@ export class MultiStyleBacktester {
           ? 'توزیع مونت‌کارلو با موفقیت ستاپ‌های سودده را از زیان‌ده تفکیک کرد.'
           : 'نیاز به افزایش تعداد گام‌ها یا تنظیم مجدد نوسان‌پذیری محلی است.',
       },
+      equityMonteCarlo: completedTrades.length > 0
+        ? EquityCurveMonteCarloEngine.runSimulation(
+            completedTrades.map(t => t.pnlDollar),
+            { initialEquity: config.initialCapital }
+          )
+        : undefined,
       trades: completedTrades,
     };
   }

@@ -4,6 +4,7 @@
 
 import { SymbolId, Timeframe } from './market';
 import { MarketRegimeType, TradingStyleType } from './regimes';
+import { EquityMonteCarloResult } from '../core/equity-curve-monte-carlo';
 
 export type BacktestSessionFilter =
   | 'ALL'
@@ -29,6 +30,8 @@ export interface BacktestConfig {
   useDynamicSpread?: boolean;
   rolloverBlackout?: boolean;
   intraBarModel?: 'PESSIMISTIC' | 'BAR_POLARITY';
+  newsFilter?: boolean;
+  adaptiveRiskScaling?: boolean;
 }
 
 export const DEFAULT_BACKTEST_CONFIG: BacktestConfig = {
@@ -48,6 +51,8 @@ export const DEFAULT_BACKTEST_CONFIG: BacktestConfig = {
   useDynamicSpread: true,
   rolloverBlackout: true,
   intraBarModel: 'BAR_POLARITY',
+  newsFilter: true,
+  adaptiveRiskScaling: false,
 };
 
 export type BacktestExitReason =
@@ -120,5 +125,6 @@ export interface BacktestReport {
     lowProbWinRate: number;
     correlationNoteFa: string;
   };
+  equityMonteCarlo?: EquityMonteCarloResult;
   trades: BacktestTrade[];
 }

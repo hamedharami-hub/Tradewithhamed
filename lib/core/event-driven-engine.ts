@@ -18,6 +18,7 @@ import {
   isRolloverBlackout,
   resolveIntraBarExit,
 } from './market-microstructure';
+import { EconomicCalendarEngine } from './economic-calendar';
 
 // ساعت مجازی رویدادمحور با جلوگیری از دسترسی به زمان آینده
 export class VirtualClock implements IClockPort {
@@ -75,6 +76,7 @@ export interface EngineConfig {
   defaultSpreadPips: number;
   useDynamicSpread?: boolean;
   useRolloverBlackout?: boolean;
+  useNewsBlackout?: boolean;
   enablePartialTp?: boolean;
   ambiguityPolicy: IntrabarAmbiguityPolicy;
   slippageModel: {
@@ -105,6 +107,7 @@ export class EventDrivenExecutionEngine implements IExecutionPort {
       defaultSpreadPips: config.defaultSpreadPips ?? 1.5,
       useDynamicSpread: config.useDynamicSpread ?? false,
       useRolloverBlackout: config.useRolloverBlackout ?? false,
+      useNewsBlackout: config.useNewsBlackout ?? false,
       enablePartialTp: config.enablePartialTp ?? false,
       ambiguityPolicy: config.ambiguityPolicy || 'PESSIMISTIC',
       slippageModel: config.slippageModel || {
@@ -280,11 +283,18 @@ export class EventDrivenExecutionEngine implements IExecutionPort {
     this.clock.advanceTo(candle.timestamp);
     const events: ExecutionEventPayload[] = [];
     const pipVal = SYMBOL_SPECS[symbol].pipSize;
-    const effectiveSpreadPips = this.config.useDynamicSpread
-      ? getDynamicSpreadPips(symbol, candle.timestamp, this.config.defaultSpreadPips)
-      : this.config.defaultSpreadPips;
+    const newsMultiplier = this.config.useNewsBlackout
+      ? EconomicCalendarEngine.getNewsSpreadMultiplier(candle.timestamp, symbol)
+      : 1.0;
+    const effectiveSpreadPips =
+      (this.config.useDynamicSpread
+        ? getDynamicSpreadPips(symbol, candle.timestamp, this.config.defaultSpreadPips)
+        : this.config.defaultSpreadPips) * newsMultiplier;
     const spreadPoints = effectiveSpreadPips * pipVal;
     const inRollover = this.config.useRolloverBlackout && isRolloverBlackout(candle.timestamp);
+    const inNewsBlackout =
+      this.config.useNewsBlackout &&
+      EconomicCalendarEngine.isNewsBlackout(candle.timestamp, symbol).inBlackout;
 
     // ۱. بررسی انقضای سفارش‌های معلق (Setup Expiry - مثلاً حداکثر ۳ الی ۶ کندل)
     const activePending: OrderIntentPayload[] = [];
@@ -308,8 +318,8 @@ export class EventDrivenExecutionEngine implements IExecutionPort {
         continue;
       }
 
-      // در زمان رول‌اور (۲۱:۰۰ تا ۲۲:۳۰ UTC)، اجرای سفارش‌ها مسدود می‌شود تا از جهش اسپرد در امان بماند
-      if (inRollover) {
+      // در زمان رول‌اور (۲۱:۰۰ تا ۲۲:۳۰ UTC) یا بلک‌اوت اخبار پرریسک، اجرای سفارش‌ها مسدود می‌شود تا از جهش اسپرد در امان بماند
+      if (inRollover || inNewsBlackout) {
         activePending.push(order);
         continue;
       }

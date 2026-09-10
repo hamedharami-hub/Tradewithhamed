@@ -18,6 +18,7 @@ export interface RiskBudgetConfig {
   maxRiskPerTradeAmount: number;      // سقف دلاری ریسک هر معامله (مثلاً ۱۰۰ دلار)
   consecutiveLossesLimit: number;     // حداکثر زیان‌های متوالی پیش از فعال‌سازی خنک‌سازی (مثلاً ۳)
   cooldownPeriodMinutes: number;      // مدت زمان مسدودسازی پس از زیان‌های متوالی (مثلاً ۶۰ دقیقه)
+  enableAdaptiveRiskScaling?: boolean; // کاهش تطبیقی ریسک پس از زیان‌های متوالی (ضد تیلت)
 }
 
 /**
@@ -70,6 +71,7 @@ export interface RiskGuardianState {
     volatilitySpike: boolean;
     sessionClosed: boolean;
     weekendGap: boolean;
+    newsSpike?: boolean;
   };
   todayClosedTradesCount: number;
 }
@@ -89,6 +91,7 @@ export interface RiskEvaluationResult {
     | 'SPREAD_CIRCUIT_BREAKER_TRIGGERED'
     | 'VOLATILITY_SPIKE_DETECTED'
     | 'WEEKEND_PROTECTION_BLOCKED'
+    | 'NEWS_BLACKOUT_ACTIVE'
     | 'INVALID_RISK_REWARD_RATIO';
   messageFa: string;
   evaluatedRiskDollars: number;

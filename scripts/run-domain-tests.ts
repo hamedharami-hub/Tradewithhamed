@@ -27,6 +27,8 @@ const suiteModules = [
   '../lib/research/__tests__/parameter-optimizer.test',
   '../lib/research/__tests__/acceptance-gate.test',
   '../lib/core/__tests__/market-microstructure.test',
+  '../lib/core/__tests__/economic-calendar.test',
+  '../lib/core/__tests__/equity-curve-monte-carlo.test',
 ];
 
 export {};

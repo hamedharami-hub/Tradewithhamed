@@ -20,6 +20,8 @@ import {
   Sparkles,
   Clock,
   ShieldAlert,
+  Shield,
+  Target,
 } from 'lucide-react';
 
 interface MultiStyleBacktestModalProps {
@@ -44,6 +46,8 @@ export const MultiStyleBacktestModal: React.FC<MultiStyleBacktestModalProps> = (
   const [useDynamicSpread, setUseDynamicSpread] = useState<boolean>(true);
   const [rolloverBlackout, setRolloverBlackout] = useState<boolean>(true);
   const [intraBarModel, setIntraBarModel] = useState<'PESSIMISTIC' | 'BAR_POLARITY'>('BAR_POLARITY');
+  const [newsFilter, setNewsFilter] = useState<boolean>(true);
+  const [adaptiveRiskScaling, setAdaptiveRiskScaling] = useState<boolean>(false);
   const [report, setReport] = useState<BacktestReport | null>(null);
   const [isRunning, setIsRunning] = useState<boolean>(false);
 
@@ -63,6 +67,8 @@ export const MultiStyleBacktestModal: React.FC<MultiStyleBacktestModalProps> = (
           useDynamicSpread,
           rolloverBlackout,
           intraBarModel,
+          newsFilter,
+          adaptiveRiskScaling,
         });
         setReport(res);
       } finally {
@@ -243,6 +249,38 @@ export const MultiStyleBacktestModal: React.FC<MultiStyleBacktestModalProps> = (
                 />
               </label>
             </div>
+
+            {/* تاگل فیلتر اخبار پرریسک تقویم */}
+            <div className="flex items-center justify-between sm:justify-center gap-2 bg-[#151a24] px-3 py-2 rounded-xl border border-[#262f40]">
+              <label className="flex items-center gap-2 cursor-pointer w-full justify-between">
+                <span className="text-[11px] text-zinc-300 font-bold flex items-center gap-1">
+                  <ShieldAlert className="w-3.5 h-3.5 text-rose-400" />
+                  <span>فیلتر اخبار ماکرو (News)</span>
+                </span>
+                <input
+                  type="checkbox"
+                  checked={newsFilter}
+                  onChange={e => setNewsFilter(e.target.checked)}
+                  className="rounded accent-rose-500 w-4 h-4 cursor-pointer"
+                />
+              </label>
+            </div>
+
+            {/* تاگل ریسک تطبیقی ضد تیلت */}
+            <div className="flex items-center justify-between sm:justify-center gap-2 bg-[#151a24] px-3 py-2 rounded-xl border border-[#262f40]">
+              <label className="flex items-center gap-2 cursor-pointer w-full justify-between">
+                <span className="text-[11px] text-zinc-300 font-bold flex items-center gap-1">
+                  <Shield className="w-3.5 h-3.5 text-emerald-400" />
+                  <span>ریسک تطبیقی (ضد تیلت)</span>
+                </span>
+                <input
+                  type="checkbox"
+                  checked={adaptiveRiskScaling}
+                  onChange={e => setAdaptiveRiskScaling(e.target.checked)}
+                  className="rounded accent-emerald-500 w-4 h-4 cursor-pointer"
+                />
+              </label>
+            </div>
           </div>
 
           {/* نوار اکشن و تاگل خروج پله‌ای */}
@@ -414,6 +452,75 @@ export const MultiStyleBacktestModal: React.FC<MultiStyleBacktestModalProps> = (
                   </div>
                 </div>
               </div>
+
+              {/* ارزیابی بقا و ریسک ورشکستگی مونت‌کارلو در پراپ‌فرم */}
+              {report.equityMonteCarlo && (
+                <div className="p-4 bg-gradient-to-br from-[#101420] to-[#0c1018] rounded-2xl border border-[#232c40] space-y-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#1c2436] pb-2.5">
+                    <div className="flex items-center gap-2">
+                      <Target className="w-4 h-4 text-emerald-400" />
+                      <span className="font-bold text-zinc-100 text-xs">
+                        تحلیل مونت‌کارلو توالی معاملات و بقا در چالش‌های پراپ‌فرم ({report.equityMonteCarlo.iterations} تکرار)
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className={`text-[10px] px-2.5 py-0.5 rounded-full font-bold border ${
+                        report.equityMonteCarlo.safetyRating === 'INSTITUTIONAL_SAFE'
+                          ? 'bg-emerald-500/10 text-emerald-300 border-emerald-500/30'
+                          : report.equityMonteCarlo.safetyRating === 'ROBUST_EDGE'
+                          ? 'bg-cyan-500/10 text-cyan-300 border-cyan-500/30'
+                          : report.equityMonteCarlo.safetyRating === 'MODERATE_RISK'
+                          ? 'bg-amber-500/10 text-amber-300 border-amber-500/30'
+                          : 'bg-rose-500/10 text-rose-300 border-rose-500/30'
+                      }`}>
+                        {report.equityMonteCarlo.safetyRating === 'INSTITUTIONAL_SAFE'
+                          ? 'امنیت سطح سازمانی'
+                          : report.equityMonteCarlo.safetyRating === 'ROBUST_EDGE'
+                          ? 'برتری آماری مستحکم'
+                          : report.equityMonteCarlo.safetyRating === 'MODERATE_RISK'
+                          ? 'ریسک متوسط'
+                          : 'هشدار ریسک ورشکستگی'}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center text-[11px]">
+                    <div className="p-2 rounded-xl bg-[#141926] border border-[#1f2638]">
+                      <span className="text-zinc-400 text-[10px]">احتمال قبولی در چالش</span>
+                      <div className="font-mono font-bold text-emerald-400 text-sm">
+                        {report.equityMonteCarlo.riskMetrics.propFirmPassProbabilityPercent}٪
+                      </div>
+                    </div>
+
+                    <div className="p-2 rounded-xl bg-[#141926] border border-[#1f2638]">
+                      <span className="text-zinc-400 text-[10px]">احتمال ورشکستگی (Ruin)</span>
+                      <div className={`font-mono font-bold text-sm ${
+                        report.equityMonteCarlo.riskMetrics.ruinProbabilityPercent <= 5 ? 'text-cyan-400' : 'text-rose-400'
+                      }`}>
+                        {report.equityMonteCarlo.riskMetrics.ruinProbabilityPercent}٪
+                      </div>
+                    </div>
+
+                    <div className="p-2 rounded-xl bg-[#141926] border border-[#1f2638]">
+                      <span className="text-zinc-400 text-[10px]">دراودان سناریوی ۹۵٪</span>
+                      <div className="font-mono font-bold text-amber-400 text-sm">
+                        {report.equityMonteCarlo.drawdownDistribution.p95}٪
+                      </div>
+                    </div>
+
+                    <div className="p-2 rounded-xl bg-[#141926] border border-[#1f2638]">
+                      <span className="text-zinc-400 text-[10px]">میانه بدترین زنجیره ضرر</span>
+                      <div className="font-mono font-bold text-zinc-200 text-sm">
+                        {report.equityMonteCarlo.riskMetrics.medianMaxConsecutiveLosses} معامله
+                      </div>
+                    </div>
+                  </div>
+
+                  <p className="text-xs text-zinc-300 bg-[#121622] p-2.5 rounded-xl border border-[#1e2536] leading-relaxed">
+                    {report.equityMonteCarlo.summaryFa}
+                  </p>
+                </div>
+              )}
             </div>
           )}
         </div>
