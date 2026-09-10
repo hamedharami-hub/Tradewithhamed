@@ -45,7 +45,7 @@ import {
   formatDatasetDateRange,
   type HistoricalDatasetCatalogItem,
 } from '@/lib/research/dataset-catalog';
-import { bundledDatasetForSymbol } from '@/lib/research/bundled-historical-datasets';
+import { bundledDatasetForSymbol, bundledIntradayDatasetForSymbol } from '@/lib/research/bundled-historical-datasets';
 import { createDatasetFromCandles } from '@/lib/research/dataset';
 import { createBaselineResearchConfig } from '@/lib/research/default-config';
 import { ResearchExperimentEngine } from '@/lib/research/experiment-engine';
@@ -284,6 +284,37 @@ export function ResearchDesk() {
       setRunMessage(dataset.caveatFa || `${number.format(parsed.candles.length)} کندل روزانهٔ واقعی در مرورگر بارگذاری شد. برای ماتریس بلندمدت آماده است.`);
     } catch (error) {
       setRunMessage(`بارگذاری دادهٔ آماده ناموفق بود: ${error instanceof Error ? error.message : 'خطای ناشناخته'}`);
+    } finally {
+      setIsRunning(false);
+    }
+  };
+
+  const handleLoadBundledIntradayDataset = async () => {
+    const dataset = bundledIntradayDatasetForSymbol(symbol);
+    if (!dataset) {
+      setRunMessage('برای این نماد دادهٔ ۵ دقیقه‌ای آماده وجود ندارد؛ CSV معتبر خود را وارد کنید.');
+      return;
+    }
+    setIsRunning(true);
+    try {
+      const response = await fetch(dataset.url, { cache: 'no-store' });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const parsed = DataWorkbench.parseCSV(await response.text(), '5M', 0);
+      if (parsed.candles.length < 200) throw new Error('دادهٔ ۵ دقیقه‌ای آماده کافی نیست.');
+      setBaseCandles(parsed.candles);
+      setBaseTimeframe('5M');
+      setTargetTimeframe('5M');
+      setImportedFileName(dataset.id);
+      setSourceLabel(`${dataset.labelFa} · ${dataset.source} · ${dataset.providerSymbol}`);
+      setStartDate('');
+      setEndDate('');
+      setReplayIndex(Math.min(220, parsed.candles.length));
+      setResult(null);
+      setMatrixResult(null);
+      setIsPlaying(false);
+      setRunMessage(dataset.caveatFa || `${number.format(parsed.candles.length)} کندل ۵ دقیقه‌ای در مرورگر بارگذاری شد.`);
+    } catch (error) {
+      setRunMessage(`بارگذاری دادهٔ ۵ دقیقه‌ای ناموفق بود: ${error instanceof Error ? error.message : 'خطای ناشناخته'}`);
     } finally {
       setIsRunning(false);
     }
@@ -544,7 +575,10 @@ export function ResearchDesk() {
               <button type="button" onClick={handleLoadBundledDataset} disabled={isRunning || !bundledDatasetForSymbol(symbol)} className="w-full secondary-button disabled:opacity-40">
                 <Database className="w-4 h-4" /> بارگذاری دادهٔ روزانهٔ بلندمدت آماده
               </button>
-              <p className="-mt-2 text-[10px] leading-5 text-slate-500">برای هر پنج نماد، یک CSV روزانهٔ حدود ده‌ساله از منبع عمومی آماده شده است. برای M1 تا H1 همچنان CSV معتبر خودتان را وارد کنید.</p>
+              <button type="button" onClick={handleLoadBundledIntradayDataset} disabled={isRunning || !bundledIntradayDatasetForSymbol(symbol)} className="w-full secondary-button disabled:opacity-40">
+                <Database className="w-4 h-4" /> بارگذاری دادهٔ ۵ دقیقه‌ای سال ۲۰۲۴
+              </button>
+              <p className="-mt-2 text-[10px] leading-5 text-slate-500">برای EURUSD، GBPUSD و USDJPY دادهٔ ۵ دقیقه‌ای سال ۲۰۲۴ داخل اپ قرار گرفته است. این داده عمومی و پژوهشی است، نه broker-match.</p>
               <p className="text-[10px] leading-5 text-slate-500">{DATASET_IMPORT_GUIDANCE_FA}</p>
               <div className="grid grid-cols-2 gap-2">
                 <label className="label">شروع UTC

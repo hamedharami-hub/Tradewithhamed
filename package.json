@@ -36,6 +36,7 @@
     "data:download:histdata:range": "bash scripts/download-histdata-range.sh",
     "data:merge:histdata:years": "tsx scripts/merge-histdata-years.ts",
     "data:build:bundled-history": "tsx scripts/build-bundled-yahoo-datasets.ts",
+    "data:build:bundled-intraday": "tsx scripts/build-bundled-intraday-datasets.ts",
     "research:matrix:bundled-d1": "tsx scripts/run-bundled-d1-research-matrix.ts",
     "research:walk-forward:shortlist": "tsx scripts/run-bundled-shortlist-walk-forward.ts",
     "research:stress:oos-cost": "tsx scripts/run-bundled-oos-cost-stress.ts",

@@ -3,8 +3,8 @@ import type { SymbolId } from '@/lib/contracts/market';
 export interface BundledHistoricalDataset {
   id: string;
   symbol: SymbolId;
-  timeframe: 'D1';
-  source: 'Yahoo Finance';
+  timeframe: '5M' | 'D1';
+  source: 'Yahoo Finance' | 'HistData aggregated';
   providerSymbol: string;
   labelFa: string;
   url: string;
@@ -18,6 +18,9 @@ export interface BundledHistoricalDataset {
  * an explicit user CSV import, where broker/source compatibility can be checked.
  */
 export const BUNDLED_HISTORICAL_DATASETS: BundledHistoricalDataset[] = [
+  { id: 'HISTDATA-EURUSD-5M-2024', symbol: 'EURUSD', timeframe: '5M', source: 'HistData aggregated', providerSymbol: 'EURUSD', labelFa: 'EURUSD پنج‌دقیقه‌ای، سال ۲۰۲۴', url: '/historical/intraday/histdata-eurusd-5m-2024.csv', caveatFa: 'دادهٔ عمومی HistData است و broker-match نیست؛ برای پژوهش و Backtest استفاده شود.' },
+  { id: 'HISTDATA-GBPUSD-5M-2024', symbol: 'GBPUSD', timeframe: '5M', source: 'HistData aggregated', providerSymbol: 'GBPUSD', labelFa: 'GBPUSD پنج‌دقیقه‌ای، سال ۲۰۲۴', url: '/historical/intraday/histdata-gbpusd-5m-2024.csv', caveatFa: 'دادهٔ عمومی HistData است و broker-match نیست؛ ۶۰ ردیف تکراری در M1 اولیه حذف شده است.' },
+  { id: 'HISTDATA-USDJPY-5M-2024', symbol: 'USDJPY', timeframe: '5M', source: 'HistData aggregated', providerSymbol: 'USDJPY', labelFa: 'USDJPY پنج‌دقیقه‌ای، سال ۲۰۲۴', url: '/historical/intraday/histdata-usdjpy-5m-2024.csv', caveatFa: 'از artifact چندسالهٔ USDJPY استخراج شده؛ دادهٔ عمومی است و broker-match نیست.' },
   { id: 'YAHOO-EURUSD-D1-10Y', symbol: 'EURUSD', timeframe: 'D1', source: 'Yahoo Finance', providerSymbol: 'EURUSD=X', labelFa: 'EURUSD روزانه، حدود ۱۰ سال', url: '/historical/yahoo-eurusd-d1-10y.csv' },
   { id: 'YAHOO-GBPUSD-D1-10Y', symbol: 'GBPUSD', timeframe: 'D1', source: 'Yahoo Finance', providerSymbol: 'GBPUSD=X', labelFa: 'GBPUSD روزانه، حدود ۱۰ سال', url: '/historical/yahoo-gbpusd-d1-10y.csv' },
   { id: 'YAHOO-USDJPY-D1-10Y', symbol: 'USDJPY', timeframe: 'D1', source: 'Yahoo Finance', providerSymbol: 'JPY=X', labelFa: 'USDJPY روزانه، حدود ۱۰ سال', url: '/historical/yahoo-usdjpy-d1-10y.csv' },
@@ -26,5 +29,9 @@ export const BUNDLED_HISTORICAL_DATASETS: BundledHistoricalDataset[] = [
 ];
 
 export function bundledDatasetForSymbol(symbol: SymbolId): BundledHistoricalDataset | undefined {
-  return BUNDLED_HISTORICAL_DATASETS.find(dataset => dataset.symbol === symbol);
+  return BUNDLED_HISTORICAL_DATASETS.find(dataset => dataset.symbol === symbol && dataset.timeframe === 'D1');
+}
+
+export function bundledIntradayDatasetForSymbol(symbol: SymbolId): BundledHistoricalDataset | undefined {
+  return BUNDLED_HISTORICAL_DATASETS.find(dataset => dataset.symbol === symbol && dataset.timeframe === '5M');
 }

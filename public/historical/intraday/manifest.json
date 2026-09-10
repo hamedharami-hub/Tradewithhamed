@@ -1,0 +1,47 @@
+{
+  "version": "bundled-intraday-v1",
+  "datasets": [
+    {
+      "id": "histdata-eurusd-5m-2024",
+      "symbol": "EURUSD",
+      "provider": "HistData aggregated",
+      "providerSymbol": "EURUSD",
+      "timeframe": "5M",
+      "url": "/historical/intraday/histdata-eurusd-5m-2024.csv",
+      "bars": 74887,
+      "startUtc": "2024-01-01T22:00:00.000Z",
+      "endUtc": "2024-12-31T21:50:00.000Z",
+      "contentSha256": "939895baf30802e1eb8d2fbf88cf640e1967a5c2c2afca95586daa4b2858f446",
+      "sourceDataset": "DS-HISTDATA-EURUSD-1M-0f2412690abe",
+      "sourceNoteFa": "از HistData M1 سال ۲۰۲۴ استخراج و به ۵ دقیقه تجمیع شده است؛ برای پژوهش، نه broker-match."
+    },
+    {
+      "id": "histdata-gbpusd-5m-2024",
+      "symbol": "GBPUSD",
+      "provider": "HistData aggregated",
+      "providerSymbol": "GBPUSD",
+      "timeframe": "5M",
+      "url": "/historical/intraday/histdata-gbpusd-5m-2024.csv",
+      "bars": 74875,
+      "startUtc": "2024-01-01T22:00:00.000Z",
+      "endUtc": "2024-12-31T21:50:00.000Z",
+      "contentSha256": "40c529f847d05c15378406b4c08438cf9c4e5131a17250d42be3817f1b99fac8",
+      "sourceDataset": "DS-HISTDATA-GBPUSD-1M-0de617c38f18",
+      "sourceNoteFa": "از HistData M1 سال ۲۰۲۴ استخراج و به ۵ دقیقه تجمیع شده است؛ برای پژوهش، نه broker-match."
+    },
+    {
+      "id": "histdata-usdjpy-5m-2024",
+      "symbol": "USDJPY",
+      "provider": "HistData aggregated",
+      "providerSymbol": "USDJPY",
+      "timeframe": "5M",
+      "url": "/historical/intraday/histdata-usdjpy-5m-2024.csv",
+      "bars": 74698,
+      "startUtc": "2024-01-01T22:00:00.000Z",
+      "endUtc": "2024-12-31T21:50:00.000Z",
+      "contentSha256": "9e696bdd4f02c70589d8b89775f22026f4dbd5a4293c533f2f8cb1dba51d3ea4",
+      "sourceDataset": "DS-HISTDATAMULTIYEAR-USDJPY-1M-4af43d39a07e",
+      "sourceNoteFa": "از artifact چندسالهٔ USDJPY در repository، فقط سال ۲۰۲۴ استخراج و به ۵ دقیقه تجمیع شده است."
+    }
+  ]
+}
