@@ -22,6 +22,7 @@ export function createBaselineResearchConfig(input: {
     stopLossAtrBuffer: 0.2,
     targetRiskReward: 2,
     entryExpiryBars: input.timeframe === 'D1' ? 5 : 12,
+    trendMinEmaDistanceAtr: 0,
     costModel: {
       modelVersion: 'cost-model-v1',
       spreadPips: SYMBOL_SPECS[input.symbol].typicalSpreadPips,

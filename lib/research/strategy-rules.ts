@@ -17,6 +17,7 @@ export interface RuleParameters {
   trendEmaPeriod: number;
   trendStopAtrMultiple: number;
   trendTargetAtrMultiple: number;
+  trendMinEmaDistanceAtr: number;
 }
 
 export const RESEARCH_RULE_VERSION = 'research-rules-v1' as const;
@@ -33,6 +34,7 @@ export const DEFAULT_RULE_PARAMETERS: RuleParameters = {
   trendEmaPeriod: 200,
   trendStopAtrMultiple: 2,
   trendTargetAtrMultiple: 4,
+  trendMinEmaDistanceAtr: 0,
 };
 
 function parameterHash(parameters: RuleParameters): string {
@@ -325,6 +327,8 @@ function evaluateTrendBreakout(candles: Candle[], symbol: SymbolId, timeframe: T
   const previousEma = ema.at(-2);
   const atr = calculateWilderATR(candles, 20).at(-1);
   if (!atr || !currentEma || !previousEma) return null;
+  const emaDistanceAtr = Math.abs(candle.close - currentEma) / atr;
+  if (emaDistanceAtr < parameters.trendMinEmaDistanceAtr) return null;
   if (candle.close > priorHigh && currentEma >= previousEma) {
     return createCandidate({
       symbol, timeframe, variant: 'TREND_BREAKOUT_55_EMA200_V1', direction: 'BUY', candle,

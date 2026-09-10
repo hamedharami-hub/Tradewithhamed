@@ -194,6 +194,7 @@ function evaluateRun(candles: Candle[], config: ResearchExperimentConfig, varian
     if (openPositions >= config.maxConcurrentPositions || hasPendingOrder) continue;
     if (config.evaluationStartTime !== undefined && currentCandle.timestamp < config.evaluationStartTime) continue;
     if (config.allowedSessions && !config.allowedSessions.includes(sessionForTimestamp(currentCandle.timestamp))) continue;
+    if (config.allowedDaysOfWeekUtc && !config.allowedDaysOfWeekUtc.includes(new Date(currentCandle.timestamp).getUTCDay())) continue;
     const slice = candles.slice(0, index + 1);
     const candidate = evaluateResearchStrategy(slice, config.symbol, config.timeframe, variant, {
       stopLossAtrBuffer: config.stopLossAtrBuffer,
@@ -201,6 +202,7 @@ function evaluateRun(candles: Candle[], config: ResearchExperimentConfig, varian
       expiryBars: config.entryExpiryBars,
       ...(config.minSweepPenetrationAtr !== undefined ? { minSweepPenetrationAtr: config.minSweepPenetrationAtr } : {}),
       ...(config.minFvgSizeAtr !== undefined ? { minFvgSizeAtr: config.minFvgSizeAtr } : {}),
+      ...(config.trendMinEmaDistanceAtr !== undefined ? { trendMinEmaDistanceAtr: config.trendMinEmaDistanceAtr } : {}),
     });
     if (!candidate) continue;
     totalSignals++;
@@ -273,6 +275,10 @@ function evaluateRun(candles: Candle[], config: ResearchExperimentConfig, varian
     totalSlippagePips: Number((closedTrades.length * config.costModel.slippagePips * 2).toFixed(2)),
     startEquity: config.initialCash,
     endEquity: ledger.equity,
+    markToMarketEquity: ledger.equity,
+    unrealizedPnlAtEnd: ledger.totalUnrealizedPnl,
+    cashBalanceAtEnd: ledger.cashBalance,
+    openPositionDetails: ledger.positions.filter(position => position.isOpen).map(position => ({ positionId: position.positionId, direction: position.direction, entryPrice: position.entryPrice, currentPrice: position.currentPrice, unrealizedPnl: position.unrealizedPnl, openedTimestamp: position.openedTimestamp })),
     openPositionsAtEnd: ledger.positions.filter(position => position.isOpen).length,
     status,
   };

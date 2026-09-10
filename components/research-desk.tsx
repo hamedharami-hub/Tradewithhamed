@@ -148,6 +148,7 @@ export function ResearchDesk() {
   const [replayIndex, setReplayIndex] = useState(20);
   const [isPlaying, setIsPlaying] = useState(false);
   const [initialCash, setInitialCash] = useState(10000);
+  const [trendMinEmaDistanceAtr, setTrendMinEmaDistanceAtr] = useState(0);
   const [spreadPips, setSpreadPips] = useState(SYMBOL_SPECS.XAUUSD.typicalSpreadPips);
   const [commission, setCommission] = useState(SYMBOL_SPECS.XAUUSD.commissionPerLot);
   const [result, setResult] = useState<PerformanceMetrics | null>(null);
@@ -426,6 +427,7 @@ export function ResearchDesk() {
           strategyVariants: selectedVariants,
           aiModes: selectedAiModes,
           costModel: { ...config.costModel, spreadPips, commissionPerLotRoundTrip: commission },
+          trendMinEmaDistanceAtr,
         });
         setMatrixResult(matrix);
         setRunMessage(`ماتریس ${matrix.runs.length} اجرای پژوهشی تکمیل شد. این نتایج comparative هستند و هیچ سفارش یا اتصال broker ایجاد نشده است.`);
@@ -700,6 +702,9 @@ export function ResearchDesk() {
                 </label>
                 <label className="label">کارمزد / lot
                   <input type="number" min="0" step="0.1" value={commission} onChange={event => setCommission(Number(event.target.value))} className="field mt-1" />
+                </label>
+                <label className="label">حداقل فاصله قیمت از EMA200 (ATR)
+                  <input type="number" min="0" step="0.05" value={trendMinEmaDistanceAtr} onChange={event => setTrendMinEmaDistanceAtr(Number(event.target.value))} className="field mt-1" />
                 </label>
               </div>
               <div className="mt-5 border-t border-slate-800 pt-4">

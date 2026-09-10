@@ -77,12 +77,15 @@ export interface ResearchExperimentConfig {
   entryExpiryBars: number;
   minSweepPenetrationAtr?: number;
   minFvgSizeAtr?: number;
+  /** Minimum absolute distance between close and trend EMA, measured in ATR. */
+  trendMinEmaDistanceAtr?: number;
   costModel: CostModelConfig;
   startTime?: number;
   endTime?: number;
   /** Optional scoring boundary; candles before it provide warmup context only. */
   evaluationStartTime?: number;
   allowedSessions?: ResearchTrade['sessionUtc'][];
+  allowedDaysOfWeekUtc?: number[];
   seed: number;
   ruleVersion: 'research-rules-v1';
   approvedCandidateIds?: string[];
@@ -142,6 +145,10 @@ export interface StrategyRunSummary {
   totalSlippagePips: number;
   startEquity: number;
   endEquity: number;
+  markToMarketEquity: number;
+  unrealizedPnlAtEnd: number;
+  cashBalanceAtEnd: number;
+  openPositionDetails: Array<{ positionId: string; direction: 'BUY' | 'SELL'; entryPrice: number; currentPrice: number; unrealizedPnl: number; openedTimestamp: number }>;
   openPositionsAtEnd: number;
   status: 'COMPLETE' | 'INSUFFICIENT_DATA' | 'NO_TRADES';
 }

@@ -49,6 +49,8 @@
     "research:paper:gbpusd-4h-30d-historical": "tsx scripts/run-gbpusd-4h-30d-historical-replay.ts",
     "research:walk-forward:shortlist": "tsx scripts/run-bundled-shortlist-walk-forward.ts",
     "research:stress:oos-cost": "tsx scripts/run-bundled-oos-cost-stress.ts",
+    "research:regime-filter:test": "tsx scripts/run-gbpusd-4h-regime-filter-test.ts",
+    "research:matrix:custom": "tsx scripts/run-research-matrix.ts",
     "data:export:ctrader-usdjpy:gate1": "tsx scripts/export-ctrader-usdjpy-history.ts",
     "clean": "next clean"
   },
