@@ -46,6 +46,7 @@
     "research:ai:gbpusd-4h-smoke": "tsx scripts/run-gbpusd-4h-agentic-smoke.ts",
     "research:ai:gbpusd-4h-ablation": "tsx scripts/run-agent-comparison.ts",
     "research:paper:gbpusd-4h-replay": "tsx scripts/run-gbpusd-4h-paper-forward-replay.ts",
+    "research:paper:gbpusd-4h-30d-historical": "tsx scripts/run-gbpusd-4h-30d-historical-replay.ts",
     "research:walk-forward:shortlist": "tsx scripts/run-bundled-shortlist-walk-forward.ts",
     "research:stress:oos-cost": "tsx scripts/run-bundled-oos-cost-stress.ts",
     "data:export:ctrader-usdjpy:gate1": "tsx scripts/export-ctrader-usdjpy-history.ts",
