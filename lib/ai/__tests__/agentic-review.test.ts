@@ -23,5 +23,14 @@ export async function runAgenticReviewTests(): Promise<AgenticReviewTestResult[]
   results.push({ name: 'Judge vetoes critic disagreement', passed: !judged.approved && judged.reasonCodes.includes('CRITIC_REJECTED'), details: judged.summaryFa });
   const review = await reviewCandidateWithFourAgents(candidate);
   results.push({ name: 'Agentic pipeline approves valid advisory-only candidate', passed: review.advisoryOnly && review.finalDecision === 'PAPER_TRADE' && review.judge.approved, details: `${review.finalDecision}; judge=${review.judge.approved}` });
+  const breakoutReview = await reviewCandidateWithFourAgents({
+    ...candidate,
+    id: 'AGENTIC-TREND-1',
+    strategyName: 'TREND_BREAKOUT_55_EMA200_V1',
+    style: 'TREND_BREAKOUT',
+    evidenceIds: { contextSwingId: 'DONCHIAN55-HIGH-1' },
+    ruleProvenance: { ruleVersion: 'research-rules-v1', parameterHash: 'fnv1a-test', resolvedParameters: {}, signalCandleTimestamp: candidate.createdAtTimestamp, evidenceAvailableAtTimestamp: candidate.createdAtTimestamp, lifecycle: 'CONFIRMED' },
+  });
+  results.push({ name: 'Four-agent gate evaluates breakout evidence without requiring an FVG', passed: breakoutReview.finalDecision === 'PAPER_TRADE' && breakoutReview.scanner.approved, details: `${breakoutReview.finalDecision}; scanner=${breakoutReview.scanner.approved}` });
   return results;
 }

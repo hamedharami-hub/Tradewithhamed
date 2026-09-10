@@ -13,6 +13,11 @@ export interface RuleParameters {
   minFvgSizeAtr: number;
   meanReversionLookback: number;
   meanReversionEntryZScore: number;
+  trendChannelLookback: number;
+  trendEmaPeriod: number;
+  trendStopAtrMultiple: number;
+  trendTargetAtrMultiple: number;
+  trendMinEmaDistanceAtr: number;
 }
 
 export const RESEARCH_RULE_VERSION = 'research-rules-v1' as const;
@@ -25,6 +30,11 @@ export const DEFAULT_RULE_PARAMETERS: RuleParameters = {
   minFvgSizeAtr: 0.3,
   meanReversionLookback: 20,
   meanReversionEntryZScore: 2,
+  trendChannelLookback: 55,
+  trendEmaPeriod: 200,
+  trendStopAtrMultiple: 2,
+  trendTargetAtrMultiple: 4,
+  trendMinEmaDistanceAtr: 0,
 };
 
 function parameterHash(parameters: RuleParameters): string {
@@ -128,7 +138,11 @@ function createCandidate(input: {
     stopLossPrice: roundPrice(input.stopLossPrice, input.symbol),
     takeProfitPrice: roundPrice(takeProfitPrice, input.symbol),
     riskRewardRatio: input.riskReward,
-    style: input.variant === 'MEAN_REVERSION_V1' ? 'MEAN_REVERSION' : 'SMC_INTRADAY',
+    style: input.variant === 'MEAN_REVERSION_V1'
+      ? 'MEAN_REVERSION'
+      : input.variant === 'TREND_BREAKOUT_55_EMA200_V1'
+      ? 'TREND_BREAKOUT'
+      : 'SMC_INTRADAY',
     evidenceIds: input.evidenceIds,
     rationale: input.rationale,
     ruleProvenance: provenance,
@@ -285,6 +299,63 @@ function fairValueGapAt(candles: Candle[], index: number, symbol: SymbolId, mini
   return { id: `FVG-${direction}-${current.timestamp}-${roundPrice(lower, symbol)}-${roundPrice(upper, symbol)}`, direction, lower, upper, formedAtTimestamp: current.timestamp };
 }
 
+function calculateEma(values: number[], period: number): number[] {
+  if (values.length === 0) return [];
+  const multiplier = 2 / (period + 1);
+  const ema = [values[0]];
+  for (let index = 1; index < values.length; index++) {
+    ema.push(values[index] * multiplier + ema[index - 1] * (1 - multiplier));
+  }
+  return ema;
+}
+
+/**
+ * Donchian-55 breakout with an EMA-200 slope filter. The channel excludes the
+ * current closed candle, and the execution engine fills only on the next bar.
+ * Therefore neither signal construction nor fill can use future prices.
+ */
+function evaluateTrendBreakout(candles: Candle[], symbol: SymbolId, timeframe: Timeframe, parameters: RuleParameters): StrategyCandidate | null {
+  const candle = lastClosedCandle(candles);
+  const requiredBars = Math.max(parameters.trendChannelLookback + 1, parameters.trendEmaPeriod + 1);
+  if (!candle || candles.length < requiredBars) return null;
+  const history = candles.slice(0, -1);
+  const channel = history.slice(-parameters.trendChannelLookback);
+  const priorHigh = Math.max(...channel.map(item => item.high));
+  const priorLow = Math.min(...channel.map(item => item.low));
+  const ema = calculateEma(candles.map(item => item.close), parameters.trendEmaPeriod);
+  const currentEma = ema.at(-1);
+  const previousEma = ema.at(-2);
+  const atr = calculateWilderATR(candles, 20).at(-1);
+  if (!atr || !currentEma || !previousEma) return null;
+  const emaDistanceAtr = Math.abs(candle.close - currentEma) / atr;
+  if (emaDistanceAtr < parameters.trendMinEmaDistanceAtr) return null;
+  if (candle.close > priorHigh && currentEma >= previousEma) {
+    return createCandidate({
+      symbol, timeframe, variant: 'TREND_BREAKOUT_55_EMA200_V1', direction: 'BUY', candle,
+      entryPrice: candle.close,
+      stopLossPrice: candle.close - atr * parameters.trendStopAtrMultiple,
+      riskReward: parameters.trendTargetAtrMultiple / parameters.trendStopAtrMultiple,
+      expiryBars: parameters.expiryBars,
+      evidenceIds: { contextSwingId: `DONCHIAN55-HIGH-${roundPrice(priorHigh, symbol)}` },
+      rationale: `بسته‌شدن بالای کانال ${parameters.trendChannelLookback} دوره‌ای و شیب غیرمنفی EMA${parameters.trendEmaPeriod}; ورود فقط در کندل بعدی شبیه‌سازی می‌شود.`,
+      parameters,
+    });
+  }
+  if (candle.close < priorLow && currentEma <= previousEma) {
+    return createCandidate({
+      symbol, timeframe, variant: 'TREND_BREAKOUT_55_EMA200_V1', direction: 'SELL', candle,
+      entryPrice: candle.close,
+      stopLossPrice: candle.close + atr * parameters.trendStopAtrMultiple,
+      riskReward: parameters.trendTargetAtrMultiple / parameters.trendStopAtrMultiple,
+      expiryBars: parameters.expiryBars,
+      evidenceIds: { contextSwingId: `DONCHIAN55-LOW-${roundPrice(priorLow, symbol)}` },
+      rationale: `بسته‌شدن زیر کانال ${parameters.trendChannelLookback} دوره‌ای و شیب غیرمثبت EMA${parameters.trendEmaPeriod}; ورود فقط در کندل بعدی شبیه‌سازی می‌شود.`,
+      parameters,
+    });
+  }
+  return null;
+}
+
 function evaluateFvgEquilibrium(candles: Candle[], symbol: SymbolId, timeframe: Timeframe, parameters: RuleParameters): StrategyCandidate | null {
   const candle = lastClosedCandle(candles);
   if (!candle || candles.length < 25) return null;
@@ -326,5 +397,6 @@ export function evaluateResearchStrategy(
   if (variant === 'MEAN_REVERSION_V1') return evaluateMeanReversion(candles, symbol, timeframe, parameters);
   if (variant === 'BOS_ORDER_BLOCK_V1') return evaluateBosOrderBlock(candles, symbol, timeframe, parameters);
   if (variant === 'FVG_EQUILIBRIUM_V1') return evaluateFvgEquilibrium(candles, symbol, timeframe, parameters);
+  if (variant === 'TREND_BREAKOUT_55_EMA200_V1') return evaluateTrendBreakout(candles, symbol, timeframe, parameters);
   return evaluateSweep(candles, symbol, timeframe, variant, parameters);
 }

@@ -4,6 +4,7 @@ const nextConfig: NextConfig = {
   output: 'standalone',
   outputFileTracingRoot: __dirname,
   devIndicators: false,
+  allowedDevOrigins: ['127.0.0.1', 'localhost'],
   reactStrictMode: true,
   typescript: {
     ignoreBuildErrors: false,

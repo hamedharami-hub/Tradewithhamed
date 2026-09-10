@@ -130,7 +130,7 @@ export class MarketRegimeClassifier {
       headlineFa = 'تلاطم شدید خبری و اسپایک غیرعادی';
       summaryFa = `نسبت نوسان جاری به میانگین به ${atrRatio} رسیده و اسپایک قیمتی مشاهده می‌شود. جهت محافظت از سرمایه در برابر اسلیپیج، پوزیشن‌گیری فرکانس‌بالا محدود است.`;
       recommendedStyles.push('SWING_MACRO');
-      blockedStyles.push('SCALP_M1_M5', 'MEAN_REVERSION', 'SMC_INTRADAY');
+      blockedStyles.push('SCALP_M1_M5', 'MEAN_REVERSION', 'SMC_INTRADAY', 'TREND_BREAKOUT');
     }
     // اولویت ۲: فشردگی شدید قبل از انفجار (Compression)
     else if (isCompressed && trendScore < 35) {
@@ -138,7 +138,7 @@ export class MarketRegimeClassifier {
       confidence = 82;
       headlineFa = 'فشردگی قیمت و تراکم حجم (در آستانه شکست)';
       summaryFa = `نوسانات به کمتر از ۰٫۳۵٪ فشرده شده است. بازار در حال آماده‌سازی برای شکست قوی سطوح است؛ ستاپ‌های بریک‌اوت و اسکلپ لبه‌ها در اولویت قرار دارند.`;
-      recommendedStyles.push('SCALP_M1_M5', 'SMC_INTRADAY');
+      recommendedStyles.push('SCALP_M1_M5', 'SMC_INTRADAY', 'TREND_BREAKOUT');
       blockedStyles.push('SWING_MACRO');
     }
     // اولویت ۳: روند پرقدرت صعودی (Trending Bullish)
@@ -147,7 +147,7 @@ export class MarketRegimeClassifier {
       confidence = Math.min(95, 60 + Math.round(trendScore * 0.35));
       headlineFa = 'روند صعودی منظم و پرشتاب';
       summaryFa = `تقاطع صعودی میانگین‌ها و توالی سقف‌های بالاتر مشهود است (قدرت روند: ${trendScore}٪). سبک‌های سوئینگ و همراه با روند اسمارت‌مانی بیشترین مزیت را دارند.`;
-      recommendedStyles.push('SMC_INTRADAY', 'SWING_MACRO', 'SCALP_M1_M5');
+      recommendedStyles.push('SMC_INTRADAY', 'TREND_BREAKOUT', 'SWING_MACRO', 'SCALP_M1_M5');
       blockedStyles.push('MEAN_REVERSION');
     }
     // اولویت ۴: روند پرقدرت نزولی (Trending Bearish)
@@ -156,7 +156,7 @@ export class MarketRegimeClassifier {
       confidence = Math.min(95, 60 + Math.round(trendScore * 0.35));
       headlineFa = 'روند نزولی مقتدر و فروش سنگین';
       summaryFa = `تقاطع نزولی میانگین‌ها و کف‌های پایین‌تر تثبیت شده‌اند (قدرت روند: ${trendScore}٪). ورودهای فروش در پولبک‌ها و سبک‌های سوئینگ توصیه می‌شود.`;
-      recommendedStyles.push('SMC_INTRADAY', 'SWING_MACRO', 'SCALP_M1_M5');
+      recommendedStyles.push('SMC_INTRADAY', 'TREND_BREAKOUT', 'SWING_MACRO', 'SCALP_M1_M5');
       blockedStyles.push('MEAN_REVERSION');
     }
     // اولویت ۵: بازار رنج و نوسانی (Choppy Ranging)
@@ -166,7 +166,7 @@ export class MarketRegimeClassifier {
       headlineFa = 'بازار ساید‌وی و نوسان در محدوده (رنج)';
       summaryFa = `قیمت حول میانگین نوسان می‌کند و مومنتوم جهت‌دار واضحی وجود ندارد. استراتژی‌های بازگشت به میانگین و اسکلپ‌های سریع بیشترین بازدهی را دارند.`;
       recommendedStyles.push('MEAN_REVERSION', 'SCALP_M1_M5');
-      blockedStyles.push('SWING_MACRO');
+      blockedStyles.push('SWING_MACRO', 'TREND_BREAKOUT');
     }
 
     return {

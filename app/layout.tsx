@@ -12,13 +12,13 @@ export const viewport: Viewport = {
 };
 
 export const metadata: Metadata = {
-  title: 'Remix Hamed Trading Lab',
-  description: 'سامانه شخصی تحلیل و معامله آزمایشی cTrader برای ویندوز و اندروید',
-  applicationName: 'TradingLab',
+  title: 'Hamed Research Desk',
+  description: 'میز پژوهش بازار برای Backtest، بازپخش و Paper Trading محلی بدون broker write',
+  applicationName: 'Hamed Research Desk',
   appleWebApp: {
     capable: true,
     statusBarStyle: 'black-translucent',
-    title: 'TradingLab',
+    title: 'Research Desk',
   },
   icons: {
     icon: [
@@ -30,14 +30,14 @@ export const metadata: Metadata = {
     ],
   },
   openGraph: {
-    title: 'Remix Hamed Trading Lab',
-    description: 'سامانه شخصی تحلیل و معامله آزمایشی cTrader برای ویندوز و اندروید',
+    title: 'Hamed Research Desk',
+    description: 'Backtest، بازپخش و Paper Trading محلی بدون broker write',
     type: 'website',
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'Remix Hamed Trading Lab',
-    description: 'سامانه شخصی تحلیل و معامله آزمایشی cTrader برای ویندوز و اندروید',
+    title: 'Hamed Research Desk',
+    description: 'Backtest، بازپخش و Paper Trading محلی بدون broker write',
   },
 };
 

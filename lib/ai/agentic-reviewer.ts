@@ -3,14 +3,47 @@ import { AGENT_ENGINE_OPTIONS, DEFAULT_MULTI_AGENT_CONFIG } from '@/lib/contract
 import type { StrategyCandidate } from '@/lib/contracts/strategy';
 import { modelIdForAgentEngine } from './webllm-agent-adapter';
 import { BrowserOfflineAIManager } from './browser-offline-ai';
-import { buildAgentPrompt, evidencePacketFromCandidate, judgeAgentReviews, type AgentEvidencePacket, type AgenticReviewResult } from './agentic-review-contracts';
+import { buildAgentPrompt, evidencePacketFromCandidate, judgeAgentReviews, type AgentEvidencePacket, type AgenticReviewResult, type AgentPromptProfile } from './agentic-review-contracts';
 import type { StructuredCandidateAdvisory } from './offline-ai-contracts';
 
 function engineType(engineId: string): 'DETERMINISTIC' | 'NEURAL_WEBGPU' {
   return AGENT_ENGINE_OPTIONS.find(engine => engine.id === engineId)?.type || 'DETERMINISTIC';
 }
 
+function requiredEvidencePresent(candidate: StrategyCandidate): boolean {
+  if (candidate.style === 'MEAN_REVERSION') return Boolean(candidate.ruleProvenance) && candidate.riskRewardRatio >= 2;
+  if (candidate.style === 'TREND_BREAKOUT') return Boolean(candidate.evidenceIds.contextSwingId) && candidate.riskRewardRatio >= 2;
+  if (candidate.style === 'SWING_MACRO') return Boolean(candidate.evidenceIds.contextSwingId) && candidate.riskRewardRatio >= 2;
+  if (candidate.style === 'SCALP_M1_M5') return Boolean(candidate.evidenceIds.sweepId) && candidate.riskRewardRatio >= 1.5;
+  return Boolean(candidate.evidenceIds.sweepId) && Boolean(candidate.evidenceIds.fvgId);
+}
+
 function deterministicReview(modelId: string, packet: AgentEvidencePacket): StructuredCandidateAdvisory {
+  // SMC has a specialised deterministic advisory; the other executable rules
+  // carry different evidence (for example a Donchian channel or a z-score) and
+  // must not be falsely rejected merely because they do not contain an FVG.
+  if (packet.candidate.style && packet.candidate.style !== 'SMC_INTRADAY') {
+    const flags: string[] = [];
+    const candidate = packet.candidate;
+    if (!Number.isFinite(candidate.entryPrice) || candidate.entryPrice <= 0) flags.push('INVALID_MARKET_PRICE');
+    if (candidate.riskRewardRatio < 2) flags.push('RISK_REWARD_INSUFFICIENT');
+    if (!requiredEvidencePresent(candidate)) flags.push('STYLE_EVIDENCE_INCOMPLETE');
+    if (packet.dataQuality.missingFields.length > 0 || !packet.dataQuality.noLookahead || !packet.dataQuality.isClosedCandle) flags.push('DATA_QUALITY_INCOMPLETE');
+    const evidenceIds = Object.values(candidate.evidenceIds).filter((value): value is string => Boolean(value));
+    if (candidate.ruleProvenance) evidenceIds.push(`RULE-${candidate.ruleProvenance.ruleVersion}`);
+    return {
+      modelId,
+      modelRevision: 'deterministic-style-gate-v1',
+      source: 'DETERMINISTIC',
+      verdict: flags.length === 0 ? 'TRADE' : 'NO_TRADE',
+      confidence: flags.length === 0 ? 0.7 : 0,
+      rationaleFa: flags.length === 0 ? 'قواعد اختصاصی سبک، شواهد ثبت‌شده و محدودیت‌های بدون نگاه به آینده برقرارند؛ نتیجه صرفاً advisory است.' : `عدم تأیید سبک: ${flags.join('، ')}.`,
+      riskFlags: flags,
+      evidenceIds,
+      latencyMs: 0,
+      advisoryOnly: true,
+    };
+  }
   return BrowserOfflineAIManager.buildDeterministicAdvisory(modelId, {
     symbol: packet.candidate.symbol,
     currentPrice: packet.candidate.entryPrice,
@@ -25,8 +58,8 @@ function deterministicReview(modelId: string, packet: AgentEvidencePacket): Stru
   });
 }
 
-async function reviewRole(role: 'ANALYST' | 'CRITIC', engineId: string, candidate: StrategyCandidate, packet: AgentEvidencePacket): Promise<StructuredCandidateAdvisory> {
-  const prompt = buildAgentPrompt(role, packet);
+async function reviewRole(role: 'ANALYST' | 'CRITIC', engineId: string, candidate: StrategyCandidate, packet: AgentEvidencePacket, profile: AgentPromptProfile): Promise<StructuredCandidateAdvisory> {
+  const prompt = buildAgentPrompt(role, packet, profile);
   if (engineType(engineId) === 'DETERMINISTIC') return deterministicReview(engineId, packet);
   const mapped = modelIdForAgentEngine(engineId);
   if (!mapped) return { modelId: 'unmapped', modelRevision: 'none', source: 'WEBLLM_WEBGPU', verdict: 'REVIEW_REQUIRED', confidence: 0, rationaleFa: 'موتور AI نگاشت نشده است.', riskFlags: ['UNMAPPED_AGENT_MODEL'], evidenceIds: [], latencyMs: 0, advisoryOnly: true };
@@ -45,11 +78,11 @@ async function reviewRole(role: 'ANALYST' | 'CRITIC', engineId: string, candidat
   }, prompt.systemPrompt, prompt.userPrompt);
 }
 
-export async function reviewCandidateWithFourAgents(candidate: StrategyCandidate, config: MultiAgentConfiguration = DEFAULT_MULTI_AGENT_CONFIG, context: AgentEvidencePacket['marketContext'] = {}): Promise<AgenticReviewResult> {
+export async function reviewCandidateWithFourAgents(candidate: StrategyCandidate, config: MultiAgentConfiguration = DEFAULT_MULTI_AGENT_CONFIG, context: AgentEvidencePacket['marketContext'] = {}, promptProfile: AgentPromptProfile = 'BASELINE_EVIDENCE_V1'): Promise<AgenticReviewResult> {
   const packet = evidencePacketFromCandidate(candidate, config.activeTradingStyle, context);
-  const scannerApproved = Boolean(candidate.evidenceIds.sweepId) && (config.activeTradingStyle !== 'S0_SWEEP_FVG' || Boolean(candidate.evidenceIds.fvgId));
-  const analyst = await reviewRole('ANALYST', config.analystEngineId, candidate, packet);
-  const critic = await reviewRole('CRITIC', config.criticEngineId, candidate, packet);
+  const scannerApproved = requiredEvidencePresent(candidate);
+  const analyst = await reviewRole('ANALYST', config.analystEngineId, candidate, packet, promptProfile);
+  const critic = await reviewRole('CRITIC', config.criticEngineId, candidate, packet, promptProfile);
   const judge = judgeAgentReviews({ analyst, critic, candidate });
   if (!scannerApproved) judge.reasonCodes.push('SCANNER_EVIDENCE_INCOMPLETE');
   const finalDecision = !scannerApproved ? 'NO_TRADE' : judge.approved ? 'PAPER_TRADE' : (analyst.verdict === 'REVIEW_REQUIRED' || critic.verdict === 'REVIEW_REQUIRED' ? 'REVIEW_REQUIRED' : 'NO_TRADE');
@@ -62,7 +95,7 @@ export async function reviewCandidateWithFourAgents(candidate: StrategyCandidate
     judge: { ...judge, approved: scannerApproved && judge.approved },
     finalDecision,
     advisoryOnly: true,
-    promptVersion: 'agent-prompts-v1',
+    promptVersion: promptProfile,
     reviewedAt: Date.now(),
   };
 }

@@ -1,4 +1,4 @@
-import type { Candle, SymbolId, Timeframe } from '@/lib/contracts/market';
+import { SYMBOL_SPECS, type Candle, type SymbolId, type Timeframe } from '@/lib/contracts/market';
 import type { MarketRegimeType } from '@/lib/contracts/regimes';
 import type { StrategyCandidate } from '@/lib/contracts/strategy';
 import { EventDrivenExecutionEngine } from '@/lib/core/event-driven-engine';
@@ -129,11 +129,12 @@ function allowCandidateByAiMode(candidate: { id?: string; riskRewardRatio: numbe
   if (['S0_SWEEP_FVG', 'FVG_EQUILIBRIUM_V1'].includes(variant) && !candidate.evidenceIds.fvgId) reasons.push('MISSING_FVG_EVIDENCE');
   if (regime === 'HIGH_VOL_NEWS') reasons.push('HIGH_VOLATILITY_REGIME_BLOCK');
   if (variant === 'MEAN_REVERSION_V1' && !['CHOPPY_RANGING', 'COMPRESSION'].includes(regime)) reasons.push('MEAN_REVERSION_REGIME_BLOCK');
+  if (variant === 'TREND_BREAKOUT_55_EMA200_V1' && !['TRENDING_BULLISH', 'TRENDING_BEARISH', 'COMPRESSION'].includes(regime)) reasons.push('TREND_BREAKOUT_REGIME_BLOCK');
   return { accepted: reasons.length === 0, reasons: reasons.length === 0 ? ['DETERMINISTIC_COUNCIL_APPROVED'] : reasons };
 }
 
 function buildIntent(resolved: StrategyCandidate, config: ResearchExperimentConfig, timestamp: number): OrderIntentPayload {
-  const contractSize = config.symbol === 'XAUUSD' ? 100 : 100_000;
+  const contractSize = SYMBOL_SPECS[config.symbol].contractSize;
   const dollarRisk = config.initialCash * (config.riskPerTradePercent / 100);
   const riskDistance = Math.abs(resolved.entryPrice - resolved.stopLossPrice);
   // EURUSD/GBPUSD/XAUUSD quote in USD; USDJPY quote is JPY and must be converted
@@ -193,6 +194,7 @@ function evaluateRun(candles: Candle[], config: ResearchExperimentConfig, varian
     if (openPositions >= config.maxConcurrentPositions || hasPendingOrder) continue;
     if (config.evaluationStartTime !== undefined && currentCandle.timestamp < config.evaluationStartTime) continue;
     if (config.allowedSessions && !config.allowedSessions.includes(sessionForTimestamp(currentCandle.timestamp))) continue;
+    if (config.allowedDaysOfWeekUtc && !config.allowedDaysOfWeekUtc.includes(new Date(currentCandle.timestamp).getUTCDay())) continue;
     const slice = candles.slice(0, index + 1);
     const candidate = evaluateResearchStrategy(slice, config.symbol, config.timeframe, variant, {
       stopLossAtrBuffer: config.stopLossAtrBuffer,
@@ -200,6 +202,8 @@ function evaluateRun(candles: Candle[], config: ResearchExperimentConfig, varian
       expiryBars: config.entryExpiryBars,
       ...(config.minSweepPenetrationAtr !== undefined ? { minSweepPenetrationAtr: config.minSweepPenetrationAtr } : {}),
       ...(config.minFvgSizeAtr !== undefined ? { minFvgSizeAtr: config.minFvgSizeAtr } : {}),
+      ...(config.trendMinEmaDistanceAtr !== undefined ? { trendMinEmaDistanceAtr: config.trendMinEmaDistanceAtr } : {}),
+      ...config.ruleParameters,
     });
     if (!candidate) continue;
     totalSignals++;
@@ -272,6 +276,10 @@ function evaluateRun(candles: Candle[], config: ResearchExperimentConfig, varian
     totalSlippagePips: Number((closedTrades.length * config.costModel.slippagePips * 2).toFixed(2)),
     startEquity: config.initialCash,
     endEquity: ledger.equity,
+    markToMarketEquity: ledger.equity,
+    unrealizedPnlAtEnd: ledger.totalUnrealizedPnl,
+    cashBalanceAtEnd: ledger.cashBalance,
+    openPositionDetails: ledger.positions.filter(position => position.isOpen).map(position => ({ positionId: position.positionId, direction: position.direction, entryPrice: position.entryPrice, currentPrice: position.currentPrice, unrealizedPnl: position.unrealizedPnl, openedTimestamp: position.openedTimestamp })),
     openPositionsAtEnd: ledger.positions.filter(position => position.isOpen).length,
     status,
   };
@@ -292,7 +300,7 @@ export class ResearchExperimentEngine {
       netProfit: run.summary.netProfit,
       profitFactor: run.summary.profitFactor,
       expectancy: run.summary.expectancy,
-      averageHoldingBars: 0,
+      averageHoldingBars: run.analysis.VARIANT?.[0]?.averageHoldingBars || 0,
       maxDrawdownPercent: run.summary.maxDrawdownPercent,
     })).sort((left, right) => right.netProfit - left.netProfit);
     const warnings = [...dataset.manifest.notes];

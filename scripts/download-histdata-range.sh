@@ -2,7 +2,11 @@
 set -Eeuo pipefail
 START_YEAR="${1:-2020}"
 END_YEAR="${2:-2024}"
-PAIRS=("EURUSD" "GBPUSD" "USDJPY" "XAUUSD")
+if [[ -n "${HISTDATA_PAIRS:-}" ]]; then
+  IFS=',' read -r -a PAIRS <<< "$HISTDATA_PAIRS"
+else
+  PAIRS=("EURUSD" "GBPUSD" "USDJPY" "XAUUSD")
+fi
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 OUT_DIR="$ROOT/data/raw/histdata/multi-year"
 mkdir -p "$OUT_DIR"

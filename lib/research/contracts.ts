@@ -2,6 +2,7 @@ import type { Candle, SymbolId, Timeframe } from '@/lib/contracts/market';
 import type { MarketRegimeType, TradingStyleType } from '@/lib/contracts/regimes';
 import type { PositionLedgerEntry } from '@/lib/core/ports';
 import type { TradingEnvironment } from '@/lib/core/ports';
+import type { RuleParameters } from './strategy-rules';
 
 export type DatasetKind = 'HISTORICAL_BAR' | 'HISTORICAL_TICK' | 'PAPER_FORWARD_BAR';
 export type DatasetStatus = 'READY' | 'REJECTED' | 'PARTIAL' | 'UNVERIFIED';
@@ -10,7 +11,8 @@ export type StrategyVariantId =
   | 'S0_SWEEP_FVG'
   | 'BOS_ORDER_BLOCK_V1'
   | 'FVG_EQUILIBRIUM_V1'
-  | 'MEAN_REVERSION_V1';
+  | 'MEAN_REVERSION_V1'
+  | 'TREND_BREAKOUT_55_EMA200_V1';
 export type AIReviewMode = 'OFF' | 'DETERMINISTIC_COUNCIL' | 'WEBLLM_ADVISORY' | 'AGENTIC_OFFLINE' | 'ONLINE_ADVISORY' | 'HYBRID_COMPARE';
 export type AdvisoryProviderMode = 'NONE' | 'LOCAL_WEBGPU' | 'ONLINE_API' | 'HYBRID_COMPARE';
 export type AnalysisDimension = 'VARIANT' | 'AI_MODE' | 'HOUR_UTC' | 'DAY_OF_WEEK_UTC' | 'MONTH_UTC' | 'SESSION_UTC' | 'REGIME' | 'DIRECTION';
@@ -74,14 +76,19 @@ export interface ResearchExperimentConfig {
   stopLossAtrBuffer: number;
   targetRiskReward: number;
   entryExpiryBars: number;
+  /** Optional per-experiment rule overrides; never inferred from OOS candles. */
+  ruleParameters?: Partial<RuleParameters>;
   minSweepPenetrationAtr?: number;
   minFvgSizeAtr?: number;
+  /** Minimum absolute distance between close and trend EMA, measured in ATR. */
+  trendMinEmaDistanceAtr?: number;
   costModel: CostModelConfig;
   startTime?: number;
   endTime?: number;
   /** Optional scoring boundary; candles before it provide warmup context only. */
   evaluationStartTime?: number;
   allowedSessions?: ResearchTrade['sessionUtc'][];
+  allowedDaysOfWeekUtc?: number[];
   seed: number;
   ruleVersion: 'research-rules-v1';
   approvedCandidateIds?: string[];
@@ -141,6 +148,10 @@ export interface StrategyRunSummary {
   totalSlippagePips: number;
   startEquity: number;
   endEquity: number;
+  markToMarketEquity: number;
+  unrealizedPnlAtEnd: number;
+  cashBalanceAtEnd: number;
+  openPositionDetails: Array<{ positionId: string; direction: 'BUY' | 'SELL'; entryPrice: number; currentPrice: number; unrealizedPnl: number; openedTimestamp: number }>;
   openPositionsAtEnd: number;
   status: 'COMPLETE' | 'INSUFFICIENT_DATA' | 'NO_TRADES';
 }

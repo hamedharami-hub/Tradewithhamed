@@ -6,6 +6,16 @@ import { evaluateS0Strategy } from './s0-engine';
 import { calculateWilderATR } from './atr';
 import { detectSwingPoints } from './swings';
 
+function calculateEMA(values: number[], period: number): number[] {
+  if (values.length === 0) return [];
+  const multiplier = 2 / (period + 1);
+  const result = [values[0]];
+  for (let index = 1; index < values.length; index++) {
+    result.push(values[index] * multiplier + result[index - 1] * (1 - multiplier));
+  }
+  return result;
+}
+
 /**
  * موتور جامع سبک‌های معاملاتی چندگانه (Multi-Style Trading Engine 2026)
  * پشتیبانی از اسکلپینگ سریع M1/M5، اسمارت‌مانی SMC، سوئینگ کلان، و بازگشت به میانگین
@@ -113,7 +123,89 @@ export class MultiStyleEngine {
   }
 
   /**
-   * ۳. ردیاب سبک سوئینگ کلان (Macro Trend Swing)
+   * ۳. شکست کانال در جهت رژیم روند. سطح کانال فقط از کندل‌های قبل از
+   * کندل فعلی ساخته می‌شود تا سیگنال نگاه‌به‌آینده نداشته باشد.
+   */
+  public static evaluateTrendBreakout(
+    symbol: SymbolId,
+    candles: Candle[],
+    regime: MarketRegimeAnalysis
+  ): StrategyCandidate | null {
+    const lookback = 55;
+    const emaPeriod = 200;
+    if (candles.length < emaPeriod + 1) return null;
+
+    const current = candles[candles.length - 1];
+    if (!current.isClosed) return null;
+
+    const history = candles.slice(0, -1);
+    const channel = history.slice(-lookback);
+    const priorHigh = Math.max(...channel.map(candle => candle.high));
+    const priorLow = Math.min(...channel.map(candle => candle.low));
+    const closes = candles.map(candle => candle.close);
+    const ema200 = calculateEMA(closes, emaPeriod);
+    const currentEma = ema200[ema200.length - 1];
+    const previousEma = ema200[ema200.length - 2];
+    const atrs = calculateWilderATR(candles, 20);
+    const atr = atrs[atrs.length - 1] || (symbol === 'XAUUSD' ? 2.5 : 0.0015);
+    const precision = symbol === 'XAUUSD' || symbol === 'BTCUSD' ? 2 : symbol === 'USDJPY' ? 3 : 5;
+
+    const canBuy =
+      regime.regime === 'TRENDING_BULLISH' || regime.regime === 'COMPRESSION';
+    const canSell =
+      regime.regime === 'TRENDING_BEARISH' || regime.regime === 'COMPRESSION';
+
+    if (canBuy && current.close > priorHigh && currentEma >= previousEma) {
+      const entryPrice = current.close;
+      const stopLossPrice = Number((entryPrice - atr * 2).toFixed(precision));
+      const takeProfitPrice = Number((entryPrice + atr * 4).toFixed(precision));
+      return {
+        id: `BREAKOUT-BUY-${current.timestamp}`,
+        strategyName: 'شکست روندی کانال (Regime-Filtered Breakout)',
+        symbol,
+        timeframe: '15M',
+        direction: 'BUY',
+        style: 'TREND_BREAKOUT',
+        createdAtTimestamp: current.timestamp,
+        expiresAtTimestamp: current.timestamp + 4 * 60 * 60 * 1000,
+        entryPrice,
+        stopLossPrice,
+        takeProfitPrice,
+        riskRewardRatio: 2,
+        evidenceIds: { contextSwingId: `CHANNEL-HIGH-${priorHigh}` },
+        rationale: 'بسته‌شدن بالای سقف کانال ۵۵ دوره‌ای، هم‌جهت با شیب EMA200؛ ورود فرضی فقط در کندل بعد قابل شبیه‌سازی است.',
+        status: 'CONFIRMED',
+      };
+    }
+
+    if (canSell && current.close < priorLow && currentEma <= previousEma) {
+      const entryPrice = current.close;
+      const stopLossPrice = Number((entryPrice + atr * 2).toFixed(precision));
+      const takeProfitPrice = Number((entryPrice - atr * 4).toFixed(precision));
+      return {
+        id: `BREAKOUT-SELL-${current.timestamp}`,
+        strategyName: 'شکست روندی کانال (Regime-Filtered Breakout)',
+        symbol,
+        timeframe: '15M',
+        direction: 'SELL',
+        style: 'TREND_BREAKOUT',
+        createdAtTimestamp: current.timestamp,
+        expiresAtTimestamp: current.timestamp + 4 * 60 * 60 * 1000,
+        entryPrice,
+        stopLossPrice,
+        takeProfitPrice,
+        riskRewardRatio: 2,
+        evidenceIds: { contextSwingId: `CHANNEL-LOW-${priorLow}` },
+        rationale: 'بسته‌شدن زیر کف کانال ۵۵ دوره‌ای، هم‌جهت با شیب EMA200؛ ورود فرضی فقط در کندل بعد قابل شبیه‌سازی است.',
+        status: 'CONFIRMED',
+      };
+    }
+
+    return null;
+  }
+
+  /**
+   * ۴. ردیاب سبک سوئینگ کلان (Macro Trend Swing)
    */
   public static evaluateSwing(
     symbol: SymbolId,
@@ -200,7 +292,7 @@ export class MultiStyleEngine {
   }
 
   /**
-   * ۴. ردیاب سبک بازگشت به میانگین (Statistical Mean Reversion)
+   * ۵. ردیاب سبک بازگشت به میانگین (Statistical Mean Reversion)
    */
   public static evaluateMeanReversion(
     symbol: SymbolId,
@@ -313,13 +405,19 @@ export class MultiStyleEngine {
       if (smcCand) candidates.push(smcCand);
     }
 
-    // ۳. بررسی سبک سوئینگ
+    // ۳. بررسی شکست روندی فقط در رژیم سازگار
+    if (filterStyle === 'ALL' || filterStyle === 'TREND_BREAKOUT') {
+      const breakoutCand = this.evaluateTrendBreakout(symbol, candles, regime);
+      if (breakoutCand) candidates.push(breakoutCand);
+    }
+
+    // ۴. بررسی سبک سوئینگ
     if (filterStyle === 'ALL' || filterStyle === 'SWING_MACRO') {
       const swingCand = this.evaluateSwing(symbol, candles, regime);
       if (swingCand) candidates.push(swingCand);
     }
 
-    // ۴. بررسی سبک بازگشت به میانگین
+    // ۵. بررسی سبک بازگشت به میانگین
     if (filterStyle === 'ALL' || filterStyle === 'MEAN_REVERSION') {
       const mrCand = this.evaluateMeanReversion(symbol, candles);
       if (mrCand) candidates.push(mrCand);

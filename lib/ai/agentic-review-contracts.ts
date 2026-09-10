@@ -26,7 +26,7 @@ export interface AgentPromptBundle {
   role: AgentRole;
   systemPrompt: string;
   userPrompt: string;
-  promptVersion: 'agent-prompts-v1';
+  promptVersion: string;
 }
 
 export interface AgenticReviewResult {
@@ -42,7 +42,7 @@ export interface AgenticReviewResult {
   };
   finalDecision: 'PAPER_TRADE' | 'NO_TRADE' | 'REVIEW_REQUIRED';
   advisoryOnly: true;
-  promptVersion: 'agent-prompts-v1';
+  promptVersion: string;
   reviewedAt: number;
 }
 
@@ -68,7 +68,9 @@ export function evidencePacketFromCandidate(candidate: StrategyCandidate, style:
   };
 }
 
-export function buildAgentPrompt(role: AgentRole, packet: AgentEvidencePacket): AgentPromptBundle {
+export type AgentPromptProfile = 'BASELINE_EVIDENCE_V1' | 'STRICT_RISK_V1' | 'CONTEXT_FIRST_V1';
+
+export function buildAgentPrompt(role: AgentRole, packet: AgentEvidencePacket, profile: AgentPromptProfile = 'BASELINE_EVIDENCE_V1'): AgentPromptBundle {
   const mission: Record<AgentRole, string> = {
     SCANNER: 'Verify that the deterministic scanner found the required structural evidence for the selected trading style. Do not discover facts outside the packet.',
     ANALYST: 'Assess context, direction, confluence, and uncertainty. Confirm only when the evidence supports the defined rules; do not create missing higher-timeframe or news evidence.',
@@ -83,8 +85,8 @@ export function buildAgentPrompt(role: AgentRole, packet: AgentEvidencePacket): 
   };
   return {
     role,
-    promptVersion: 'agent-prompts-v1',
-    systemPrompt: `You are the ${role} agent in a four-agent trading research council. ${mission[role]} Return only valid JSON matching this schema: ${output[role]} Never issue a live-order authorization.`,
+    promptVersion: profile === 'BASELINE_EVIDENCE_V1' ? 'agent-prompts-v1' : profile,
+    systemPrompt: `You are the ${role} agent in a four-agent trading research council. ${mission[role]} Prompt profile: ${profile}. ${profile === 'STRICT_RISK_V1' ? 'Reject on any missing, stale, or weak evidence; prefer NO_TRADE.' : profile === 'CONTEXT_FIRST_V1' ? 'Evaluate regime, session, higher-timeframe context, and uncertainty before the setup.' : 'Evaluate only the supplied evidence and preserve the baseline rules.'} Return only valid JSON matching this schema: ${output[role]} Never issue a live-order authorization.`,
     userPrompt: JSON.stringify(packet),
   };
 }

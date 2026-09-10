@@ -95,3 +95,95 @@ html.light [class*="text-zinc-400"] {
 ::-webkit-scrollbar-thumb:hover {
   background: var(--text-muted);
 }
+
+/* کنترل‌های محدود و تکرارپذیر میز پژوهش. */
+.label {
+  display: block;
+  color: #94a3b8;
+  font-size: 0.6875rem;
+  line-height: 1.2rem;
+}
+
+.field {
+  width: 100%;
+  border: 1px solid #334155;
+  border-radius: 0.75rem;
+  background: #070b12;
+  color: #e2e8f0;
+  padding: 0.5rem 0.65rem;
+  font-size: 0.75rem;
+  outline: none;
+}
+
+.field:focus {
+  border-color: #22d3ee;
+  box-shadow: 0 0 0 2px rgb(34 211 238 / 0.12);
+}
+
+.primary-button,
+.secondary-button,
+.icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+  border-radius: 0.75rem;
+  border: 1px solid transparent;
+  font-size: 0.75rem;
+  font-weight: 700;
+  transition: background-color 160ms ease, border-color 160ms ease, color 160ms ease;
+}
+
+.primary-button {
+  min-height: 2.5rem;
+  padding: 0.55rem 0.9rem;
+  color: #06202b;
+  background: #67e8f9;
+}
+
+.primary-button:hover:not(:disabled) {
+  background: #a5f3fc;
+}
+
+.primary-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.secondary-button {
+  min-height: 2.5rem;
+  padding: 0.55rem 0.9rem;
+  color: #a7f3d0;
+  background: rgb(16 185 129 / 0.1);
+  border-color: rgb(52 211 153 / 0.3);
+}
+
+.secondary-button:hover {
+  background: rgb(16 185 129 / 0.18);
+}
+
+.icon-button {
+  width: 2.5rem;
+  height: 2.5rem;
+  color: #cbd5e1;
+  background: #172033;
+  border-color: #334155;
+}
+
+.icon-button:hover {
+  background: #253149;
+}
+
+.metric {
+  border-radius: 0.625rem;
+  background: #070b12;
+  padding: 0.45rem;
+  color: #e2e8f0;
+}
+
+.metric span {
+  display: block;
+  margin-bottom: 0.15rem;
+  color: #64748b;
+  font-size: 0.5625rem;
+}

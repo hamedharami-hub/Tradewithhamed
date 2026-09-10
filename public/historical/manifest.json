@@ -1,0 +1,75 @@
+{
+  "version": "bundled-historical-v1",
+  "datasets": [
+    {
+      "id": "yahoo-eurusd-d1-10y",
+      "symbol": "EURUSD",
+      "provider": "Yahoo Finance",
+      "providerSymbol": "EURUSD=X",
+      "instrumentLabel": "EUR/USD spot reference",
+      "timeframe": "D1",
+      "url": "/historical/yahoo-eurusd-d1-10y.csv",
+      "bars": 2601,
+      "startUtc": "2016-09-11T23:00:00.000Z",
+      "endUtc": "2026-09-10T00:48:33.000Z",
+      "caveatFa": null,
+      "generatedFrom": "Yahoo Finance chart payload acquired through Manus Data API"
+    },
+    {
+      "id": "yahoo-gbpusd-d1-10y",
+      "symbol": "GBPUSD",
+      "provider": "Yahoo Finance",
+      "providerSymbol": "GBPUSD=X",
+      "instrumentLabel": "GBP/USD spot reference",
+      "timeframe": "D1",
+      "url": "/historical/yahoo-gbpusd-d1-10y.csv",
+      "bars": 2601,
+      "startUtc": "2016-09-11T23:00:00.000Z",
+      "endUtc": "2026-09-10T00:48:33.000Z",
+      "caveatFa": null,
+      "generatedFrom": "Yahoo Finance chart payload acquired through Manus Data API"
+    },
+    {
+      "id": "yahoo-usdjpy-d1-10y",
+      "symbol": "USDJPY",
+      "provider": "Yahoo Finance",
+      "providerSymbol": "JPY=X",
+      "instrumentLabel": "USD/JPY spot reference",
+      "timeframe": "D1",
+      "url": "/historical/yahoo-usdjpy-d1-10y.csv",
+      "bars": 2601,
+      "startUtc": "2016-09-11T23:00:00.000Z",
+      "endUtc": "2026-09-10T00:48:55.000Z",
+      "caveatFa": null,
+      "generatedFrom": "Yahoo Finance chart payload acquired through Manus Data API"
+    },
+    {
+      "id": "yahoo-gcf-d1-10y",
+      "symbol": "XAUUSD",
+      "provider": "Yahoo Finance",
+      "providerSymbol": "GC=F",
+      "instrumentLabel": "COMEX gold futures proxy",
+      "timeframe": "D1",
+      "url": "/historical/yahoo-gcf-d1-10y.csv",
+      "bars": 2512,
+      "startUtc": "2016-09-09T04:00:00.000Z",
+      "endUtc": "2026-09-10T00:38:49.000Z",
+      "caveatFa": "این فایل، قرارداد آتی طلا (GC=F) است و جایگزین دقیق قیمت XAUUSD بروکر نیست؛ فقط برای پژوهش ساختاری بلندمدت استفاده شود.",
+      "generatedFrom": "Yahoo Finance chart payload acquired through Manus Data API"
+    },
+    {
+      "id": "yahoo-btcusd-d1-10y",
+      "symbol": "BTCUSD",
+      "provider": "Yahoo Finance",
+      "providerSymbol": "BTC-USD",
+      "instrumentLabel": "Bitcoin USD composite reference",
+      "timeframe": "D1",
+      "url": "/historical/yahoo-btcusd-d1-10y.csv",
+      "bars": 3652,
+      "startUtc": "2016-09-10T00:00:00.000Z",
+      "endUtc": "2026-09-10T00:00:00.000Z",
+      "caveatFa": null,
+      "generatedFrom": "Yahoo Finance chart payload acquired through Manus Data API"
+    }
+  ]
+}

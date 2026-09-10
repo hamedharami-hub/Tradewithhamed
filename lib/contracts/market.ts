@@ -4,7 +4,7 @@
 
 export type SymbolId = 'XAUUSD' | 'EURUSD' | 'GBPUSD' | 'USDJPY' | 'BTCUSD';
 
-export type Timeframe = '1M' | '5M' | '15M' | '1H' | '4H' | 'D1';
+export type Timeframe = '1M' | '5M' | '15M' | '1H' | '4H' | 'D1' | 'W1';
 
 export interface Candle {
   timestamp: number; // میلی‌ثانیه یونیکس
