@@ -9,6 +9,7 @@ import { Candle, SymbolId } from '@/lib/contracts/market';
 import { TradingStyleType } from '@/lib/contracts/regimes';
 import {
   BacktestReport,
+  BacktestSessionFilter,
 } from '@/lib/contracts/backtester';
 import { MultiStyleBacktester } from '@/lib/core/multi-style-backtester';
 import {
@@ -17,6 +18,8 @@ import {
   BarChart3,
   Layers,
   Sparkles,
+  Clock,
+  ShieldAlert,
 } from 'lucide-react';
 
 interface MultiStyleBacktestModalProps {
@@ -37,6 +40,10 @@ export const MultiStyleBacktestModal: React.FC<MultiStyleBacktestModalProps> = (
   const [minMcProb, setMinMcProb] = useState<number>(55);
   const [riskPercent, setRiskPercent] = useState<number>(0.5);
   const [enablePartialTp, setEnablePartialTp] = useState<boolean>(true);
+  const [sessionFilter, setSessionFilter] = useState<BacktestSessionFilter>('ALL');
+  const [useDynamicSpread, setUseDynamicSpread] = useState<boolean>(true);
+  const [rolloverBlackout, setRolloverBlackout] = useState<boolean>(true);
+  const [intraBarModel, setIntraBarModel] = useState<'PESSIMISTIC' | 'BAR_POLARITY'>('BAR_POLARITY');
   const [report, setReport] = useState<BacktestReport | null>(null);
   const [isRunning, setIsRunning] = useState<boolean>(false);
 
@@ -52,6 +59,10 @@ export const MultiStyleBacktestModal: React.FC<MultiStyleBacktestModalProps> = (
           minMonteCarloTpProbability: minMcProb,
           riskPerTradePercent: riskPercent,
           enablePartialTp,
+          sessionFilter,
+          useDynamicSpread,
+          rolloverBlackout,
+          intraBarModel,
         });
         setReport(res);
       } finally {
@@ -79,7 +90,7 @@ export const MultiStyleBacktestModal: React.FC<MultiStyleBacktestModalProps> = (
                 </span>
               </h2>
               <p className="text-xs text-zinc-400">
-                شبیه‌سازی دقیق خروج پله‌ای ۵۰٪، ریسک‌فری، اسلیپیج و انطباق رژیم‌ها
+                شبیه‌سازی دقیق اسپرد پویای سشن‌ها، رفع ابهام کندلی، خروج پله‌ای ۵۰٪ و فیلتر رول‌اور
               </p>
             </div>
           </div>
@@ -93,7 +104,7 @@ export const MultiStyleBacktestModal: React.FC<MultiStyleBacktestModalProps> = (
 
         {/* بدنه محتوا اسکرول‌خور */}
         <div className="p-4 sm:p-5 overflow-y-auto space-y-4 text-xs">
-          {/* پنل تنظیمات بک‌تست */}
+          {/* پنل تنظیمات ردیف اول */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-[#0d1017] p-3.5 rounded-2xl border border-[#1d2331]">
             {/* سبک معاملاتی */}
             <div className="space-y-1">
@@ -167,6 +178,70 @@ export const MultiStyleBacktestModal: React.FC<MultiStyleBacktestModalProps> = (
                   </button>
                 ))}
               </div>
+            </div>
+          </div>
+
+          {/* پنل تنظیمات ردیف دوم: ریزساختار بازار، سشن‌ها و ابهام‌زدایی */}
+          <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 bg-[#0d1017] p-3.5 rounded-2xl border border-[#1d2331]">
+            {/* فیلتر سشن معاملاتی */}
+            <div className="space-y-1">
+              <label className="text-[11px] text-zinc-400 flex items-center gap-1.5">
+                <Clock className="w-3.5 h-3.5 text-cyan-400" />
+                <span>فیلتر سشن زمانی:</span>
+              </label>
+              <select
+                value={sessionFilter}
+                onChange={e => setSessionFilter(e.target.value as BacktestSessionFilter)}
+                className="w-full bg-[#151a24] border border-[#2a3344] rounded-xl px-2.5 py-1.5 text-zinc-100 text-xs font-bold"
+              >
+                <option value="ALL">همه سشن‌ها (۲۴ ساعته)</option>
+                <option value="LONDON">سشن لندن (07:00-13:00 UTC)</option>
+                <option value="LONDON_NY_OVERLAP">هم‌پوشانی طلایی لندن و NY (13:00-16:30)</option>
+                <option value="NEW_YORK">سشن نیویورک عصر (16:30-21:00 UTC)</option>
+                <option value="ASIA">سشن آسیا (00:00-07:00 UTC)</option>
+              </select>
+            </div>
+
+            {/* مدل حل ابهام درون‌کندلی */}
+            <div className="space-y-1">
+              <label className="text-[11px] text-zinc-400">رفع ابهام برخورد SL/TP:</label>
+              <select
+                value={intraBarModel}
+                onChange={e => setIntraBarModel(e.target.value as 'PESSIMISTIC' | 'BAR_POLARITY')}
+                className="w-full bg-[#151a24] border border-[#2a3344] rounded-xl px-2.5 py-1.5 text-zinc-100 text-xs font-bold"
+              >
+                <option value="BAR_POLARITY">قطبیت بدنه کندل (Bar Polarity - واقع‌گرایانه)</option>
+                <option value="PESSIMISTIC">سخت‌گیرانه بدبینانه (Pessimistic SL)</option>
+              </select>
+            </div>
+
+            {/* تاگل اسپرد متغیر پویا */}
+            <div className="flex items-center justify-between sm:justify-center gap-2 bg-[#151a24] px-3 py-2 rounded-xl border border-[#262f40]">
+              <label className="flex items-center gap-2 cursor-pointer w-full justify-between">
+                <span className="text-[11px] text-zinc-300 font-bold">اسپرد پویای سشن‌ها</span>
+                <input
+                  type="checkbox"
+                  checked={useDynamicSpread}
+                  onChange={e => setUseDynamicSpread(e.target.checked)}
+                  className="rounded accent-cyan-500 w-4 h-4 cursor-pointer"
+                />
+              </label>
+            </div>
+
+            {/* تاگل فیلتر رول‌اور شبانه */}
+            <div className="flex items-center justify-between sm:justify-center gap-2 bg-[#151a24] px-3 py-2 rounded-xl border border-[#262f40]">
+              <label className="flex items-center gap-2 cursor-pointer w-full justify-between">
+                <span className="text-[11px] text-zinc-300 font-bold flex items-center gap-1">
+                  <ShieldAlert className="w-3.5 h-3.5 text-amber-400" />
+                  <span>بلک‌اوت رول‌اور شبانه</span>
+                </span>
+                <input
+                  type="checkbox"
+                  checked={rolloverBlackout}
+                  onChange={e => setRolloverBlackout(e.target.checked)}
+                  className="rounded accent-amber-500 w-4 h-4 cursor-pointer"
+                />
+              </label>
             </div>
           </div>
 

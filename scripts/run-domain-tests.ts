@@ -26,6 +26,7 @@ const suiteModules = [
   '../lib/research/__tests__/walk-forward.test',
   '../lib/research/__tests__/parameter-optimizer.test',
   '../lib/research/__tests__/acceptance-gate.test',
+  '../lib/core/__tests__/market-microstructure.test',
 ];
 
 export {};

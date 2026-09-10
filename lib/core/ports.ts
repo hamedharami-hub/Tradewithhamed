@@ -12,7 +12,7 @@ export type TradingEnvironment =
   | 'BROKER_DEMO'
   | 'BROKER_LIVE';
 
-export type IntrabarAmbiguityPolicy = 'PESSIMISTIC' | 'OPTIMISTIC' | 'SENSITIVITY';
+export type IntrabarAmbiguityPolicy = 'PESSIMISTIC' | 'OPTIMISTIC' | 'SENSITIVITY' | 'BAR_POLARITY';
 
 export interface OrderIntentPayload {
   intentId: string;
@@ -54,6 +54,9 @@ export interface PositionLedgerEntry {
   symbol: SymbolId;
   direction: 'BUY' | 'SELL';
   volumeLots: number;
+  initialVolumeLots?: number;
+  isPartialClosed?: boolean;
+  partialRealizedPnl?: number;
   entryPrice: number;
   currentPrice: number;
   stopLossPrice: number;

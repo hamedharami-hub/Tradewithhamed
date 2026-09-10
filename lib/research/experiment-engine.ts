@@ -4,6 +4,7 @@ import type { StrategyCandidate } from '@/lib/contracts/strategy';
 import { EventDrivenExecutionEngine } from '@/lib/core/event-driven-engine';
 import { MarketRegimeClassifier } from '@/lib/core/market-regime-classifier';
 import type { OrderIntentPayload, PositionLedgerEntry } from '@/lib/core/ports';
+import { isRolloverBlackout } from '@/lib/core/market-microstructure';
 import { timeframeMs } from './dataset';
 import { evaluateResearchStrategy, RESEARCH_RULE_VERSION } from './strategy-rules';
 import type {
@@ -172,7 +173,9 @@ function evaluateRun(candles: Candle[], config: ResearchExperimentConfig, varian
     initialCash: config.initialCash,
     commissionPerLot: config.costModel.commissionPerLotRoundTrip,
     defaultSpreadPips: config.costModel.spreadPips,
-    ambiguityPolicy: 'PESSIMISTIC',
+    useDynamicSpread: true,
+    useRolloverBlackout: true,
+    ambiguityPolicy: 'BAR_POLARITY',
     slippageModel: { baseSlippagePips: config.costModel.slippagePips, volatilityMultiplier: 0 },
   });
   const equityCurve: StrategyRunResult['equityCurve'] = [];
@@ -193,6 +196,7 @@ function evaluateRun(candles: Candle[], config: ResearchExperimentConfig, varian
     const openPositions = ledger.positions.filter(position => position.isOpen).length;
     if (openPositions >= config.maxConcurrentPositions || hasPendingOrder) continue;
     if (config.evaluationStartTime !== undefined && currentCandle.timestamp < config.evaluationStartTime) continue;
+    if (isRolloverBlackout(currentCandle.timestamp)) continue;
     if (config.allowedSessions && !config.allowedSessions.includes(sessionForTimestamp(currentCandle.timestamp))) continue;
     if (config.allowedDaysOfWeekUtc && !config.allowedDaysOfWeekUtc.includes(new Date(currentCandle.timestamp).getUTCDay())) continue;
     const slice = candles.slice(0, index + 1);

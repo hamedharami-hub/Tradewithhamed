@@ -6,6 +6,7 @@ import { evaluateResearchStrategy } from './strategy-rules';
 import type { RuleParameters } from './strategy-rules';
 import { reviewCandidateWithFourAgents } from '@/lib/ai/agentic-reviewer';
 import { DEFAULT_MULTI_AGENT_CONFIG } from '@/lib/contracts/multi-agent-system';
+import { isRolloverBlackout } from '@/lib/core/market-microstructure';
 import type { AIReviewMode, PaperForwardSnapshot, PaperForwardState, StrategyVariantId } from './contracts';
 
 interface PaperForwardRun {
@@ -108,6 +109,10 @@ export class PaperForwardRunner {
     const snapshot = this.ingestClosedBar(symbol, timeframe, candle, false);
     const run = runs.get(key(symbol, timeframe));
     if (!run || !run.state.isRunning || run.bars.length < 140) return snapshot;
+    if (isRolloverBlackout(candle.timestamp)) {
+      run.state.lastError = 'بازهٔ رول‌اور شبانه (۲۱:۰۰ تا ۲۲:۳۰ UTC): بررسی کاندید جدید مسدود شد.';
+      return run.snapshot;
+    }
     const candidate = evaluateResearchStrategy(run.bars, symbol, timeframe, run.state.strategyVariants[0] || 'S0_SWEEP_FVG');
     if (!candidate || run.reviewedCandidateIds.has(candidate.id)) return run.snapshot;
     const review = await reviewCandidateWithFourAgents(candidate, agentConfig);

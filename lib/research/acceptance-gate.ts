@@ -87,3 +87,25 @@ export function evaluateAcceptanceGate(input: AcceptanceGateInput): AcceptanceGa
 export function summaryToGateMetrics(summary: StrategyRunSummary) {
   return { oosNetProfit: summary.netProfit, oosTrades: summary.totalTrades, oosProfitFactor: summary.profitFactor, oosMaxDrawdownPercent: summary.maxDrawdownPercent, stressNetProfits: [summary.netProfit] };
 }
+
+/**
+ * تولید ماتریس استرس هزینهٔ ۳ لایه‌ای:
+ * ۱. سطح پایه (Baseline Cost)
+ * ۲. سطح سخت‌گیرانه (Strict: 2x Spread + 1 Pip Slippage)
+ * ۳. سطح بحرانی (Severe: 3x Spread + 2 Pips Slippage)
+ */
+export function createThreeTierCostStressScenarios(
+  netProfit: number,
+  totalTrades: number,
+  estimatedCostPerTradeDollar = 12
+): number[] {
+  if (totalTrades <= 0) return [netProfit];
+  const strictPenalty = totalTrades * (estimatedCostPerTradeDollar * 0.75);
+  const severePenalty = totalTrades * (estimatedCostPerTradeDollar * 1.75);
+
+  return [
+    Number(netProfit.toFixed(2)),
+    Number((netProfit - strictPenalty).toFixed(2)),
+    Number((netProfit - severePenalty).toFixed(2)),
+  ];
+}

@@ -17,6 +17,12 @@ import { MultiStyleEngine } from './multi-style-engine';
 import { MultiAgentOrchestrator } from './multi-agent-orchestrator';
 import { DEFAULT_MULTI_AGENT_CONFIG } from '../contracts/multi-agent-system';
 import { MonteCarloSimulator } from './monte-carlo-simulator';
+import {
+  getDynamicSpreadPips,
+  isRolloverBlackout,
+  getSessionForTimestamp,
+  resolveIntraBarExit,
+} from './market-microstructure';
 
 interface ActivePosition {
   tradeId: string;
@@ -76,39 +82,48 @@ export class MultiStyleBacktester {
       const currentCandle = candles[i];
       const slice = candles.slice(0, i + 1);
 
+      const effectiveSpreadPips = config.useDynamicSpread
+        ? getDynamicSpreadPips(config.symbol, currentCandle.timestamp, config.spreadPips)
+        : config.spreadPips;
+      const inRollover = config.rolloverBlackout && isRolloverBlackout(currentCandle.timestamp);
+
       // الف. اجرای سیگنال معلق حاصل از کندل قبلی در ابتدای کندل جاری (حذف قطعی سوگیری نگاه به آینده - Zero Lookahead)
       if (pendingSignal && !activePos) {
-        const isBuy = pendingSignal.candidate.direction === 'BUY';
-        const executedEntry = isBuy
-          ? currentCandle.open + (config.slippagePips * pipSize)
-          : currentCandle.open - (config.slippagePips * pipSize);
+        if (inRollover) {
+          // در بازه رول‌اور، جهت ممانعت از اجرای معامله در اسپرد غیرعادی، ورود به کندل بعدی موکول می‌شود
+        } else {
+          const isBuy = pendingSignal.candidate.direction === 'BUY';
+          const executedEntry = isBuy
+            ? currentCandle.open + (config.slippagePips * pipSize)
+            : currentCandle.open - (config.slippagePips * pipSize);
 
-        const partialTpDist = pendingSignal.priceDistance * 1.2;
-        const partialTpPrice = isBuy
-          ? executedEntry + partialTpDist
-          : executedEntry - partialTpDist;
+          const partialTpDist = pendingSignal.priceDistance * 1.2;
+          const partialTpPrice = isBuy
+            ? executedEntry + partialTpDist
+            : executedEntry - partialTpDist;
 
-        activePos = {
-          tradeId: 'BT-' + pendingSignal.candidate.id + '-' + currentCandle.timestamp,
-          candidateId: pendingSignal.candidate.id,
-          symbol: config.symbol,
-          style: pendingSignal.candidate.style || 'SCALP_M1_M5',
-          regime: pendingSignal.regime,
-          direction: pendingSignal.candidate.direction,
-          entryIndex: i,
-          entryTimestamp: currentCandle.timestamp,
-          entryPrice: executedEntry,
-          currentStopLossPrice: pendingSignal.candidate.stopLossPrice,
-          initialStopLossPrice: pendingSignal.candidate.stopLossPrice,
-          fullTakeProfitPrice: pendingSignal.candidate.takeProfitPrice,
-          partialTpPrice,
-          totalVolumeLots: pendingSignal.volumeLots,
-          remainingVolumeLots: pendingSignal.volumeLots,
-          isPartialClosed: false,
-          alphaConsensusScore: pendingSignal.councilScore,
-          monteCarloTpProbability: pendingSignal.mcProb,
-        };
-        pendingSignal = null;
+          activePos = {
+            tradeId: 'BT-' + pendingSignal.candidate.id + '-' + currentCandle.timestamp,
+            candidateId: pendingSignal.candidate.id,
+            symbol: config.symbol,
+            style: pendingSignal.candidate.style || 'SCALP_M1_M5',
+            regime: pendingSignal.regime,
+            direction: pendingSignal.candidate.direction,
+            entryIndex: i,
+            entryTimestamp: currentCandle.timestamp,
+            entryPrice: executedEntry,
+            currentStopLossPrice: pendingSignal.candidate.stopLossPrice,
+            initialStopLossPrice: pendingSignal.candidate.stopLossPrice,
+            fullTakeProfitPrice: pendingSignal.candidate.takeProfitPrice,
+            partialTpPrice,
+            totalVolumeLots: pendingSignal.volumeLots,
+            remainingVolumeLots: pendingSignal.volumeLots,
+            isPartialClosed: false,
+            alphaConsensusScore: pendingSignal.councilScore,
+            monteCarloTpProbability: pendingSignal.mcProb,
+          };
+          pendingSignal = null;
+        }
       }
 
       // ۱. بررسی و به‌روزرسانی پوزیشن فعال در صورت وجود
@@ -118,24 +133,17 @@ export class MultiStyleBacktester {
         let exitPrice = 0;
         let isFinalExit = false;
 
-        // الف. بررسی برخورد با حد ضرر (Stop Loss)
-        const hitSL = isBuy
-          ? currentCandle.low <= activePos.currentStopLossPrice
-          : currentCandle.high >= activePos.currentStopLossPrice;
+        // الف. بررسی خروج پله‌ای ۵۰٪ (Partial Take Profit at 1.2R)
+        if (config.enablePartialTp && !activePos.isPartialClosed) {
+          const partialResolution = resolveIntraBarExit(
+            currentCandle,
+            activePos.direction,
+            activePos.currentStopLossPrice,
+            activePos.partialTpPrice,
+            config.intraBarModel || 'BAR_POLARITY'
+          );
 
-        if (hitSL) {
-          exitPrice = activePos.currentStopLossPrice;
-          exitReason = activePos.isPartialClosed ? 'TP_PARTIAL_RUNNER_BE' : 'SL';
-          isFinalExit = true;
-        }
-
-        // ب. بررسی خروج پله‌ای ۵۰٪ (Partial Take Profit at 1.2R)
-        if (!isFinalExit && config.enablePartialTp && !activePos.isPartialClosed) {
-          const hitPartialTP = isBuy
-            ? currentCandle.high >= activePos.partialTpPrice
-            : currentCandle.low <= activePos.partialTpPrice;
-
-          if (hitPartialTP) {
+          if (partialResolution.tpHit && partialResolution.firstExit === 'TP') {
             const closedLots = activePos.totalVolumeLots * 0.5;
             const diffPrice = isBuy
               ? activePos.partialTpPrice - activePos.entryPrice
@@ -143,7 +151,7 @@ export class MultiStyleBacktester {
             const partialGross = diffPrice * closedLots * contractMultiplier;
             const commissionPerLot = config.commissionPerLotRoundTrip ?? 6.0;
             const partialCommission = closedLots * commissionPerLot;
-            const partialSpread = (config.spreadPips * pipSize) * closedLots * contractMultiplier;
+            const partialSpread = (effectiveSpreadPips * pipSize) * closedLots * contractMultiplier;
             const partialNet = partialGross - partialCommission - partialSpread;
 
             currentCash += partialNet;
@@ -151,26 +159,35 @@ export class MultiStyleBacktester {
             activePos.remainingVolumeLots = activePos.totalVolumeLots - closedLots;
             activePos.isPartialClosed = true;
 
+            // انتقال حد ضرر به نقطه ورود (Breakeven) به همراه جبران اسپرد
             activePos.currentStopLossPrice = isBuy
-              ? activePos.entryPrice + (config.spreadPips * pipSize)
-              : activePos.entryPrice - (config.spreadPips * pipSize);
+              ? activePos.entryPrice + (effectiveSpreadPips * pipSize)
+              : activePos.entryPrice - (effectiveSpreadPips * pipSize);
           }
         }
 
-        // ج. بررسی برخورد با حد سود نهایی (Full Take Profit)
-        if (!isFinalExit) {
-          const hitFullTP = isBuy
-            ? currentCandle.high >= activePos.fullTakeProfitPrice
-            : currentCandle.low <= activePos.fullTakeProfitPrice;
+        // ب. بررسی خروج نهایی (SL یا TP نهایی) با مدل قطبیت و رفع ابهام درون‌کندلی
+        const fullResolution = resolveIntraBarExit(
+          currentCandle,
+          activePos.direction,
+          activePos.currentStopLossPrice,
+          activePos.fullTakeProfitPrice,
+          config.intraBarModel || 'BAR_POLARITY'
+        );
 
-          if (hitFullTP) {
+        if (fullResolution.slHit || fullResolution.tpHit) {
+          if (fullResolution.firstExit === 'SL') {
+            exitPrice = activePos.currentStopLossPrice;
+            exitReason = activePos.isPartialClosed ? 'TP_PARTIAL_RUNNER_BE' : 'SL';
+            isFinalExit = true;
+          } else if (fullResolution.firstExit === 'TP') {
             exitPrice = activePos.fullTakeProfitPrice;
             exitReason = activePos.isPartialClosed ? 'TP_PARTIAL_RUNNER_TP' : 'TP_FULL';
             isFinalExit = true;
           }
         }
 
-        // د. خروج به علت منقضی شدن زمان نگهداشت (۵۰ کندل)
+        // ج. خروج به علت منقضی شدن زمان نگهداشت (۵۰ کندل)
         if (!isFinalExit && (i - activePos.entryIndex) >= 50) {
           exitPrice = currentCandle.close;
           exitReason = 'TIMEOUT_CLOSE';
@@ -184,7 +201,7 @@ export class MultiStyleBacktester {
           const finalSliceGross = diff * exitLots * contractMultiplier;
           const commissionPerLot = config.commissionPerLotRoundTrip ?? 6.0;
           const finalCommission = exitLots * commissionPerLot;
-          const finalSpread = (config.spreadPips * pipSize) * exitLots * contractMultiplier;
+          const finalSpread = (effectiveSpreadPips * pipSize) * exitLots * contractMultiplier;
           const finalNet = finalSliceGross - finalCommission - finalSpread;
 
           currentCash += finalNet;
@@ -240,6 +257,14 @@ export class MultiStyleBacktester {
 
       // ۲. بررسی فرصت ورود جدید برای کندل بعدی (در صورت عدم وجود پوزیشن باز یا سیگنال معلق)
       if (!activePos && !pendingSignal) {
+        // فیلتر سشن معاملاتی و ساعات رول‌اور
+        const currentSession = getSessionForTimestamp(currentCandle.timestamp);
+        if (config.sessionFilter && config.sessionFilter !== 'ALL' && config.sessionFilter !== currentSession) {
+          continue;
+        }
+        if (inRollover) {
+          continue;
+        }
         const evalRes = MultiStyleEngine.evaluate(slice, config.symbol, config.style);
         const regimeAnalysis = evalRes.regime;
         const candidate = evalRes.candidate;

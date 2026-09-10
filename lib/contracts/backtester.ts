@@ -5,6 +5,13 @@
 import { SymbolId, Timeframe } from './market';
 import { MarketRegimeType, TradingStyleType } from './regimes';
 
+export type BacktestSessionFilter =
+  | 'ALL'
+  | 'LONDON'
+  | 'LONDON_NY_OVERLAP'
+  | 'NEW_YORK'
+  | 'ASIA';
+
 export interface BacktestConfig {
   symbol: SymbolId;
   timeframe: Timeframe;
@@ -18,6 +25,10 @@ export interface BacktestConfig {
   spreadPips: number;
   slippagePips: number;
   commissionPerLotRoundTrip?: number; // e.g. $6.0 / lot round-trip
+  sessionFilter?: BacktestSessionFilter;
+  useDynamicSpread?: boolean;
+  rolloverBlackout?: boolean;
+  intraBarModel?: 'PESSIMISTIC' | 'BAR_POLARITY';
 }
 
 export const DEFAULT_BACKTEST_CONFIG: BacktestConfig = {
@@ -33,6 +44,10 @@ export const DEFAULT_BACKTEST_CONFIG: BacktestConfig = {
   spreadPips: 1.5,
   slippagePips: 0.2,
   commissionPerLotRoundTrip: 6.0,
+  sessionFilter: 'ALL',
+  useDynamicSpread: true,
+  rolloverBlackout: true,
+  intraBarModel: 'BAR_POLARITY',
 };
 
 export type BacktestExitReason =

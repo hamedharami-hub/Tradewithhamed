@@ -13,6 +13,11 @@ import {
   IExecutionPort,
   IEventStorePort,
 } from './ports';
+import {
+  getDynamicSpreadPips,
+  isRolloverBlackout,
+  resolveIntraBarExit,
+} from './market-microstructure';
 
 // ساعت مجازی رویدادمحور با جلوگیری از دسترسی به زمان آینده
 export class VirtualClock implements IClockPort {
@@ -68,6 +73,9 @@ export interface EngineConfig {
   initialCash: number;
   commissionPerLot: number;
   defaultSpreadPips: number;
+  useDynamicSpread?: boolean;
+  useRolloverBlackout?: boolean;
+  enablePartialTp?: boolean;
   ambiguityPolicy: IntrabarAmbiguityPolicy;
   slippageModel: {
     baseSlippagePips: number;
@@ -95,6 +103,9 @@ export class EventDrivenExecutionEngine implements IExecutionPort {
       initialCash: config.initialCash ?? 10000,
       commissionPerLot: config.commissionPerLot ?? 6.0,
       defaultSpreadPips: config.defaultSpreadPips ?? 1.5,
+      useDynamicSpread: config.useDynamicSpread ?? false,
+      useRolloverBlackout: config.useRolloverBlackout ?? false,
+      enablePartialTp: config.enablePartialTp ?? false,
       ambiguityPolicy: config.ambiguityPolicy || 'PESSIMISTIC',
       slippageModel: config.slippageModel || {
         baseSlippagePips: 0.2,
@@ -269,7 +280,11 @@ export class EventDrivenExecutionEngine implements IExecutionPort {
     this.clock.advanceTo(candle.timestamp);
     const events: ExecutionEventPayload[] = [];
     const pipVal = SYMBOL_SPECS[symbol].pipSize;
-    const spreadPoints = this.config.defaultSpreadPips * pipVal;
+    const effectiveSpreadPips = this.config.useDynamicSpread
+      ? getDynamicSpreadPips(symbol, candle.timestamp, this.config.defaultSpreadPips)
+      : this.config.defaultSpreadPips;
+    const spreadPoints = effectiveSpreadPips * pipVal;
+    const inRollover = this.config.useRolloverBlackout && isRolloverBlackout(candle.timestamp);
 
     // ۱. بررسی انقضای سفارش‌های معلق (Setup Expiry - مثلاً حداکثر ۳ الی ۶ کندل)
     const activePending: OrderIntentPayload[] = [];
@@ -290,6 +305,12 @@ export class EventDrivenExecutionEngine implements IExecutionPort {
         this.eventStore.recordEvent(expireEvt);
         events.push(expireEvt);
         this.orderAgeMap.delete(order.intentId);
+        continue;
+      }
+
+      // در زمان رول‌اور (۲۱:۰۰ تا ۲۲:۳۰ UTC)، اجرای سفارش‌ها مسدود می‌شود تا از جهش اسپرد در امان بماند
+      if (inRollover) {
+        activePending.push(order);
         continue;
       }
 
@@ -320,7 +341,7 @@ export class EventDrivenExecutionEngine implements IExecutionPort {
           fillPrice,
           filledVolume: order.volumeLots,
           commissionPaid: commission,
-          notes: `سفارش لیمیت در کندل بسته تکمیل شد.`,
+          notes: `سفارش در کندل تکمیل شد (اسپرد: ${effectiveSpreadPips} پیپ).`,
         };
         this.eventStore.recordEvent(fillEvent);
         events.push(fillEvent);
@@ -365,39 +386,54 @@ export class EventDrivenExecutionEngine implements IExecutionPort {
       pos.mfePips = Math.max(pos.mfePips, favorablePips);
     }
 
-    // بررسی برخورد همزمان حد سود و ضرر (Intrabar Ambiguity)
-    let slHit = false;
-    let tpHit = false;
+    // الف. خروج پله‌ای ۵۰٪ در ۱.۲R و انتقال خودکار حد ضرر به نقطه ورود (Breakeven)
+    const isBuy = pos.direction === 'BUY';
+    const riskDistance = Math.abs(pos.entryPrice - pos.stopLossPrice);
+    const partialTarget = isBuy ? pos.entryPrice + 1.2 * riskDistance : pos.entryPrice - 1.2 * riskDistance;
+    const canPartialClose = this.config.enablePartialTp && !pos.isPartialClosed && riskDistance > 0 && pos.volumeLots >= 0.02;
 
-    if (pos.direction === 'BUY') {
-      slHit = candle.low <= pos.stopLossPrice;
-      tpHit = candle.high >= pos.takeProfitPrice;
-    } else {
-      slHit = candle.high >= pos.stopLossPrice;
-      tpHit = candle.low <= pos.takeProfitPrice;
+    if (canPartialClose) {
+      const hitPartial = isBuy ? candle.high >= partialTarget : candle.low <= partialTarget;
+      if (hitPartial) {
+        const closedLots = Number((pos.volumeLots * 0.5).toFixed(2));
+        if (closedLots >= 0.01) {
+          const priceDiffAtTarget = isBuy ? partialTarget - pos.entryPrice : pos.entryPrice - partialTarget;
+          const partialPnl = this.pnlInAccountCurrency(symbol, closedLots, priceDiffAtTarget, partialTarget);
+          pos.volumeLots = Number((pos.volumeLots - closedLots).toFixed(2));
+          pos.isPartialClosed = true;
+          pos.partialRealizedPnl = Number(partialPnl.toFixed(2));
+          pos.stopLossPrice = pos.entryPrice; // انتقال به Breakeven
+          this.ledger.cashBalance = Number((this.ledger.cashBalance + partialPnl).toFixed(2));
+          this.ledger.totalRealizedPnl = Number((this.ledger.totalRealizedPnl + partialPnl).toFixed(2));
+        }
+      }
     }
 
-    const isAmbiguous = slHit && tpHit;
+    // ب. بررسی برخورد با حد سود و ضرر با مدل رفع ابهام
+    const resolutionPolicy =
+      this.config.ambiguityPolicy === 'BAR_POLARITY'
+        ? 'BAR_POLARITY'
+        : this.config.ambiguityPolicy === 'OPTIMISTIC'
+        ? 'OPTIMISTIC'
+        : 'PESSIMISTIC';
+
+    const intraRes = resolveIntraBarExit(
+      candle,
+      pos.direction,
+      pos.stopLossPrice,
+      pos.takeProfitPrice,
+      resolutionPolicy
+    );
+
+    const slHit = intraRes.slHit;
+    const tpHit = intraRes.tpHit;
+    const isAmbiguous = intraRes.isAmbiguous;
 
     if (slHit || tpHit) {
       pos.isOpen = false;
       pos.closedTimestamp = candle.timestamp;
 
-      // سیاست رفع ابهام: پیش‌فرض بدبینانه (Pessimistic) طبق سند ۴.۰
-      let finalReason: 'SL' | 'TP' = 'SL';
-      if (isAmbiguous) {
-        if (this.config.ambiguityPolicy === 'PESSIMISTIC') {
-          finalReason = 'SL';
-        } else if (this.config.ambiguityPolicy === 'OPTIMISTIC') {
-          finalReason = 'TP';
-        } else {
-          // در حالت سنسیتویتی برچسب عدم قطعیت ثبت می‌شود
-          finalReason = 'SL';
-        }
-      } else {
-        finalReason = slHit ? 'SL' : 'TP';
-      }
-
+      const finalReason = intraRes.firstExit || (slHit ? 'SL' : 'TP');
       pos.closeReason = finalReason;
       const triggerPrice = finalReason === 'SL' ? pos.stopLossPrice : pos.takeProfitPrice;
       const adverseExitSlippage = (this.config.slippageModel.baseSlippagePips + this.config.defaultSpreadPips * 0.5) * pipVal;
@@ -427,7 +463,7 @@ export class EventDrivenExecutionEngine implements IExecutionPort {
         commissionPaid: exitCommission,
         ambiguityFlag: isAmbiguous,
         notes: isAmbiguous
-          ? `برخورد همزمان SL و TP با سیاست ${this.config.ambiguityPolicy} به نفع ${finalReason} حل شد.`
+          ? `برخورد همزمان SL و TP با سیاست ${this.config.ambiguityPolicy} به نفع ${finalReason} (${intraRes.rationale}) حل شد.`
           : `پوزیشن با برخورد به ${finalReason} در قیمت ${exitPrice} بسته شد.`,
       };
       this.eventStore.recordEvent(closeEvent);
