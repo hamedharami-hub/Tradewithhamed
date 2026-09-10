@@ -15,6 +15,7 @@ function timeframeToMs(timeframe: Timeframe): number {
     '1H': 60 * 60_000,
     '4H': 4 * 60 * 60_000,
     D1: 24 * 60 * 60_000,
+    W1: 7 * 24 * 60 * 60_000,
   };
   return durations[timeframe];
 }

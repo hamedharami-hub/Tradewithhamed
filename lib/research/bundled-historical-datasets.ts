@@ -1,10 +1,10 @@
-import type { SymbolId } from '@/lib/contracts/market';
+import type { SymbolId, Timeframe } from '@/lib/contracts/market';
 
 export interface BundledHistoricalDataset {
   id: string;
   symbol: SymbolId;
-  timeframe: '5M' | 'D1';
-  source: 'Yahoo Finance' | 'HistData aggregated';
+  timeframe: Timeframe;
+  source: 'Yahoo Finance' | 'HistData' | 'HistData aggregated';
   providerSymbol: string;
   labelFa: string;
   url: string;
@@ -32,6 +32,29 @@ export function bundledDatasetForSymbol(symbol: SymbolId): BundledHistoricalData
   return BUNDLED_HISTORICAL_DATASETS.find(dataset => dataset.symbol === symbol && dataset.timeframe === 'D1');
 }
 
-export function bundledIntradayDatasetForSymbol(symbol: SymbolId): BundledHistoricalDataset | undefined {
-  return BUNDLED_HISTORICAL_DATASETS.find(dataset => dataset.symbol === symbol && dataset.timeframe === '5M');
+export function bundledIntradayDatasetForSymbol(symbol: SymbolId, timeframe: Timeframe = '5M'): BundledHistoricalDataset | undefined {
+  if (!['1M', '5M', '15M', '1H', '4H', 'D1', 'W1'].includes(timeframe)) return undefined;
+  const labels: Record<Timeframe, string> = {
+    '1M': 'یک‌دقیقه‌ای',
+    '5M': 'پنج‌دقیقه‌ای',
+    '15M': 'پانزده‌دقیقه‌ای',
+    '1H': 'یک‌ساعته',
+    '4H': 'چهارساعته',
+    D1: 'روزانه',
+    W1: 'هفتگی',
+  };
+  if (['1M', '5M', '15M', '1H', '4H', 'D1', 'W1'].includes(timeframe) && ['EURUSD', 'GBPUSD', 'USDJPY'].includes(symbol)) {
+    const lower = timeframe.toLowerCase();
+    return {
+      id: `HISTDATA-${symbol}-${timeframe}-2024`,
+      symbol,
+      timeframe,
+      source: timeframe === '1M' ? 'HistData' : 'HistData aggregated',
+      providerSymbol: symbol,
+      labelFa: `${symbol} ${labels[timeframe]}، سال ۲۰۲۴`,
+      url: `/historical/intraday/histdata-${symbol.toLowerCase()}-${lower}-2024.csv`,
+      caveatFa: 'دادهٔ عمومی HistData است و broker-match نیست؛ برای پژوهش و Backtest استفاده شود.',
+    };
+  }
+  return undefined;
 }

@@ -272,6 +272,8 @@ export class DataWorkbench {
         return 4 * 60 * 60 * 1000;
       case 'D1':
         return 24 * 60 * 60 * 1000;
+      case 'W1':
+        return 7 * 24 * 60 * 60 * 1000;
       default:
         return 5 * 60 * 1000;
     }

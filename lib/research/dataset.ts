@@ -37,6 +37,7 @@ export const timeframeMs = (timeframe: Timeframe): number => {
     '1H': 3_600_000,
     '4H': 14_400_000,
     'D1': 86_400_000,
+    'W1': 7 * 86_400_000,
   };
   return values[timeframe];
 };

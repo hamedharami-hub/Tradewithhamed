@@ -73,7 +73,7 @@ const SYMBOLS: Array<{ id: SymbolId; label: string; className: string }> = [
   { id: 'BTCUSD', label: 'BTCUSD · بیت‌کوین', className: 'text-orange-300 border-orange-500/30 bg-orange-500/10' },
 ];
 
-const TIMEFRAMES: Timeframe[] = ['1M', '5M', '15M', '1H', '4H', 'D1'];
+const TIMEFRAMES: Timeframe[] = ['1M', '5M', '15M', '1H', '4H', 'D1', 'W1'];
 
 const STYLE_DESCRIPTIONS: Record<TradingStyleType, string> = {
   SCALP_M1_M5: 'بازگشت سریع میکروساختار در M1/M5؛ فقط با هزینهٔ محافظه‌کارانه و بازهٔ کوتاه.',
@@ -290,7 +290,7 @@ export function ResearchDesk() {
   };
 
   const handleLoadBundledIntradayDataset = async () => {
-    const dataset = bundledIntradayDatasetForSymbol(symbol);
+    const dataset = bundledIntradayDatasetForSymbol(symbol, baseTimeframe);
     if (!dataset) {
       setRunMessage('برای این نماد دادهٔ ۵ دقیقه‌ای آماده وجود ندارد؛ CSV معتبر خود را وارد کنید.');
       return;
@@ -299,11 +299,10 @@ export function ResearchDesk() {
     try {
       const response = await fetch(dataset.url, { cache: 'no-store' });
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      const parsed = DataWorkbench.parseCSV(await response.text(), '5M', 0);
-      if (parsed.candles.length < 200) throw new Error('دادهٔ ۵ دقیقه‌ای آماده کافی نیست.');
+      const parsed = DataWorkbench.parseCSV(await response.text(), baseTimeframe, 0);
+      if (parsed.candles.length < 50) throw new Error(`دادهٔ ${baseTimeframe} آماده کافی نیست.`);
       setBaseCandles(parsed.candles);
-      setBaseTimeframe('5M');
-      setTargetTimeframe('5M');
+      setTargetTimeframe(baseTimeframe);
       setImportedFileName(dataset.id);
       setSourceLabel(`${dataset.labelFa} · ${dataset.source} · ${dataset.providerSymbol}`);
       setStartDate('');
@@ -312,9 +311,9 @@ export function ResearchDesk() {
       setResult(null);
       setMatrixResult(null);
       setIsPlaying(false);
-      setRunMessage(dataset.caveatFa || `${number.format(parsed.candles.length)} کندل ۵ دقیقه‌ای در مرورگر بارگذاری شد.`);
+      setRunMessage(dataset.caveatFa || `${number.format(parsed.candles.length)} کندل ${baseTimeframe} در مرورگر بارگذاری شد.`);
     } catch (error) {
-      setRunMessage(`بارگذاری دادهٔ ۵ دقیقه‌ای ناموفق بود: ${error instanceof Error ? error.message : 'خطای ناشناخته'}`);
+      setRunMessage(`بارگذاری دادهٔ ${baseTimeframe} ناموفق بود: ${error instanceof Error ? error.message : 'خطای ناشناخته'}`);
     } finally {
       setIsRunning(false);
     }
@@ -575,10 +574,10 @@ export function ResearchDesk() {
               <button type="button" onClick={handleLoadBundledDataset} disabled={isRunning || !bundledDatasetForSymbol(symbol)} className="w-full secondary-button disabled:opacity-40">
                 <Database className="w-4 h-4" /> بارگذاری دادهٔ روزانهٔ بلندمدت آماده
               </button>
-              <button type="button" onClick={handleLoadBundledIntradayDataset} disabled={isRunning || !bundledIntradayDatasetForSymbol(symbol)} className="w-full secondary-button disabled:opacity-40">
-                <Database className="w-4 h-4" /> بارگذاری دادهٔ ۵ دقیقه‌ای سال ۲۰۲۴
+              <button type="button" onClick={handleLoadBundledIntradayDataset} disabled={isRunning || !bundledIntradayDatasetForSymbol(symbol, baseTimeframe)} className="w-full secondary-button disabled:opacity-40">
+                <Database className="w-4 h-4" /> بارگذاری دادهٔ {baseTimeframe} سال ۲۰۲۴
               </button>
-              <p className="-mt-2 text-[10px] leading-5 text-slate-500">برای EURUSD، GBPUSD و USDJPY دادهٔ ۵ دقیقه‌ای سال ۲۰۲۴ داخل اپ قرار گرفته است. این داده عمومی و پژوهشی است، نه broker-match.</p>
+              <p className="-mt-2 text-[10px] leading-5 text-slate-500">برای EURUSD، GBPUSD و USDJPY دادهٔ ۱M، ۵M، ۱۵M، ۱H، ۴H، D1 و W1 سال ۲۰۲۴ داخل اپ قرار گرفته است. این داده عمومی و پژوهشی است، نه broker-match.</p>
               <p className="text-[10px] leading-5 text-slate-500">{DATASET_IMPORT_GUIDANCE_FA}</p>
               <div className="grid grid-cols-2 gap-2">
                 <label className="label">شروع UTC
