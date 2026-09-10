@@ -31,14 +31,19 @@ import {
   AICouncilAttributionReport,
   DEFAULT_W5_TRADES,
 } from '@/lib/contracts/w5-journal-analytics';
+import { SimulatedPosition } from '@/lib/contracts/orders';
 import { PostTradeAnalyticsEngine } from '@/lib/core/post-trade-analytics';
 import { runW5AcceptanceSuite, W5AcceptanceTestResult } from '@/lib/core/__tests__/w5-acceptance.test';
 
 type SubTab = 'ALPHA' | 'BEHAVIORAL' | 'EXCURSION' | 'TIME' | 'AI_ATTRIBUTION' | 'TESTS';
 
-export function JournalWorkbenchW5() {
+interface JournalWorkbenchW5Props {
+  positions?: SimulatedPosition[];
+}
+
+export function JournalWorkbenchW5({ positions }: JournalWorkbenchW5Props = {}) {
   const [subTab, setSubTab] = useState<SubTab>('ALPHA');
-  const [trades, setTrades] = useState<TradeLifecycleRecord[]>(DEFAULT_W5_TRADES);
+  const [serverTrades, setServerTrades] = useState<TradeLifecycleRecord[]>(DEFAULT_W5_TRADES);
   const [expandedTradeId, setExpandedTradeId] = useState<string | null>(null);
   const [testResults, setTestResults] = useState<W5AcceptanceTestResult[]>([]);
   const [isRunningTests, setIsRunningTests] = useState(false);
@@ -111,7 +116,7 @@ export function JournalWorkbenchW5() {
               };
             });
             if (mapped.length > 0) {
-              setTrades(mapped);
+              setServerTrades(mapped);
             }
           }
         }
@@ -122,6 +127,57 @@ export function JournalWorkbenchW5() {
       isMounted = false;
     };
   }, []);
+
+  // ترکیب بلادرنگ معاملات سرور با معاملات بسته شده شبیه‌ساز و پوزیشن‌های زنده
+  const trades = useMemo(() => {
+    if (!positions || positions.length === 0) return serverTrades;
+    const closed = positions.filter(p => !p.isOpen);
+    if (closed.length === 0) return serverTrades;
+
+    const liveMapped: TradeLifecycleRecord[] = closed.map((p) => {
+      const contractSize = p.symbol === 'XAUUSD' ? 100 : 100000;
+      const plannedRisk = Math.max(1, Math.abs(p.entryPrice - p.stopLoss) * contractSize * p.volumeLots);
+      const rMult = plannedRisk > 0 ? Number((p.realizedPnl / plannedRisk).toFixed(2)) : 0;
+      return {
+        tradeId: p.id,
+        intentId: p.orderId,
+        correlationId: `CORR-${p.id}`,
+        causationId: `CAUSE-${p.id}`,
+        brokerOrderId: p.orderId,
+        symbol: p.symbol,
+        direction: p.direction,
+        volumeLots: p.volumeLots,
+        entryPrice: p.entryPrice,
+        stopLossPrice: p.stopLoss,
+        takeProfitPrice: p.takeProfit,
+        exitPrice: p.currentPrice,
+        openedAt: p.openedAt,
+        closedAt: p.closedAt || p.openedAt,
+        exitReason: p.closeReason === 'TP' ? 'TP_HIT' : p.closeReason === 'SL' ? 'SL_HIT' : 'MANUAL_CLOSE',
+        plannedRiskAmount: Number(plannedRisk.toFixed(2)),
+        realizedGrossPnL: Number((p.realizedPnl + p.commissionPaid).toFixed(2)),
+        brokerCommission: p.commissionPaid,
+        slippagePips: 0.2,
+        slippageCostDollar: 0.1,
+        realizedNetPnL: p.realizedPnl,
+        realizedRMultiple: rMult,
+        maxAdverseExcursionPips: p.maePips ?? 0,
+        maxAdverseExcursionDollar: Number(((p.maePips ?? 0) * (p.symbol === 'XAUUSD' ? 10 : 10) * p.volumeLots).toFixed(2)),
+        maxFavorableExcursionPips: p.mfePips ?? 0,
+        maxFavorableExcursionDollar: Number(((p.mfePips ?? 0) * (p.symbol === 'XAUUSD' ? 10 : 10) * p.volumeLots).toFixed(2)),
+        exitEfficiencyPercent: p.exitEfficiencyPercent ?? (p.realizedPnl > 0 ? 80 : 20),
+        setupGrade: p.realizedPnl > 0 ? 'A+' : 'B',
+        traderNotesFa: p.psychologyMood ? `حالت روحی: ${p.psychologyMood}` : 'ثبت خودکار از شبیه‌ساز اجرای زنده',
+        behavioralTags: p.psychologyMood ? [p.psychologyMood] : [],
+        psychologyMood: p.psychologyMood,
+        propFirmId: p.propFirmId,
+      };
+    });
+
+    const existingIds = new Set(liveMapped.map(m => m.tradeId));
+    const remainingPrev = serverTrades.filter(t => !existingIds.has(t.tradeId));
+    return [...liveMapped, ...remainingPrev];
+  }, [positions, serverTrades]);
 
   // فیلتر معاملات
   const filteredTrades = useMemo(() => {
@@ -577,7 +633,25 @@ export function JournalWorkbenchW5() {
                     <React.Fragment key={trade.tradeId}>
                       <tr className="hover:bg-slate-800/30 transition-colors">
                         <td className="py-2.5 px-2 font-mono">
-                          <div className="font-semibold text-slate-100">{trade.symbol}</div>
+                          <div className="font-semibold text-slate-100 flex items-center gap-1.5 flex-wrap">
+                            <span>{trade.symbol}</span>
+                            {trade.psychologyMood && (
+                              <span className="text-[10px] px-1.5 py-0.5 rounded font-sans font-bold bg-purple-500/20 text-purple-300 border border-purple-500/30">
+                                {trade.psychologyMood === 'PLAN_DISCIPLINED'
+                                  ? '🎯 پلن'
+                                  : trade.psychologyMood === 'FOMO_RUSH'
+                                  ? '⚡ فومو'
+                                  : trade.psychologyMood === 'REVENGE_TRADE'
+                                  ? '😡 انتقام'
+                                  : '😴 خستگی'}
+                              </span>
+                            )}
+                            {trade.propFirmId && (
+                              <span className="text-[9px] px-1 py-0.2 rounded font-sans bg-amber-500/15 text-amber-300 border border-amber-500/30">
+                                {trade.propFirmId.split('_')[0]}
+                              </span>
+                            )}
+                          </div>
                           <div className="text-[10px] text-slate-500">{trade.tradeId}</div>
                         </td>
                         <td className="py-2.5 px-2 font-mono">
@@ -658,8 +732,18 @@ export function JournalWorkbenchW5() {
                               </div>
 
                               <div className="bg-slate-900/60 rounded-xl p-2.5 border border-slate-800 space-y-1">
-                                <span className="text-slate-400 text-[11px] block">یادداشت فنی تحلیل‌گر:</span>
-                                <p className="text-slate-300 text-[11px] leading-relaxed">
+                                <span className="text-slate-400 text-[11px] block">روان‌شناسی و قوانین:</span>
+                                {trade.psychologyMood && (
+                                  <div className="text-slate-300 text-[11px]">
+                                    وضعیت ذهنی: <span className="font-bold text-purple-300">{trade.psychologyMood}</span>
+                                  </div>
+                                )}
+                                {trade.propFirmId && (
+                                  <div className="text-slate-300 text-[11px]">
+                                    پراپ‌فرم: <span className="font-bold text-amber-300 font-mono">{trade.propFirmId}</span>
+                                  </div>
+                                )}
+                                <p className="text-slate-400 text-[10px] leading-relaxed mt-1">
                                   {trade.traderNotesFa || 'یادداشتی ثبت نشده است.'}
                                 </p>
                               </div>

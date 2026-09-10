@@ -10,14 +10,17 @@ import {
 } from 'lucide-react';
 import { JournalWorkbenchW5 } from '@/components/trading/journal-workbench-w5';
 import { ResearchWorkbench } from '@/components/trading/research-workbench';
+import { ResearchDesk } from '@/components/research-desk';
 import { RiskGuardianWorkbench } from '@/components/trading/risk-guardian-workbench';
 import { Candle, SymbolId } from '@/lib/contracts/market';
+import { SimulatedPosition } from '@/lib/contracts/orders';
 
 interface AnalyticsWorkspaceProps {
   candles: Candle[];
   symbol: SymbolId;
   onOpenMonteCarlo: () => void;
   onOpenBacktest: () => void;
+  positions?: SimulatedPosition[];
 }
 
 export const AnalyticsWorkspace: React.FC<AnalyticsWorkspaceProps> = ({
@@ -25,6 +28,7 @@ export const AnalyticsWorkspace: React.FC<AnalyticsWorkspaceProps> = ({
   symbol,
   onOpenMonteCarlo,
   onOpenBacktest,
+  positions,
 }) => {
   const [activeSection, setActiveSection] = useState<'journal' | 'research' | 'guardian'>('journal');
 
@@ -105,16 +109,13 @@ export const AnalyticsWorkspace: React.FC<AnalyticsWorkspaceProps> = ({
       {/* محتوای بخش فعال */}
       {activeSection === 'journal' && (
         <div className="space-y-4">
-          <JournalWorkbenchW5 />
+          <JournalWorkbenchW5 positions={positions} />
         </div>
       )}
 
       {activeSection === 'research' && (
         <div className="space-y-4">
-          <ResearchWorkbench
-            currentCandles={candles}
-            symbol={symbol}
-          />
+          <ResearchDesk />
         </div>
       )}
 

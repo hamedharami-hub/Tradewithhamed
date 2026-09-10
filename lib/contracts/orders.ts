@@ -49,4 +49,11 @@ export interface SimulatedPosition {
   closeReason?: 'SL' | 'TP' | 'MANUAL' | 'PARTIAL_TP' | 'PANIC_KILL_SWITCH';
   isBreakevenActive?: boolean;
   partialCloseCount?: number;
+  highestPriceDuringTrade?: number;
+  lowestPriceDuringTrade?: number;
+  maePips?: number;
+  mfePips?: number;
+  exitEfficiencyPercent?: number;
+  psychologyMood?: string;
+  propFirmId?: string;
 }

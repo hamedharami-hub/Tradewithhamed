@@ -14,7 +14,6 @@ import { TradeWorkspace } from '@/components/workspaces/trade-workspace';
 import { AIHubWorkspace } from '@/components/workspaces/ai-hub-workspace';
 import { AnalyticsWorkspace } from '@/components/workspaces/analytics-workspace';
 import { SystemWorkspace } from '@/components/workspaces/system-workspace';
-import { ResearchDesk } from '@/components/research-desk';
 import { OrderIntentModal } from '@/components/trading/order-intent-modal';
 import { OfflineIndicator } from '@/components/trading/offline-indicator';
 import { ExportImportModal } from '@/components/trading/export-import-modal';
@@ -360,7 +359,8 @@ export default function TradingLabPage() {
     direction: 'BUY' | 'SELL',
     riskPercent: number,
     useCandidateLevels: boolean,
-    partialConfig: PartialTPConfig
+    partialConfig: PartialTPConfig,
+    meta?: { mood?: string; propFirmId?: string }
   ) => {
     try {
       const lastCandle = replayState.visibleCandles[replayState.visibleCandles.length - 1];
@@ -411,7 +411,8 @@ export default function TradingLabPage() {
         lots,
         entry,
         sl,
-        tp
+        tp,
+        meta
       );
 
       setExecutionMessage(
@@ -529,6 +530,21 @@ export default function TradingLabPage() {
   };
 
   const brokerState = broker.getState();
+  const dailyDrawdownPercent =
+    brokerState.accountBalance > 0 && brokerState.accountEquity < brokerState.accountBalance
+      ? Number((((brokerState.accountBalance - brokerState.accountEquity) / brokerState.accountBalance) * 100).toFixed(2))
+      : 0;
+
+  const closedPositions = brokerState.positions.filter(p => !p.isOpen);
+  let consecutiveLossCount = 0;
+  for (let i = closedPositions.length - 1; i >= 0; i--) {
+    if (closedPositions[i].realizedPnl < 0) {
+      consecutiveLossCount++;
+    } else {
+      break;
+    }
+  }
+
   const pendingOutboxCount = outboxRecords.filter(
     r => r.state === 'SUBMITTING' || r.state === 'UNKNOWN_RECONCILE_REQUIRED'
   ).length;
@@ -632,6 +648,8 @@ export default function TradingLabPage() {
               onOpenAlerts={() => setIsAlertModalOpen(true)}
               unreadAlertsCount={unreadAlertsCount}
               viewMode={viewMode}
+              dailyDrawdownPercent={dailyDrawdownPercent}
+              consecutiveLossCount={consecutiveLossCount}
             />
           )}
 
@@ -650,22 +668,18 @@ export default function TradingLabPage() {
             />
           )}
 
-          {/* محیط کاری ۳: کارگاه تحلیلی، ریسک و ژورنال */}
+          {/* محیط کاری ۳: کارگاه تحلیلی، پژوهش، ریسک و ژورنال */}
           {activeWorkspace === 'analytics' && (
             <AnalyticsWorkspace
               candles={replayState.visibleCandles}
               symbol={symbol}
               onOpenMonteCarlo={() => setIsMonteCarloModalOpen(true)}
               onOpenBacktest={() => setIsBacktestModalOpen(true)}
+              positions={brokerState.positions}
             />
           )}
 
-          {/* محیط کاری ۴: میز پژوهش، ماتریس داده و بک‌تست تاریخی */}
-          {activeWorkspace === 'research' && (
-            <ResearchDesk />
-          )}
-
-          {/* محیط کاری ۵: مرکز کنترل، امنیت و سلامت سیستم */}
+          {/* محیط کاری ۴: مرکز کنترل، امنیت و سلامت سیستم */}
           {activeWorkspace === 'system' && (
             <SystemWorkspace
               outboxRecords={outboxRecords}

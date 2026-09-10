@@ -1,6 +1,7 @@
 import { Candle, SymbolId } from '../contracts/market';
 import { StrategyCandidate } from '../contracts/strategy';
 import { SimulatedOrder, SimulatedPosition } from '../contracts/orders';
+import { PostTradeAnalyticsEngine } from './post-trade-analytics';
 
 export interface BrokerState {
   accountBalance: number;
@@ -93,6 +94,8 @@ export class SimulatedBroker {
 
     for (const pos of openPositions) {
       pos.currentPrice = candle.close;
+      pos.highestPriceDuringTrade = Math.max(pos.highestPriceDuringTrade ?? pos.entryPrice, candle.high);
+      pos.lowestPriceDuringTrade = Math.min(pos.lowestPriceDuringTrade ?? pos.entryPrice, candle.low);
       const contractSize = symbol === 'XAUUSD' ? 100 : 100000;
 
       // بررسی حد ضرر
@@ -114,6 +117,19 @@ export class SimulatedBroker {
         pos.realizedPnl = Number((pos.realizedPnl + slicePnl).toFixed(2));
         pos.unrealizedPnl = 0;
         this.balance = Number((this.balance + slicePnl).toFixed(2));
+
+        const metrics = PostTradeAnalyticsEngine.calculateExcursionMetrics({
+          symbol: pos.symbol,
+          direction: pos.direction,
+          entryPrice: pos.entryPrice,
+          exitPrice: pos.stopLoss,
+          highestPriceDuringTrade: pos.highestPriceDuringTrade ?? pos.entryPrice,
+          lowestPriceDuringTrade: pos.lowestPriceDuringTrade ?? pos.entryPrice,
+          volumeLots: pos.initialVolumeLots || pos.volumeLots,
+        });
+        pos.maePips = metrics.maePips;
+        pos.mfePips = metrics.mfePips;
+        pos.exitEfficiencyPercent = metrics.exitEfficiencyPercent;
         continue;
       }
 
@@ -143,6 +159,18 @@ export class SimulatedBroker {
               pos.closedAt = candle.timestamp;
               pos.closeReason = 'TP';
               pos.unrealizedPnl = 0;
+              const metrics = PostTradeAnalyticsEngine.calculateExcursionMetrics({
+                symbol: pos.symbol,
+                direction: pos.direction,
+                entryPrice: pos.entryPrice,
+                exitPrice: partialTarget,
+                highestPriceDuringTrade: pos.highestPriceDuringTrade ?? pos.entryPrice,
+                lowestPriceDuringTrade: pos.lowestPriceDuringTrade ?? pos.entryPrice,
+                volumeLots: pos.initialVolumeLots || closedLots,
+              });
+              pos.maePips = metrics.maePips;
+              pos.mfePips = metrics.mfePips;
+              pos.exitEfficiencyPercent = metrics.exitEfficiencyPercent;
               continue;
             }
           }
@@ -168,6 +196,19 @@ export class SimulatedBroker {
         pos.realizedPnl = Number((pos.realizedPnl + slicePnl).toFixed(2));
         pos.unrealizedPnl = 0;
         this.balance = Number((this.balance + slicePnl).toFixed(2));
+
+        const metrics = PostTradeAnalyticsEngine.calculateExcursionMetrics({
+          symbol: pos.symbol,
+          direction: pos.direction,
+          entryPrice: pos.entryPrice,
+          exitPrice: pos.takeProfit,
+          highestPriceDuringTrade: pos.highestPriceDuringTrade ?? pos.entryPrice,
+          lowestPriceDuringTrade: pos.lowestPriceDuringTrade ?? pos.entryPrice,
+          volumeLots: pos.initialVolumeLots || pos.volumeLots,
+        });
+        pos.maePips = metrics.maePips;
+        pos.mfePips = metrics.mfePips;
+        pos.exitEfficiencyPercent = metrics.exitEfficiencyPercent;
         continue;
       }
 
@@ -196,7 +237,8 @@ export class SimulatedBroker {
     volumeLots: number,
     currentPrice: number,
     stopLoss: number,
-    takeProfit: number
+    takeProfit: number,
+    meta?: { mood?: string; propFirmId?: string }
   ): { order: SimulatedOrder; position: SimulatedPosition } {
     const now = Date.now();
     const order: SimulatedOrder = {
@@ -233,6 +275,10 @@ export class SimulatedBroker {
       openedAt: now,
       partialCloseCount: 0,
       isBreakevenActive: false,
+      highestPriceDuringTrade: currentPrice,
+      lowestPriceDuringTrade: currentPrice,
+      psychologyMood: meta?.mood,
+      propFirmId: meta?.propFirmId,
     };
     this.positions.push(position);
 
@@ -323,12 +369,24 @@ export class SimulatedBroker {
       pos.direction === 'BUY'
         ? finalPrice - pos.entryPrice
         : pos.entryPrice - finalPrice;
-
     const sliceCommission = Number((pos.volumeLots * 6.0).toFixed(2));
     const pnl = Number((pos.volumeLots * priceDiff * contractSize - sliceCommission).toFixed(2));
     pos.realizedPnl = Number((pos.realizedPnl + pnl).toFixed(2));
     pos.unrealizedPnl = 0;
     this.balance = Number((this.balance + pnl).toFixed(2));
+
+    const metrics = PostTradeAnalyticsEngine.calculateExcursionMetrics({
+      symbol: pos.symbol,
+      direction: pos.direction,
+      entryPrice: pos.entryPrice,
+      exitPrice: finalPrice,
+      highestPriceDuringTrade: pos.highestPriceDuringTrade ?? pos.entryPrice,
+      lowestPriceDuringTrade: pos.lowestPriceDuringTrade ?? pos.entryPrice,
+      volumeLots: pos.initialVolumeLots || pos.volumeLots,
+    });
+    pos.maePips = metrics.maePips;
+    pos.mfePips = metrics.mfePips;
+    pos.exitEfficiencyPercent = metrics.exitEfficiencyPercent;
 
     const stillOpen = this.positions.filter(p => p.isOpen);
     if (stillOpen.length === 0) {

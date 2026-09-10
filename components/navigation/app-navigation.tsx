@@ -12,7 +12,7 @@ import {
 } from 'lucide-react';
 import { useTheme } from '@/context/theme-context';
 
-export type WorkspaceKey = 'trade' | 'ai' | 'analytics' | 'research' | 'system';
+export type WorkspaceKey = 'trade' | 'ai' | 'analytics' | 'system';
 
 export interface WorkspaceItem {
   id: WorkspaceKey;
@@ -46,7 +46,7 @@ export const AppNavigation: React.FC<AppNavigationProps> = ({
   const { actualTheme } = useTheme();
   const [isCollapsed, setIsCollapsed] = useState(false);
 
-  // تعریف ۵ حوزه کاری جامع سامانه
+  // تعریف ۴ حوزه کاری یکپارچه سامانه
   const workspaces: WorkspaceItem[] = [
     {
       id: 'trade',
@@ -72,25 +72,14 @@ export const AppNavigation: React.FC<AppNavigationProps> = ({
     },
     {
       id: 'analytics',
-      labelFa: 'کارگاه تحلیل، ریسک و ژورنال',
+      labelFa: 'کارگاه تحلیل، پژوهش و ژورنال',
       shortLabelFa: 'تحلیل و ژورنال',
-      labelEn: 'Analytics & Journal',
-      descriptionFa: 'ژورنال W5، بک‌تست و مونت‌کارلو',
+      labelEn: 'Analytics, Research & Journal',
+      descriptionFa: 'ژورنال W5، بک‌تست تاریخی، مونت‌کارلو و محافظ W4',
       icon: BarChart3,
       shortcut: '3',
-      badge: 'W5',
+      badge: 'W5 + پژوهش',
       badgeColor: 'bg-amber-500/10 text-amber-500 border-amber-500/30',
-    },
-    {
-      id: 'research',
-      labelFa: 'میز پژوهش، داده و بک‌تست',
-      shortLabelFa: 'پژوهش',
-      labelEn: 'Research Desk',
-      descriptionFa: 'کاتالوگ داده‌ها، ماتریس و آزمون پذیرش',
-      icon: FlaskConical,
-      shortcut: '4',
-      badge: 'داده ۲۰۲۴',
-      badgeColor: 'bg-violet-500/10 text-violet-500 border-violet-500/30',
     },
     {
       id: 'system',
@@ -99,16 +88,16 @@ export const AppNavigation: React.FC<AppNavigationProps> = ({
       labelEn: 'System Control',
       descriptionFa: 'صندوق سفارشات، تک‌مجری و تست‌ها',
       icon: ShieldCheck,
-      shortcut: '5',
-      badge: outboxPendingCount > 0 ? `${outboxPendingCount} در صف` : '۱۳۱ تست OK',
+      shortcut: '4',
+      badge: outboxPendingCount > 0 ? `${outboxPendingCount} در صف` : 'تست‌ها OK',
       badgeColor:
         outboxPendingCount > 0
-          ? 'bg-amber-500/10 text-amber-500 border-amber-500/30'
+          ? 'bg-rose-500/10 text-rose-500 border-rose-500/30'
           : 'bg-emerald-500/10 text-emerald-500 border-emerald-500/30',
     },
   ];
 
-  // پشتیبانی از کلیدهای میانبر در دسکتاپ (Alt + 1..5 یا Ctrl + 1..5)
+  // پشتیبانی از کلیدهای میانبر در دسکتاپ (Alt + 1..4 یا Ctrl + 1..4)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.altKey) && !e.shiftKey) {
@@ -122,9 +111,6 @@ export const AppNavigation: React.FC<AppNavigationProps> = ({
           e.preventDefault();
           onSelectWorkspace('analytics');
         } else if (e.key === '4') {
-          e.preventDefault();
-          onSelectWorkspace('research');
-        } else if (e.key === '5') {
           e.preventDefault();
           onSelectWorkspace('system');
         }

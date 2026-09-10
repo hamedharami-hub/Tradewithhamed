@@ -12,6 +12,7 @@ import { SetupAnalysisCard } from '@/components/trading/setup-analysis-card';
 import { MultiTimeframeSyncView } from '@/components/trading/multi-timeframe-sync-view';
 import { MultiTimeframeLevel, PercentileStepPoint } from '@/lib/contracts/monte-carlo';
 import { PartialTPConfig } from '@/lib/contracts/tactical-cockpit';
+import { LiveMicrostructureTicker } from '@/components/trading/live-microstructure-ticker';
 
 interface TradeWorkspaceProps {
   symbol: SymbolId;
@@ -36,7 +37,8 @@ interface TradeWorkspaceProps {
     direction: 'BUY' | 'SELL',
     riskPercent: number,
     useCandidateLevels: boolean,
-    partialConfig: PartialTPConfig
+    partialConfig: PartialTPConfig,
+    meta?: { mood?: string; propFirmId?: string }
   ) => void;
   onPanicKillSwitch: () => void;
   onOpenOrderModal: () => void;
@@ -55,6 +57,8 @@ interface TradeWorkspaceProps {
   onOpenAlerts: () => void;
   unreadAlertsCount: number;
   viewMode?: 'auto' | 'mobile' | 'windows';
+  dailyDrawdownPercent?: number;
+  consecutiveLossCount?: number;
 }
 
 export const TradeWorkspace: React.FC<TradeWorkspaceProps> = ({
@@ -94,10 +98,14 @@ export const TradeWorkspace: React.FC<TradeWorkspaceProps> = ({
   onOpenAlerts,
   unreadAlertsCount,
   viewMode = 'auto',
+  dailyDrawdownPercent = 0,
+  consecutiveLossCount = 0,
 }) => {
+  const currentCandle = replayState.visibleCandles[replayState.visibleCandles.length - 1];
   const currentPrice =
-    replayState.visibleCandles[replayState.visibleCandles.length - 1]?.close ||
+    currentCandle?.close ||
     (symbol === 'XAUUSD' ? 2050 : 1.085);
+  const currentTimestamp = currentCandle?.timestamp || 0;
 
   const currentAtr = symbol === 'XAUUSD' ? 2.5 : 0.0015;
 
@@ -132,6 +140,15 @@ export const TradeWorkspace: React.FC<TradeWorkspaceProps> = ({
         activeTradingStyleBadgeFa={activeTradingStyleBadgeFa}
         activeStyleFilter={replayState.activeStyleFilter}
         onChangeStyleFilter={onChangeStyleFilter}
+      />
+
+      {/* نوار دیده‌بان بلادرنگ ریزساختار بازار، سشن، اسپرد زنده، تقویم اقتصادی و سپر ریسک */}
+      <LiveMicrostructureTicker
+        symbol={symbol}
+        currentTimestamp={currentTimestamp}
+        currentPrice={currentPrice}
+        dailyDrawdownPercent={dailyDrawdownPercent}
+        consecutiveLossCount={consecutiveLossCount}
       />
 
       {/* پد اجرای ۱-کلیکی هوشمند با قابلیت مقیاس‌گذاری حجم و ذخیره سود چندمرحله‌ای */}

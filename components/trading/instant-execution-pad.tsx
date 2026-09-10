@@ -9,6 +9,7 @@ import { SymbolId, SYMBOL_SPECS } from '@/lib/contracts/market';
 import { StrategyCandidate } from '@/lib/contracts/strategy';
 import { DEFAULT_PARTIAL_TP_CONFIG, PartialTPConfig } from '@/lib/contracts/tactical-cockpit';
 import { calculateDeterministicRisk } from '@/lib/core/risk-calculator';
+import { PropFirmId, PROP_FIRM_PRESETS, DEFAULT_PROP_FIRM_ID } from '@/lib/contracts/prop-firms';
 import {
   Zap,
   TrendingUp,
@@ -22,6 +23,15 @@ import {
   AlertTriangle,
 } from 'lucide-react';
 
+export type TradePsychologyMood = 'PLAN_DISCIPLINED' | 'FOMO_RUSH' | 'REVENGE_TRADE' | 'FATIGUED';
+
+export const PSYCHOLOGY_MOOD_OPTIONS: { id: TradePsychologyMood; labelFa: string; badgeClass: string }[] = [
+  { id: 'PLAN_DISCIPLINED', labelFa: '🎯 طبق پلن', badgeClass: 'bg-emerald-950/70 border-emerald-600 text-emerald-300' },
+  { id: 'FOMO_RUSH', labelFa: '⚡ فومو / عجله', badgeClass: 'bg-amber-950/70 border-amber-600 text-amber-300' },
+  { id: 'REVENGE_TRADE', labelFa: '😡 انتقام‌جویانه', badgeClass: 'bg-rose-950/70 border-rose-600 text-rose-300' },
+  { id: 'FATIGUED', labelFa: '😴 خسته / کلافه', badgeClass: 'bg-purple-950/70 border-purple-600 text-purple-300' },
+];
+
 interface InstantExecutionPadProps {
   symbol: SymbolId;
   currentPrice: number;
@@ -32,7 +42,8 @@ interface InstantExecutionPadProps {
     direction: 'BUY' | 'SELL',
     riskPercent: number,
     useCandidateLevels: boolean,
-    partialConfig: PartialTPConfig
+    partialConfig: PartialTPConfig,
+    meta?: { mood?: string; propFirmId?: PropFirmId }
   ) => void;
   onPanicKillSwitch: () => void;
   openPositionsCount: number;
@@ -51,6 +62,8 @@ export const InstantExecutionPad: React.FC<InstantExecutionPadProps> = React.mem
   const [selectedRisk, setSelectedRisk] = useState<number>(0.25);
   const [isPartialEnabled, setIsPartialEnabled] = useState<boolean>(true);
   const [showKillConfirm, setShowKillConfirm] = useState<boolean>(false);
+  const [selectedPropFirm, setSelectedPropFirm] = useState<PropFirmId>(DEFAULT_PROP_FIRM_ID);
+  const [selectedMood, setSelectedMood] = useState<TradePsychologyMood>('PLAN_DISCIPLINED');
 
   const spec = SYMBOL_SPECS[symbol];
   const atr = Math.max(currentAtr, symbol === 'XAUUSD' ? 1.5 : 0.001);
@@ -194,6 +207,73 @@ export const InstantExecutionPad: React.FC<InstantExecutionPadProps> = React.mem
         </div>
       </div>
 
+      {/* ردیف تنظیمات پیشرفته: پیش‌تنظیم پراپ‌فرم و برچسب روان‌شناسی معامله‌گر */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3 text-xs">
+        {/* انتخاب چالش پراپ‌فرم */}
+        <div className="bg-[#12151c] p-2.5 rounded-xl border border-[#232936] space-y-1.5">
+          <div className="flex items-center justify-between text-zinc-300">
+            <span className="flex items-center gap-1.5 font-medium">
+              <ShieldAlert className="w-3.5 h-3.5 text-amber-400" />
+              <span>پراپ‌فرم هدف:</span>
+            </span>
+            <span className="text-[10px] font-mono text-amber-400 font-bold">
+              افت مجاز روزانه: {PROP_FIRM_PRESETS[selectedPropFirm].dailyDrawdownPercent}٪
+            </span>
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-1">
+            {(Object.keys(PROP_FIRM_PRESETS) as PropFirmId[]).map((pfId) => {
+              const preset = PROP_FIRM_PRESETS[pfId];
+              const isSelected = selectedPropFirm === pfId;
+              return (
+                <button
+                  key={pfId}
+                  type="button"
+                  onClick={() => setSelectedPropFirm(pfId)}
+                  className={`py-1 px-1.5 rounded-lg text-[10px] font-bold truncate transition-all text-center border ${
+                    isSelected
+                      ? 'bg-amber-500/20 border-amber-500 text-amber-300'
+                      : 'border-transparent text-zinc-400 hover:text-zinc-200 hover:bg-[#1a1f2a]'
+                  }`}
+                  title={preset.descriptionFa}
+                >
+                  {pfId === 'FTMO_NORMAL' ? 'FTMO (10/5)' : pfId === 'THE5ERS_HIGH_STAKES' ? 'The5ers (8/4)' : pfId === 'FUNDEDNEXT_STELLAR' ? 'FundedNext' : 'شخصی (6/3)'}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* برچسب روان‌شناسی و وضعیت ذهنی معامله‌گر */}
+        <div className="bg-[#12151c] p-2.5 rounded-xl border border-[#232936] space-y-1.5">
+          <div className="flex items-center justify-between text-zinc-300">
+            <span className="flex items-center gap-1.5 font-medium">
+              <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
+              <span>وضعیت روحی ورود:</span>
+            </span>
+            <span className="text-[10px] text-zinc-400">ثبت خودکار در ژورنال W5</span>
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-1">
+            {PSYCHOLOGY_MOOD_OPTIONS.map((mood) => {
+              const isSelected = selectedMood === mood.id;
+              return (
+                <button
+                  key={mood.id}
+                  type="button"
+                  onClick={() => setSelectedMood(mood.id)}
+                  className={`py-1 px-1.5 rounded-lg text-[10px] font-bold truncate transition-all text-center border ${
+                    isSelected
+                      ? mood.badgeClass
+                      : 'border-transparent text-zinc-400 hover:text-zinc-200 hover:bg-[#1a1f2a]'
+                  }`}
+                >
+                  {mood.labelFa}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+
       {/* هشدار عدم کفایت سرمایه در صورت کمتر بودن لات از حداقل مجاز */}
       {!isCapitalSufficient && (
         <div className="mb-3 p-2.5 rounded-xl bg-amber-950/40 border border-amber-500/40 text-amber-300 text-xs flex items-center gap-2">
@@ -209,7 +289,7 @@ export const InstantExecutionPad: React.FC<InstantExecutionPadProps> = React.mem
         {/* کلید خرید ۱-کلیکی BUY */}
         <button
           type="button"
-          onClick={() => onExecuteInstantOrder('BUY', selectedRisk, false, partialConfig)}
+          onClick={() => onExecuteInstantOrder('BUY', selectedRisk, false, partialConfig, { mood: selectedMood, propFirmId: selectedPropFirm })}
           className={`p-3 bg-gradient-to-r from-emerald-950 to-[#102920] hover:from-emerald-900 hover:to-[#15382b] border border-emerald-600/80 rounded-xl flex items-center justify-between transition-all group shadow-sm active:scale-[0.99] ${
             !isCapitalSufficient ? 'opacity-60 cursor-pointer' : ''
           }`}
@@ -238,7 +318,7 @@ export const InstantExecutionPad: React.FC<InstantExecutionPadProps> = React.mem
         {/* کلید فروش ۱-کلیکی SELL */}
         <button
           type="button"
-          onClick={() => onExecuteInstantOrder('SELL', selectedRisk, false, partialConfig)}
+          onClick={() => onExecuteInstantOrder('SELL', selectedRisk, false, partialConfig, { mood: selectedMood, propFirmId: selectedPropFirm })}
           className={`p-3 bg-gradient-to-r from-rose-950 to-[#291216] hover:from-rose-900 hover:to-[#38151c] border border-rose-600/80 rounded-xl flex items-center justify-between transition-all group shadow-sm active:scale-[0.99] ${
             !isCapitalSufficient ? 'opacity-60 cursor-pointer' : ''
           }`}
@@ -278,7 +358,7 @@ export const InstantExecutionPad: React.FC<InstantExecutionPadProps> = React.mem
           <button
             type="button"
             disabled={!isCapitalSufficient}
-            onClick={() => onExecuteInstantOrder(activeCandidate.direction, selectedRisk, true, partialConfig)}
+            onClick={() => onExecuteInstantOrder(activeCandidate.direction, selectedRisk, true, partialConfig, { mood: selectedMood, propFirmId: selectedPropFirm })}
             className={`px-3 py-1.5 bg-cyan-950/80 hover:bg-cyan-900 border border-cyan-600 text-cyan-200 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors shadow-sm ${
               !isCapitalSufficient ? 'opacity-50 cursor-not-allowed pointer-events-none' : ''
             }`}

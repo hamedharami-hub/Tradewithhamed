@@ -46,6 +46,8 @@ export interface TradeLifecycleRecord {
   setupGrade?: 'A+' | 'A' | 'B' | 'C';
   traderNotesFa?: string;
   behavioralTags?: string[];
+  psychologyMood?: string;
+  propFirmId?: string;
 
   // برچسب‌های هوش مصنوعی و سبک‌های معاملاتی فاز ۱ تا ۵ (AI Council & Regime Attribution)
   marketRegimeAtEntry?: MarketRegimeType;

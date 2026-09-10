@@ -29,6 +29,7 @@ const suiteModules = [
   '../lib/core/__tests__/market-microstructure.test',
   '../lib/core/__tests__/economic-calendar.test',
   '../lib/core/__tests__/equity-curve-monte-carlo.test',
+  '../lib/core/__tests__/prop-firms.test',
 ];
 
 export {};
