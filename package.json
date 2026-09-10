@@ -51,6 +51,9 @@
     "research:stress:oos-cost": "tsx scripts/run-bundled-oos-cost-stress.ts",
     "research:regime-filter:test": "tsx scripts/run-gbpusd-4h-regime-filter-test.ts",
     "research:matrix:custom": "tsx scripts/run-research-matrix.ts",
+    "research:oos:regime-thresholds": "tsx scripts/run-gbpusd-4h-regime-oos-thresholds.ts",
+    "research:ai:offline-matrix": "tsx scripts/run-gbpusd-4h-offline-ai-matrix.ts",
+    "research:stress:cost-attribution": "tsx scripts/run-gbpusd-4h-cost-attribution.ts",
     "data:export:ctrader-usdjpy:gate1": "tsx scripts/export-ctrader-usdjpy-history.ts",
     "clean": "next clean"
   },

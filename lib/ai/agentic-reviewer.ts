@@ -3,7 +3,7 @@ import { AGENT_ENGINE_OPTIONS, DEFAULT_MULTI_AGENT_CONFIG } from '@/lib/contract
 import type { StrategyCandidate } from '@/lib/contracts/strategy';
 import { modelIdForAgentEngine } from './webllm-agent-adapter';
 import { BrowserOfflineAIManager } from './browser-offline-ai';
-import { buildAgentPrompt, evidencePacketFromCandidate, judgeAgentReviews, type AgentEvidencePacket, type AgenticReviewResult } from './agentic-review-contracts';
+import { buildAgentPrompt, evidencePacketFromCandidate, judgeAgentReviews, type AgentEvidencePacket, type AgenticReviewResult, type AgentPromptProfile } from './agentic-review-contracts';
 import type { StructuredCandidateAdvisory } from './offline-ai-contracts';
 
 function engineType(engineId: string): 'DETERMINISTIC' | 'NEURAL_WEBGPU' {
@@ -58,8 +58,8 @@ function deterministicReview(modelId: string, packet: AgentEvidencePacket): Stru
   });
 }
 
-async function reviewRole(role: 'ANALYST' | 'CRITIC', engineId: string, candidate: StrategyCandidate, packet: AgentEvidencePacket): Promise<StructuredCandidateAdvisory> {
-  const prompt = buildAgentPrompt(role, packet);
+async function reviewRole(role: 'ANALYST' | 'CRITIC', engineId: string, candidate: StrategyCandidate, packet: AgentEvidencePacket, profile: AgentPromptProfile): Promise<StructuredCandidateAdvisory> {
+  const prompt = buildAgentPrompt(role, packet, profile);
   if (engineType(engineId) === 'DETERMINISTIC') return deterministicReview(engineId, packet);
   const mapped = modelIdForAgentEngine(engineId);
   if (!mapped) return { modelId: 'unmapped', modelRevision: 'none', source: 'WEBLLM_WEBGPU', verdict: 'REVIEW_REQUIRED', confidence: 0, rationaleFa: 'موتور AI نگاشت نشده است.', riskFlags: ['UNMAPPED_AGENT_MODEL'], evidenceIds: [], latencyMs: 0, advisoryOnly: true };
@@ -78,11 +78,11 @@ async function reviewRole(role: 'ANALYST' | 'CRITIC', engineId: string, candidat
   }, prompt.systemPrompt, prompt.userPrompt);
 }
 
-export async function reviewCandidateWithFourAgents(candidate: StrategyCandidate, config: MultiAgentConfiguration = DEFAULT_MULTI_AGENT_CONFIG, context: AgentEvidencePacket['marketContext'] = {}): Promise<AgenticReviewResult> {
+export async function reviewCandidateWithFourAgents(candidate: StrategyCandidate, config: MultiAgentConfiguration = DEFAULT_MULTI_AGENT_CONFIG, context: AgentEvidencePacket['marketContext'] = {}, promptProfile: AgentPromptProfile = 'BASELINE_EVIDENCE_V1'): Promise<AgenticReviewResult> {
   const packet = evidencePacketFromCandidate(candidate, config.activeTradingStyle, context);
   const scannerApproved = requiredEvidencePresent(candidate);
-  const analyst = await reviewRole('ANALYST', config.analystEngineId, candidate, packet);
-  const critic = await reviewRole('CRITIC', config.criticEngineId, candidate, packet);
+  const analyst = await reviewRole('ANALYST', config.analystEngineId, candidate, packet, promptProfile);
+  const critic = await reviewRole('CRITIC', config.criticEngineId, candidate, packet, promptProfile);
   const judge = judgeAgentReviews({ analyst, critic, candidate });
   if (!scannerApproved) judge.reasonCodes.push('SCANNER_EVIDENCE_INCOMPLETE');
   const finalDecision = !scannerApproved ? 'NO_TRADE' : judge.approved ? 'PAPER_TRADE' : (analyst.verdict === 'REVIEW_REQUIRED' || critic.verdict === 'REVIEW_REQUIRED' ? 'REVIEW_REQUIRED' : 'NO_TRADE');
@@ -95,7 +95,7 @@ export async function reviewCandidateWithFourAgents(candidate: StrategyCandidate
     judge: { ...judge, approved: scannerApproved && judge.approved },
     finalDecision,
     advisoryOnly: true,
-    promptVersion: 'agent-prompts-v1',
+    promptVersion: promptProfile,
     reviewedAt: Date.now(),
   };
 }
