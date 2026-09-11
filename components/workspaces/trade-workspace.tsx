@@ -27,6 +27,7 @@ import {
   Layers,
   BarChart2,
   ChevronLeft,
+  FlaskConical,
 } from 'lucide-react';
 
 interface TradeWorkspaceProps {
@@ -172,6 +173,7 @@ export const TradeWorkspace: React.FC<TradeWorkspaceProps> = ({
                 onOpenExportModal={onOpenExportModal}
                 onOpenAIModal={onOpenAIModal}
                 onOpenMultiAgentModal={onOpenMultiAgentModal}
+                onOpenBacktest={onOpenBacktest}
                 activeModelNameFa={activeModelNameFa}
                 activeTradingStyleBadgeFa={activeTradingStyleBadgeFa}
                 activeStyleFilter={replayState.activeStyleFilter}
@@ -179,8 +181,19 @@ export const TradeWorkspace: React.FC<TradeWorkspaceProps> = ({
               />
             </div>
 
-            {/* دکمه‌های کنترل سریع: کشوی هوش مصنوعی و حالت ذن */}
+            {/* دکمه‌های کنترل سریع: کشوی هوش مصنوعی، آزمایشگاه بک‌تست و حالت ذن */}
             <div className="flex items-center gap-1.5 shrink-0 justify-end">
+              {/* دکمه ورود به آزمایشگاه جامع بک‌تست */}
+              <button
+                type="button"
+                onClick={onOpenBacktest}
+                className="px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 border transition-all shadow-xs bg-amber-500/15 hover:bg-amber-500/25 border-amber-500/40 text-amber-300"
+                title="آزمایشگاه جامع بک‌تست استراتژی‌های معاملاتی و شبیه‌سازی"
+              >
+                <FlaskConical className="w-3.5 h-3.5 text-amber-400" />
+                <span>آزمایشگاه بک‌تست 🧪</span>
+              </button>
+
               {/* دکمه کشوی ستاپ و هوش مصنوعی */}
               <button
                 type="button"
@@ -254,6 +267,7 @@ export const TradeWorkspace: React.FC<TradeWorkspaceProps> = ({
           isCrosshairSynced={true}
           crosshairPrice={syncedCrosshairPrice}
           onCrosshairChange={(price) => setSyncedCrosshairPrice(price)}
+          onOpenBacktest={onOpenBacktest}
         />
 
         {/* داک اجرای سریع ۱-کلیکی شناور در پایین چارت */}

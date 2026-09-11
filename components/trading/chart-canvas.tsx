@@ -24,6 +24,7 @@ import {
   Minus,
   Trash2,
   BoxSelect,
+  FlaskConical,
 } from 'lucide-react';
 
 export type DrawingToolType = 'cursor' | 'ruler' | 'horizontal' | 'rectangle';
@@ -992,10 +993,11 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
   monteCarloCone = [],
   onCrosshairChange,
   crosshairPrice = null,
+  onOpenBacktest,
 }) => {
   const [isSplitView, setIsSplitView] = useState(false);
   const [secondaryTimeframe, setSecondaryTimeframe] = useState<Timeframe>('15M');
-  const [visibleCandleCount, setVisibleCandleCount] = useState(80);
+  const [visibleCandleCount, setVisibleCandleCount] = useState(100);
   const [isExpanded, setIsExpanded] = useState(false);
   const [internalCrosshairPrice, setInternalCrosshairPrice] = useState<number | null>(null);
   const [activeDrawingTool, setActiveDrawingTool] = useState<DrawingToolType>('cursor');
@@ -1039,9 +1041,9 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
   }, [isSplitView, candles, secondaryTimeframe]);
 
   const visibleSecondaryCandles = useMemo(() => {
-    const count = Math.max(15, Math.floor(visibleCandleCount / (secondaryTimeframe === '15M' ? 2.5 : 5)));
-    return secondaryCandles.slice(-Math.min(count, secondaryCandles.length));
-  }, [secondaryCandles, visibleCandleCount, secondaryTimeframe]);
+    const count = Math.min(100, secondaryCandles.length);
+    return secondaryCandles.slice(-count);
+  }, [secondaryCandles]);
 
   // مدیریت کراس‌هیر مشترک دوسویه
   const handleCrosshairUpdate = useCallback(
@@ -1212,6 +1214,19 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
                 </button>
               ))}
             </div>
+          )}
+
+          {/* دکمه اختصاصی ورود به آزمایشگاه بک‌تست تاریخی */}
+          {onOpenBacktest && (
+            <button
+              type="button"
+              onClick={onOpenBacktest}
+              className="flex items-center gap-1 px-2 py-1 rounded-md bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/40 text-amber-300 font-bold transition-all text-[11px] shadow-xs"
+              title="ورود به آزمایشگاه بک‌تست تاریخی چند سبکه"
+            >
+              <FlaskConical className="w-3.5 h-3.5 text-amber-400" />
+              <span className="hidden sm:inline">بک‌تست 🧪</span>
+            </button>
           )}
 
           {/* کنترل‌های بزرگ‌نمایی و تمام‌صفحه */}

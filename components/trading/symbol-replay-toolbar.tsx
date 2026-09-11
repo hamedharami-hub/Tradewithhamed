@@ -17,6 +17,7 @@ import {
   Database,
   Bot,
   SlidersHorizontal,
+  FlaskConical,
 } from 'lucide-react';
 
 interface SymbolReplayToolbarProps {
@@ -36,6 +37,7 @@ interface SymbolReplayToolbarProps {
   onOpenExportModal: () => void;
   onOpenAIModal: () => void;
   onOpenMultiAgentModal?: () => void;
+  onOpenBacktest?: () => void;
   activeModelNameFa?: string;
   activeTradingStyleBadgeFa?: string;
   activeStyleFilter?: TradingStyleType | 'ALL';
@@ -59,6 +61,7 @@ export const SymbolReplayToolbar: React.FC<SymbolReplayToolbarProps> = React.mem
   onOpenExportModal,
   onOpenAIModal,
   onOpenMultiAgentModal,
+  onOpenBacktest,
   activeTradingStyleBadgeFa = 'سبک S0',
   activeStyleFilter = 'ALL',
   onChangeStyleFilter,
@@ -184,6 +187,19 @@ export const SymbolReplayToolbar: React.FC<SymbolReplayToolbarProps> = React.mem
           <Power className="w-3 h-3" />
           <span>{isSessionActive ? formatSessionTime(sessionSeconds) : 'شروع نشست'}</span>
         </button>
+
+        {/* آزمایشگاه بک‌تست */}
+        {onOpenBacktest && (
+          <button
+            type="button"
+            onClick={onOpenBacktest}
+            className="px-2 py-1 bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/40 text-amber-300 font-bold rounded-lg flex items-center gap-1 transition-all text-[11px] shadow-xs"
+            title="آزمایشگاه جامع بک‌تست استراتژی‌ها"
+          >
+            <FlaskConical className="w-3 h-3 text-amber-400" />
+            <span className="hidden sm:inline">بک‌تست 🧪</span>
+          </button>
+        )}
 
         {/* اتاق فرمان ۴ ایجنت */}
         <button

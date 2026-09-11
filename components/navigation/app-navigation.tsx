@@ -72,13 +72,13 @@ export const AppNavigation: React.FC<AppNavigationProps> = ({
     },
     {
       id: 'analytics',
-      labelFa: 'کارگاه تحلیل، پژوهش و ژورنال',
-      shortLabelFa: 'تحلیل و ژورنال',
-      labelEn: 'Analytics, Research & Journal',
-      descriptionFa: 'ژورنال W5، بک‌تست تاریخی، مونت‌کارلو و محافظ W4',
+      labelFa: 'آزمایشگاه بک‌تست، تحلیل و ژورنال',
+      shortLabelFa: 'بک‌تست و ژورنال',
+      labelEn: 'Backtest & Journal Lab',
+      descriptionFa: 'بک‌تست چندسبکه، ژورنال W5، مونت‌کارلو و محافظ W4',
       icon: BarChart3,
       shortcut: '3',
-      badge: 'W5 + پژوهش',
+      badge: 'بک‌تست + W5',
       badgeColor: 'bg-amber-500/10 text-amber-500 border-amber-500/30',
     },
     {

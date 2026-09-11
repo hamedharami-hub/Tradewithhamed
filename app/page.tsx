@@ -299,9 +299,10 @@ export default function TradingLabPage() {
           setSymbol(saved.symbol);
           replayEngine.setSymbol(saved.symbol);
         }
-        replayEngine.reset();
-        for (let i = 14; i < saved.currentStepIndex; i++) {
-          replayEngine.stepForward();
+        if (typeof saved.currentStepIndex === 'number' && saved.currentStepIndex > 0) {
+          replayEngine.jumpToStep(saved.currentStepIndex);
+        } else {
+          replayEngine.reset();
         }
         setReplayState(replayEngine.getSnapshot());
       }
@@ -438,9 +439,10 @@ export default function TradingLabPage() {
       setSymbol(imported.symbol);
       replayEngine.setSymbol(imported.symbol);
     }
-    replayEngine.reset();
-    for (let i = 14; i < imported.currentStepIndex; i++) {
-      replayEngine.stepForward();
+    if (typeof imported.currentStepIndex === 'number' && imported.currentStepIndex > 0) {
+      replayEngine.jumpToStep(imported.currentStepIndex);
+    } else {
+      replayEngine.reset();
     }
     const snap = replayEngine.getSnapshot();
     setReplayState(snap);
@@ -763,7 +765,7 @@ export default function TradingLabPage() {
       <MultiStyleBacktestModal
         isOpen={isBacktestModalOpen}
         onClose={() => setIsBacktestModalOpen(false)}
-        candles={replayState.visibleCandles}
+        candles={replayState.allCandles || replayEngine.getAllCandles()}
         symbol={symbol}
       />
 
