@@ -1,0 +1,22 @@
+# apphosting.yaml
+# پیکربندی رسمی استقرار برنامه Next.js روی Google Firebase App Hosting
+# Documentation: https://firebase.google.com/docs/app-hosting/configure
+
+runConfig:
+  minInstances: 0
+  maxInstances: 5
+  concurrency: 80
+  cpu: 1
+  memoryMiB: 1024
+
+env:
+  - variable: NODE_ENV
+    value: production
+  - variable: CTRADER_ENVIRONMENT
+    value: demo
+  - variable: CTRADER_LIVE_ENABLE
+    value: "false"
+  - variable: MONITOR_TIMEFRAME
+    value: "1M"
+  - variable: MONITOR_SYMBOLS
+    value: "XAUUSD,EURUSD,GBPUSD,USDJPY"

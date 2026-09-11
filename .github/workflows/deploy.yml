@@ -1,0 +1,37 @@
+name: CI & Deployment Quality Gates
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  verify-and-test:
+    name: Run Quality Gates & Next.js Build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Run Domain Test Suites (29 Suites)
+        run: npm run test:domain
+
+      - name: TypeScript Static Typecheck
+        run: npm run typecheck
+
+      - name: ESLint Code Standards Check
+        run: npm run lint
+
+      - name: Build Next.js Production Bundle
+        run: npm run build
