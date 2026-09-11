@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useState } from 'react';
 import { SymbolId } from '@/lib/contracts/market';
 import { ReplayState } from '@/lib/replay/replay-engine';
 import { RiskPreviewResult } from '@/lib/contracts/risk';
@@ -13,6 +13,7 @@ import { MultiTimeframeSyncView } from '@/components/trading/multi-timeframe-syn
 import { MultiTimeframeLevel, PercentileStepPoint } from '@/lib/contracts/monte-carlo';
 import { PartialTPConfig } from '@/lib/contracts/tactical-cockpit';
 import { LiveMicrostructureTicker } from '@/components/trading/live-microstructure-ticker';
+import { ShareableTradeCardModal } from '@/components/trading/shareable-trade-card-modal';
 
 interface TradeWorkspaceProps {
   symbol: SymbolId;
@@ -106,6 +107,8 @@ export const TradeWorkspace: React.FC<TradeWorkspaceProps> = ({
     currentCandle?.close ||
     (symbol === 'XAUUSD' ? 2050 : 1.085);
   const currentTimestamp = currentCandle?.timestamp || 0;
+
+  const [isTradeCardModalOpen, setIsTradeCardModalOpen] = useState(false);
 
   const currentAtr = symbol === 'XAUUSD' ? 2.5 : 0.0015;
 
@@ -201,9 +204,49 @@ export const TradeWorkspace: React.FC<TradeWorkspaceProps> = ({
             onOpenOrderModal={onOpenOrderModal}
             onOpenAIModal={onOpenAIModal}
             onOpenMultiAgentModal={onOpenMultiAgentModal}
+            onOpenShareCard={() => setIsTradeCardModalOpen(true)}
           />
         </div>
       </div>
+
+      {/* مودال تولید و صادرات پوستر گرافیکی ستاپ یا پوزیشن جاری */}
+      <ShareableTradeCardModal
+        isOpen={isTradeCardModalOpen}
+        onClose={() => setIsTradeCardModalOpen(false)}
+        data={
+          replayState.activeCandidate
+            ? {
+                symbol: replayState.activeCandidate.symbol,
+                direction: replayState.activeCandidate.direction,
+                entryPrice: replayState.activeCandidate.entryPrice,
+                stopLossPrice: replayState.activeCandidate.stopLossPrice,
+                takeProfitPrice: replayState.activeCandidate.takeProfitPrice,
+                volumeLots: riskPreview?.adjustedVolumeLots ?? 0.05,
+                realizedRMultiple: riskPreview?.netRiskRewardRatio ?? 2.5,
+                realizedNetPnL: (riskPreview?.plannedRiskAmount ?? 100) * (riskPreview?.netRiskRewardRatio ?? 2.5),
+                setupGrade: 'A+',
+                isCandidate: true,
+                psychologyMood: 'PLAN_DISCIPLINED',
+                propFirmId: 'FTMO_100K',
+                openedAt: replayState.activeCandidate.createdAtTimestamp,
+              }
+            : {
+                symbol,
+                direction: 'BUY',
+                entryPrice: currentPrice,
+                stopLossPrice: currentPrice - (symbol === 'XAUUSD' ? 5 : 0.003),
+                takeProfitPrice: currentPrice + (symbol === 'XAUUSD' ? 12 : 0.0075),
+                volumeLots: 0.05,
+                realizedRMultiple: 2.4,
+                realizedNetPnL: 240,
+                setupGrade: 'A',
+                isCandidate: true,
+                psychologyMood: 'PLAN_DISCIPLINED',
+                propFirmId: 'FTMO_100K',
+                openedAt: currentTimestamp,
+              }
+        }
+      />
     </div>
   );
 };

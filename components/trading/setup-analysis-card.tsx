@@ -25,6 +25,7 @@ import {
   Sparkles,
   CheckCircle2,
   XCircle,
+  Share2,
 } from 'lucide-react';
 
 interface SetupAnalysisCardProps {
@@ -36,6 +37,7 @@ interface SetupAnalysisCardProps {
   onOpenOrderModal: () => void;
   onOpenAIModal: () => void;
   onOpenMultiAgentModal?: () => void;
+  onOpenShareCard?: () => void;
 }
 
 export const SetupAnalysisCard: React.FC<SetupAnalysisCardProps> = React.memo(({
@@ -47,6 +49,7 @@ export const SetupAnalysisCard: React.FC<SetupAnalysisCardProps> = React.memo(({
   onOpenOrderModal,
   onOpenAIModal,
   onOpenMultiAgentModal,
+  onOpenShareCard,
 }) => {
   return (
     <div
@@ -350,6 +353,17 @@ export const SetupAnalysisCard: React.FC<SetupAnalysisCardProps> = React.memo(({
             <Send className="w-4 h-4" />
             <span>بررسی قصد و ارسال به cTrader Demo (مرحله ۵)</span>
           </button>
+
+          {onOpenShareCard && (
+            <button
+              type="button"
+              onClick={onOpenShareCard}
+              className="w-full py-2 rounded-xl font-bold flex items-center justify-center gap-2 text-xs bg-slate-800 hover:bg-slate-700 text-cyan-400 border border-cyan-500/30 transition-all shadow-sm active:scale-95"
+            >
+              <Share2 className="w-4 h-4" />
+              <span>تولید پوستر گرافیکی ستاپ (Shareable Card)</span>
+            </button>
+          )}
         </div>
       ) : (
         <div className="p-8 text-center text-xs text-zinc-400 border border-dashed border-[#29303d] rounded-xl space-y-2 bg-[#12151b]">

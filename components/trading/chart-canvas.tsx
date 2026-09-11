@@ -1,16 +1,25 @@
 // components/trading/chart-canvas.tsx
-// بوم پیشرفته رسم نمودار کندل‌استیک ۵ دقیقه‌ای با سطوح همگام چندتایم‌فریمه (MultiTF Levels)،
-// مخروط پیش‌بینی احتمالاتی مونت‌کارلو (Monte Carlo Cone) و کراس‌هیر تعاملی مشترک
-// سازگار کامل با هر دو حالت روز (Light Mode) و شب (Dark Mode)
+// بوم پیشرفته رسم نمودار کندل‌استیک با قابلیت نمای دوگانه چندتایم‌فریمه (Dual-Chart Multi-Timeframe Split View)
+// پشتیبانی از چارت ورود 5M در کنار چارت کلان 15M/1H/4H با کراس‌هیر مشترک و بدون سوگیری زمانی
+// سازگار کامل با حالت روز (Light Mode) و شب (Dark Mode) و کاملاً ریسپانسیو
 
 'use client';
 
-import React, { useRef, useEffect, useMemo, useState } from 'react';
-import { Candle, SymbolId } from '@/lib/contracts/market';
+import React, { useRef, useEffect, useMemo, useState, useCallback } from 'react';
+import { Candle, SymbolId, Timeframe } from '@/lib/contracts/market';
 import { StrategyCandidate } from '@/lib/contracts/strategy';
 import { MultiTimeframeLevel, PercentileStepPoint } from '@/lib/contracts/monte-carlo';
 import { useTheme } from '@/context/theme-context';
-import { Maximize2, Minimize2, ZoomIn, ZoomOut } from 'lucide-react';
+import { DataWorkbench } from '@/lib/core/data-workbench';
+import {
+  Maximize2,
+  Minimize2,
+  ZoomIn,
+  ZoomOut,
+  Columns,
+  Square,
+  Layers,
+} from 'lucide-react';
 
 interface ChartCanvasProps {
   symbol: SymbolId;
@@ -30,62 +39,58 @@ interface ChartCanvasProps {
   unreadAlertsCount?: number;
 }
 
-export const ChartCanvas: React.FC<ChartCanvasProps> = ({
+interface SingleChartPaneProps {
+  symbol: SymbolId;
+  candles: Candle[];
+  timeframe: string;
+  title: string;
+  activeCandidate?: StrategyCandidate | null;
+  multiTimeframeLevels?: MultiTimeframeLevel[];
+  monteCarloCone?: PercentileStepPoint[];
+  crosshairPrice: number | null;
+  onCrosshairChange?: (price: number | null, timestamp: number | null) => void;
+  themeColors: Record<string, string>;
+  isSecondary?: boolean;
+  chartHeight: number;
+}
+
+// کامپوننت داخلی رندر مستقل هر پانل چارت SVG با ابعاد واکنش‌گرا و کراس‌هیر مشترک
+const SingleChartPane: React.FC<SingleChartPaneProps> = ({
   symbol,
   candles,
+  timeframe,
+  title,
   activeCandidate,
   multiTimeframeLevels = [],
   monteCarloCone = [],
-  isCrosshairSynced = true,
+  crosshairPrice,
   onCrosshairChange,
-  crosshairPrice = null,
+  themeColors,
+  isSecondary = false,
+  chartHeight,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
-  const [containerWidth, setContainerWidth] = useState(600);
-  const [hoverState, setHoverState] = useState<{ x: number; y: number; price: number; timestamp?: number } | null>(null);
-  const [visibleCandleCount, setVisibleCandleCount] = useState(80);
-  const [isExpanded, setIsExpanded] = useState(false);
-  const { actualTheme } = useTheme();
-  const isDark = actualTheme === 'dark';
-  const visibleCandles = useMemo(
-    () => candles.slice(-Math.max(1, Math.min(visibleCandleCount, candles.length))),
-    [candles, visibleCandleCount]
-  );
+  const [paneWidth, setPaneWidth] = useState(500);
+  const [hoverState, setHoverState] = useState<{
+    x: number;
+    y: number;
+    price: number;
+    timestamp?: number;
+  } | null>(null);
 
-  // پالت رنگ‌های هماهنگ با قالب فعال
-  const themeColors = {
-    gridLine: isDark ? '#1e293b' : '#e2e8f0',
-    axisText: isDark ? '#64748b' : '#64748b',
-    bullishCandle: isDark ? '#10b981' : '#059669',
-    bearishCandle: isDark ? '#f43f5e' : '#dc2626',
-    entryLine: isDark ? '#38bdf8' : '#0284c7',
-    entryBg: isDark ? '#0c4a6e' : '#0284c7',
-    entryText: '#ffffff',
-    slLine: isDark ? '#f43f5e' : '#dc2626',
-    slBg: isDark ? '#4c0519' : '#dc2626',
-    slText: '#ffffff',
-    tpLine: isDark ? '#10b981' : '#16a34a',
-    tpBg: isDark ? '#022c22' : '#16a34a',
-    tpText: '#ffffff',
-    levelTagBg: isDark ? '#0f172a' : '#ffffff',
-    crosshairLine: isDark ? '#06b6d4' : '#0284c7',
-    crosshairBg: isDark ? '#0e7490' : '#0284c7',
-  };
-
-  // ارتفاع ثابت و پایدار نمودار برای جلوگیری کامل از کشیدگی ResizeObserver
-  const CHART_TOTAL_HEIGHT = isExpanded ? 680 : 360;
-  const PLOT_TOP = 20;
-  const PLOT_BOTTOM = CHART_TOTAL_HEIGHT - 60;
-  const PLOT_HEIGHT = PLOT_BOTTOM - PLOT_TOP;
+  const PLOT_TOP = 24;
+  const PLOT_BOTTOM = chartHeight - 55;
+  const PLOT_HEIGHT = Math.max(100, PLOT_BOTTOM - PLOT_TOP);
   const RIGHT_PRICE_AXIS_WIDTH = 65;
 
+  // پایش عرض واقعی پانل به صورت مستقل
   useEffect(() => {
     if (!containerRef.current) return;
-    const observer = new ResizeObserver(entries => {
+    const observer = new ResizeObserver((entries) => {
       if (!entries[0]) return;
       const w = Math.floor(entries[0].contentRect.width);
-      if (w > 100) {
-        setContainerWidth(w);
+      if (w > 80) {
+        setPaneWidth(w);
       }
     });
     observer.observe(containerRef.current);
@@ -94,42 +99,49 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
 
   if (!candles || candles.length === 0) {
     return (
-      <div className="w-full h-[360px] flex items-center justify-center bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-2xl text-[var(--text-muted)] text-xs font-sans">
-        در حال بارگذاری کندل‌های بازار...
+      <div className="w-full h-full min-h-[300px] flex items-center justify-center bg-[var(--bg-canvas)] border border-[var(--border-subtle)] rounded-xl text-[var(--text-muted)] text-xs font-sans">
+        در انتظار داده‌های کندل {timeframe}...
       </div>
     );
   }
 
-  // محاسبه دقیق بازه حداقل و حداکثر قیمت برای محور عمودی
+  // محاسبه بازه حداقل و حداکثر قیمت برای محور Y
   let minPrice = Infinity;
   let maxPrice = -Infinity;
 
-  visibleCandles.forEach(c => {
+  candles.forEach((c) => {
     if (c.low < minPrice) minPrice = c.low;
     if (c.high > maxPrice) maxPrice = c.high;
   });
 
-  if (activeCandidate) {
-    minPrice = Math.min(minPrice, activeCandidate.entryPrice, activeCandidate.stopLossPrice, activeCandidate.takeProfitPrice);
-    maxPrice = Math.max(maxPrice, activeCandidate.entryPrice, activeCandidate.stopLossPrice, activeCandidate.takeProfitPrice);
+  if (activeCandidate && !isSecondary) {
+    minPrice = Math.min(
+      minPrice,
+      activeCandidate.entryPrice,
+      activeCandidate.stopLossPrice,
+      activeCandidate.takeProfitPrice
+    );
+    maxPrice = Math.max(
+      maxPrice,
+      activeCandidate.entryPrice,
+      activeCandidate.stopLossPrice,
+      activeCandidate.takeProfitPrice
+    );
   }
 
-  // در نظر گرفتن سطوح ماکرو در دامنه مقیاس اگر نزدیک قیمت باشند
-  multiTimeframeLevels.forEach(lvl => {
+  multiTimeframeLevels.forEach((lvl) => {
     if (Math.abs(lvl.price - minPrice) < (maxPrice - minPrice) * 1.5) {
       if (lvl.price < minPrice) minPrice = lvl.price;
       if (lvl.price > maxPrice) maxPrice = lvl.price;
     }
   });
 
-  // اضافه کردن حاشیه ۷ درصدی بالا و پایین برای تنفس سطوح
   const priceDiff = maxPrice - minPrice || 1;
   const padding = priceDiff * 0.07;
   const viewMinPrice = minPrice - padding;
   const viewMaxPrice = maxPrice + padding;
   const viewRange = viewMaxPrice - viewMinPrice;
 
-  // تابع تبدیل قیمت به مختصات عمودی Y
   const getY = (price: number) => {
     const ratio = (price - viewMinPrice) / viewRange;
     return PLOT_BOTTOM - ratio * PLOT_HEIGHT;
@@ -140,15 +152,12 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
     return Math.max(PLOT_TOP + 18, Math.min(PLOT_BOTTOM, rawY));
   };
 
-  // محاسبه عرض کندل‌ها و فواصل
-  const usableWidth = Math.max(200, containerWidth - RIGHT_PRICE_AXIS_WIDTH - 20);
-  const candleCount = visibleCandles.length;
+  const usableWidth = Math.max(150, paneWidth - RIGHT_PRICE_AXIS_WIDTH - 20);
+  const candleCount = candles.length;
   const slotWidth = usableWidth / candleCount;
-  const candleBodyWidth = Math.max(3, Math.min(18, Math.floor(slotWidth * 0.7)));
+  const candleBodyWidth = Math.max(2, Math.min(16, Math.floor(slotWidth * 0.72)));
+  const lastCandle = candles[candles.length - 1];
 
-  const lastCandle = visibleCandles[visibleCandles.length - 1];
-
-  // مدیریت رویداد حرکت ماوس برای کراس‌هیر
   const handleMouseMove = (e: React.MouseEvent<SVGSVGElement>) => {
     const rect = e.currentTarget.getBoundingClientRect();
     const x = e.clientX - rect.left;
@@ -161,8 +170,11 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
     }
 
     const price = viewMaxPrice - ((y - PLOT_TOP) / PLOT_HEIGHT) * viewRange;
-    const candleIdx = Math.min(candleCount - 1, Math.max(0, Math.floor((x - 10) / slotWidth)));
-    const timestamp = visibleCandles[candleIdx]?.timestamp;
+    const candleIdx = Math.min(
+      candleCount - 1,
+      Math.max(0, Math.floor((x - 10) / slotWidth))
+    );
+    const timestamp = candles[candleIdx]?.timestamp;
 
     setHoverState({ x, y, price, timestamp });
     if (onCrosshairChange) {
@@ -175,89 +187,43 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
     if (onCrosshairChange) onCrosshairChange(null, null);
   };
 
-  // خطوط افقی شبکه قیمت
-  const gridLines = [0.2, 0.4, 0.6, 0.8].map(ratio => {
+  const gridLines = [0.2, 0.4, 0.6, 0.8].map((ratio) => {
     const p = viewMinPrice + ratio * viewRange;
     return { y: getY(p), price: p };
   });
 
   return (
     <div
-      id="chart-main-container"
       ref={containerRef}
-      className={`w-full bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-2xl p-3 flex flex-col relative overflow-hidden select-none font-sans shadow-xs transition-colors ${
-        isExpanded ? 'fixed inset-3 md:inset-6 z-[100] h-[calc(100vh-1.5rem)] md:h-[calc(100vh-3rem)] shadow-2xl' : 'h-[360px]'
-      }`}
+      className="flex-1 w-full bg-[var(--bg-canvas)] border border-[var(--border-subtle)] rounded-xl p-2.5 flex flex-col relative overflow-hidden select-none"
     >
-      {/* سربرگ اطلاعات نماد و وضعیت چندتایم‌فریمه */}
-      <div className="flex flex-wrap items-center justify-between mb-1.5 px-1 text-xs shrink-0 gap-2">
-        <div className="flex items-center gap-2 font-mono">
-          <span className="font-bold text-[var(--text-primary)]">{symbol}</span>
-          <span className="text-emerald-500 font-bold">
+      {/* سربرگ پانل چارت */}
+      <div className="flex items-center justify-between mb-1 px-1 text-xs shrink-0 font-sans">
+        <div className="flex items-center gap-1.5 font-mono">
+          <span className="font-bold text-[var(--text-primary)]">{title}</span>
+          <span className="px-1.5 py-0.2 rounded bg-cyan-500/10 text-cyan-400 font-bold border border-cyan-500/20 text-[10px]">
+            {timeframe}
+          </span>
+          <span className="text-emerald-500 font-bold text-[11px]">
             ${lastCandle.close.toFixed(symbol === 'XAUUSD' ? 2 : 5)}
           </span>
-
-          <div className="hidden sm:flex items-center gap-1 text-[10px] font-sans">
-            <span className="px-1.5 py-0.5 rounded bg-[var(--bg-canvas)] border border-[var(--border-subtle)] text-[var(--text-muted)]">
-              بستر: H1/4H ({activeCandidate ? (activeCandidate.direction === 'BUY' ? 'صعودی' : 'نزولی') : 'خنثی'})
-            </span>
-            <span className="px-1.5 py-0.5 rounded bg-[var(--bg-canvas)] border border-[var(--border-subtle)] text-cyan-500 font-bold">
-              ورود: 5M
-            </span>
-            {multiTimeframeLevels.length > 0 && (
-              <span className="px-1.5 py-0.5 rounded bg-cyan-500/10 border border-cyan-500/20 text-cyan-500 font-mono">
-                {multiTimeframeLevels.length} سطح کلان
-              </span>
-            )}
-          </div>
         </div>
 
-        <div className="text-[11px] text-[var(--text-muted)] font-sans flex items-center gap-2">
+        <div className="text-[10px] text-[var(--text-muted)] font-mono flex items-center gap-2">
           {hoverState && (
-            <span className="font-mono text-cyan-500 font-bold bg-[var(--bg-canvas)] px-2 py-0.5 rounded border border-cyan-500/30">
-              قیمت: {hoverState.price.toFixed(symbol === 'XAUUSD' ? 2 : 5)}
+            <span className="text-cyan-400 font-bold bg-[var(--bg-surface)] px-1.5 py-0.2 rounded border border-cyan-500/30">
+              {hoverState.price.toFixed(symbol === 'XAUUSD' ? 2 : 5)}
             </span>
           )}
-          <span>نمایش: <strong className="font-mono text-[var(--text-primary)]">{visibleCandles.length}</strong> از {candles.length}</span>
-          <div className="flex items-center gap-1 border-r border-[var(--border-subtle)] pr-2">
-            <button
-              type="button"
-              onClick={() => setVisibleCandleCount(count => Math.max(20, Math.floor(count / 1.6)))}
-              disabled={visibleCandles.length <= 20}
-              className="p-1 rounded hover:bg-[var(--bg-surface-raised)] disabled:opacity-40"
-              title="بزرگ‌نمایی کندل‌ها"
-              aria-label="بزرگ‌نمایی نمودار"
-            >
-              <ZoomIn className="w-3.5 h-3.5" />
-            </button>
-            <button
-              type="button"
-              onClick={() => setVisibleCandleCount(count => Math.min(candles.length, Math.ceil(count * 1.6)))}
-              disabled={visibleCandles.length >= candles.length}
-              className="p-1 rounded hover:bg-[var(--bg-surface-raised)] disabled:opacity-40"
-              title="کوچک‌نمایی کندل‌ها"
-              aria-label="کوچک‌نمایی نمودار"
-            >
-              <ZoomOut className="w-3.5 h-3.5" />
-            </button>
-            <button
-              type="button"
-              onClick={() => setIsExpanded(value => !value)}
-              className="p-1 rounded hover:bg-[var(--bg-surface-raised)]"
-              title={isExpanded ? 'بستن نمای بزرگ' : 'نمای بزرگ نمودار'}
-              aria-label={isExpanded ? 'بستن نمای بزرگ نمودار' : 'نمای بزرگ نمودار'}
-            >
-              {isExpanded ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
-            </button>
-          </div>
+          <span>{candles.length} کندل</span>
         </div>
       </div>
 
-      {/* بوم SVG با ابعاد پایدار و مشخص */}
+      {/* ناحیه SVG رسم کندل‌ها */}
       <div className="flex-1 w-full relative min-h-0 overflow-hidden">
         <svg
-          width={containerWidth}
-          height={CHART_TOTAL_HEIGHT - 45}
+          width={paneWidth}
+          height={chartHeight - 50}
           className="overflow-visible cursor-crosshair"
           onMouseMove={handleMouseMove}
           onMouseLeave={handleMouseLeave}
@@ -268,17 +234,17 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
               <line
                 x1={10}
                 y1={g.y}
-                x2={containerWidth - RIGHT_PRICE_AXIS_WIDTH}
+                x2={paneWidth - RIGHT_PRICE_AXIS_WIDTH}
                 y2={g.y}
                 stroke={themeColors.gridLine}
                 strokeDasharray="2,3"
                 strokeWidth="1"
               />
               <text
-                x={containerWidth - RIGHT_PRICE_AXIS_WIDTH + 8}
+                x={paneWidth - RIGHT_PRICE_AXIS_WIDTH + 8}
                 y={g.y + 4}
                 fill={themeColors.axisText}
-                fontSize="10"
+                fontSize="9"
                 fontFamily="monospace"
               >
                 {g.price.toFixed(symbol === 'XAUUSD' ? 1 : 4)}
@@ -286,7 +252,7 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
             </g>
           ))}
 
-          {/* ۱. ترسیم سطوح کلان چندتایم‌فریمه (MultiTimeframe Levels) */}
+          {/* ۱. سطوح کلان چندتایم‌فریمه */}
           {multiTimeframeLevels.map((lvl) => {
             const y = getY(lvl.price);
             if (y < PLOT_TOP || y > PLOT_BOTTOM) return null;
@@ -296,7 +262,7 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
                 <line
                   x1={10}
                   y1={y}
-                  x2={containerWidth - RIGHT_PRICE_AXIS_WIDTH}
+                  x2={paneWidth - RIGHT_PRICE_AXIS_WIDTH}
                   y2={y}
                   stroke={lvl.color || '#06b6d4'}
                   strokeDasharray="4,4"
@@ -304,10 +270,10 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
                   opacity={0.85}
                 />
                 <rect
-                  x={containerWidth - RIGHT_PRICE_AXIS_WIDTH - 90}
-                  y={y - 13}
-                  width={85}
-                  height={13}
+                  x={paneWidth - RIGHT_PRICE_AXIS_WIDTH - 85}
+                  y={y - 12}
+                  width={80}
+                  height={12}
                   fill={themeColors.levelTagBg}
                   stroke={lvl.color || '#06b6d4'}
                   strokeWidth="0.8"
@@ -315,57 +281,66 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
                   opacity={0.95}
                 />
                 <text
-                  x={containerWidth - RIGHT_PRICE_AXIS_WIDTH - 48}
+                  x={paneWidth - RIGHT_PRICE_AXIS_WIDTH - 45}
                   y={y - 3}
                   fill={lvl.color || '#0284c7'}
-                  fontSize="9"
+                  fontSize="8"
                   fontFamily="sans-serif"
                   fontWeight="bold"
                   textAnchor="middle"
                 >
-                  {lvl.labelFa.slice(0, 12)}
+                  {lvl.labelFa.slice(0, 10)}
                 </text>
               </g>
             );
           })}
 
-          {/* ۲. ترسیم مخروط شبیه‌سازی استوکاستیک مونت‌کارلو (Monte Carlo Probability Cone) */}
-          {monteCarloCone.length > 1 && (() => {
+          {/* ۲. مخروط استوکاستیک مونت‌کارلو (تنها در چارت اصلی) */}
+          {!isSecondary && monteCarloCone.length > 1 && (() => {
             const lastX = 10 + (candleCount - 1) * slotWidth + slotWidth / 2;
             const stepPx = 3.5;
 
-            // باندهای صدک ۵ تا ۹۵ (سایه بنفش ملایم)
             const p5ToP95Points = [
-              ...monteCarloCone.map((pt, i) => `${(lastX + i * stepPx).toFixed(1)},${getY(pt.p95).toFixed(1)}`),
+              ...monteCarloCone.map(
+                (pt, i) => `${(lastX + i * stepPx).toFixed(1)},${getY(pt.p95).toFixed(1)}`
+              ),
               ...[...monteCarloCone].reverse().map((pt, i) => {
                 const origIdx = monteCarloCone.length - 1 - i;
                 return `${(lastX + origIdx * stepPx).toFixed(1)},${getY(pt.p5).toFixed(1)}`;
               }),
             ].join(' ');
 
-            // باندهای صدک ۲۵ تا ۷۵ (سایه بنفش پررنگ‌تر)
             const p25ToP75Points = [
-              ...monteCarloCone.map((pt, i) => `${(lastX + i * stepPx).toFixed(1)},${getY(pt.p75).toFixed(1)}`),
+              ...monteCarloCone.map(
+                (pt, i) => `${(lastX + i * stepPx).toFixed(1)},${getY(pt.p75).toFixed(1)}`
+              ),
               ...[...monteCarloCone].reverse().map((pt, i) => {
                 const origIdx = monteCarloCone.length - 1 - i;
                 return `${(lastX + origIdx * stepPx).toFixed(1)},${getY(pt.p25).toFixed(1)}`;
               }),
             ].join(' ');
 
-            // خط میانه P50
-            const p50Points = monteCarloCone.map((pt, i) => `${(lastX + i * stepPx).toFixed(1)},${getY(pt.p50).toFixed(1)}`).join(' ');
+            const p50Points = monteCarloCone
+              .map((pt, i) => `${(lastX + i * stepPx).toFixed(1)},${getY(pt.p50).toFixed(1)}`)
+              .join(' ');
 
             return (
-              <g id="monte-carlo-chart-cone" opacity={0.65}>
+              <g id="monte-carlo-cone-layer" opacity={0.65}>
                 <polygon points={p5ToP95Points} fill="#a855f7" opacity={0.15} />
                 <polygon points={p25ToP75Points} fill="#a855f7" opacity={0.25} />
-                <polyline points={p50Points} fill="none" stroke="#a855f7" strokeWidth="1.5" strokeDasharray="3,2" />
+                <polyline
+                  points={p50Points}
+                  fill="none"
+                  stroke="#a855f7"
+                  strokeWidth="1.5"
+                  strokeDasharray="3,2"
+                />
               </g>
             );
           })()}
 
-          {/* ۳. ترسیم کندل‌استیک‌ها */}
-          {visibleCandles.map((c, i) => {
+          {/* ۳. ترسیم کندل‌ها (OHLC Candlesticks) */}
+          {candles.map((c, i) => {
             const x = 10 + i * slotWidth + slotWidth / 2;
             const isUp = c.close >= c.open;
             const highY = getY(c.high);
@@ -378,7 +353,6 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
 
             return (
               <g key={c.timestamp || i}>
-                {/* شدو (Wick) */}
                 <line
                   x1={x}
                   y1={highY}
@@ -388,7 +362,6 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
                   strokeWidth="1.2"
                   opacity={0.85}
                 />
-                {/* بدنه (Body) */}
                 <rect
                   x={x - candleBodyWidth / 2}
                   y={bodyTop}
@@ -401,14 +374,13 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
             );
           })}
 
-          {/* ۴. خطوط سطوح ستاپ معاملاتی فعال هوش مصنوعی (Entry, SL, TP) */}
-          {activeCandidate && (
-            <g id="candidate-overlay-lines">
-              {/* خط ورود لیمیت */}
+          {/* ۴. خطوط ستاپ معاملاتی فعال هوش مصنوعی (در چارت اصلی) */}
+          {activeCandidate && !isSecondary && (
+            <g id="candidate-overlay-layer">
               <line
                 x1={10}
                 y1={getY(activeCandidate.entryPrice)}
-                x2={containerWidth - RIGHT_PRICE_AXIS_WIDTH}
+                x2={paneWidth - RIGHT_PRICE_AXIS_WIDTH}
                 y2={getY(activeCandidate.entryPrice)}
                 stroke={themeColors.entryLine}
                 strokeDasharray="4,4"
@@ -416,9 +388,9 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
               />
               <rect
                 x={12}
-                y={getClampedLabelY(activeCandidate.entryPrice) - 16}
-                width={120}
-                height={16}
+                y={getClampedLabelY(activeCandidate.entryPrice) - 15}
+                width={110}
+                height={15}
                 fill={themeColors.entryBg}
                 rx={3}
                 opacity={0.9}
@@ -427,27 +399,27 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
                 x={16}
                 y={getClampedLabelY(activeCandidate.entryPrice) - 4}
                 fill={themeColors.entryText}
-                fontSize="10"
+                fontSize="9"
                 fontFamily="sans-serif"
                 fontWeight="bold"
               >
-                ورود لیمیت: {activeCandidate.entryPrice}
+                ورود: {activeCandidate.entryPrice}
               </text>
 
               {/* خط حد ضرر */}
               <line
                 x1={10}
                 y1={getY(activeCandidate.stopLossPrice)}
-                x2={containerWidth - RIGHT_PRICE_AXIS_WIDTH}
+                x2={paneWidth - RIGHT_PRICE_AXIS_WIDTH}
                 y2={getY(activeCandidate.stopLossPrice)}
                 stroke={themeColors.slLine}
                 strokeWidth="1.5"
               />
               <rect
                 x={12}
-                y={getClampedLabelY(activeCandidate.stopLossPrice) - 16}
-                width={120}
-                height={16}
+                y={getClampedLabelY(activeCandidate.stopLossPrice) - 15}
+                width={110}
+                height={15}
                 fill={themeColors.slBg}
                 rx={3}
                 opacity={0.9}
@@ -456,27 +428,27 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
                 x={16}
                 y={getClampedLabelY(activeCandidate.stopLossPrice) - 4}
                 fill={themeColors.slText}
-                fontSize="10"
+                fontSize="9"
                 fontFamily="sans-serif"
                 fontWeight="bold"
               >
-                حد ضرر (SL): {activeCandidate.stopLossPrice}
+                حد ضرر: {activeCandidate.stopLossPrice}
               </text>
 
               {/* خط حد سود */}
               <line
                 x1={10}
                 y1={getY(activeCandidate.takeProfitPrice)}
-                x2={containerWidth - RIGHT_PRICE_AXIS_WIDTH}
+                x2={paneWidth - RIGHT_PRICE_AXIS_WIDTH}
                 y2={getY(activeCandidate.takeProfitPrice)}
                 stroke={themeColors.tpLine}
                 strokeWidth="1.5"
               />
               <rect
                 x={12}
-                y={getClampedLabelY(activeCandidate.takeProfitPrice) - 16}
-                width={120}
-                height={16}
+                y={getClampedLabelY(activeCandidate.takeProfitPrice) - 15}
+                width={110}
+                height={15}
                 fill={themeColors.tpBg}
                 rx={3}
                 opacity={0.9}
@@ -485,37 +457,41 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
                 x={16}
                 y={getClampedLabelY(activeCandidate.takeProfitPrice) - 4}
                 fill={themeColors.tpText}
-                fontSize="10"
+                fontSize="9"
                 fontFamily="sans-serif"
                 fontWeight="bold"
               >
-                حد سود (TP): {activeCandidate.takeProfitPrice}
+                تارگت سود: {activeCandidate.takeProfitPrice}
               </text>
             </g>
           )}
 
-          {/* ۵. کراس‌هیر تعاملی (Crosshair) */}
-          {(hoverState || (crosshairPrice !== null && crosshairPrice !== undefined)) && (() => {
-            const activeY = hoverState ? hoverState.y : getY(crosshairPrice!);
-            const activePrice = hoverState ? hoverState.price : crosshairPrice!;
-            const activeX = hoverState ? hoverState.x : null;
+          {/* ۵. کراس‌هیر تعاملی مشترک و همگام (Crosshair Overlay) */}
+          {(() => {
+            const hasHover = hoverState !== null;
+            const hasSyncedPrice = crosshairPrice !== null;
+            if (!hasHover && !hasSyncedPrice) return null;
+
+            const effectivePrice = hasHover ? hoverState.price : crosshairPrice!;
+            const activeY = getY(effectivePrice);
+            if (activeY < PLOT_TOP || activeY > PLOT_BOTTOM) return null;
+
+            const activeX = hasHover ? hoverState.x : null;
 
             return (
-              <g id="interactive-crosshair" pointerEvents="none">
-                {/* خط افقی قیمت */}
+              <g id="interactive-crosshair-sync" pointerEvents="none">
                 <line
                   x1={10}
                   y1={activeY}
-                  x2={containerWidth - RIGHT_PRICE_AXIS_WIDTH}
+                  x2={paneWidth - RIGHT_PRICE_AXIS_WIDTH}
                   y2={activeY}
                   stroke={themeColors.crosshairLine}
                   strokeDasharray="3,3"
                   strokeWidth="1.2"
-                  opacity={0.75}
+                  opacity={0.8}
                 />
-                {/* برچسب قیمت روی محور عمودی راست */}
                 <rect
-                  x={containerWidth - RIGHT_PRICE_AXIS_WIDTH}
+                  x={paneWidth - RIGHT_PRICE_AXIS_WIDTH}
                   y={activeY - 9}
                   width={RIGHT_PRICE_AXIS_WIDTH - 5}
                   height={18}
@@ -523,17 +499,16 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
                   rx={3}
                 />
                 <text
-                  x={containerWidth - RIGHT_PRICE_AXIS_WIDTH + 4}
+                  x={paneWidth - RIGHT_PRICE_AXIS_WIDTH + 4}
                   y={activeY + 4}
                   fill="#ffffff"
                   fontSize="10"
                   fontFamily="monospace"
                   fontWeight="bold"
                 >
-                  {activePrice.toFixed(symbol === 'XAUUSD' ? 2 : 4)}
+                  {effectivePrice.toFixed(symbol === 'XAUUSD' ? 2 : 4)}
                 </text>
 
-                {/* خط عمودی زمان اگر کاربر روی چارت باشد */}
                 {activeX !== null && (
                   <line
                     x1={activeX}
@@ -543,7 +518,7 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
                     stroke={themeColors.crosshairLine}
                     strokeDasharray="3,3"
                     strokeWidth="1.2"
-                    opacity={0.75}
+                    opacity={0.8}
                   />
                 )}
               </g>
@@ -551,6 +526,259 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
           })()}
         </svg>
       </div>
+    </div>
+  );
+};
+
+export const ChartCanvas: React.FC<ChartCanvasProps> = ({
+  symbol,
+  candles,
+  activeCandidate,
+  multiTimeframeLevels = [],
+  monteCarloCone = [],
+  onCrosshairChange,
+  crosshairPrice = null,
+}) => {
+  const [isSplitView, setIsSplitView] = useState(false);
+  const [secondaryTimeframe, setSecondaryTimeframe] = useState<Timeframe>('15M');
+  const [visibleCandleCount, setVisibleCandleCount] = useState(80);
+  const [isExpanded, setIsExpanded] = useState(false);
+  const [internalCrosshairPrice, setInternalCrosshairPrice] = useState<number | null>(null);
+
+  const { actualTheme } = useTheme();
+  const isDark = actualTheme === 'dark';
+
+  // پالت رنگ‌های هماهنگ با قالب فعال
+  const themeColors = useMemo(
+    () => ({
+      gridLine: isDark ? '#1e293b' : '#e2e8f0',
+      axisText: '#64748b',
+      bullishCandle: isDark ? '#10b981' : '#059669',
+      bearishCandle: isDark ? '#f43f5e' : '#dc2626',
+      entryLine: isDark ? '#38bdf8' : '#0284c7',
+      entryBg: isDark ? '#0c4a6e' : '#0284c7',
+      entryText: '#ffffff',
+      slLine: isDark ? '#f43f5e' : '#dc2626',
+      slBg: isDark ? '#4c0519' : '#dc2626',
+      slText: '#ffffff',
+      tpLine: isDark ? '#10b981' : '#16a34a',
+      tpBg: isDark ? '#022c22' : '#16a34a',
+      tpText: '#ffffff',
+      levelTagBg: isDark ? '#0f172a' : '#ffffff',
+      crosshairLine: isDark ? '#06b6d4' : '#0284c7',
+      crosshairBg: isDark ? '#0e7490' : '#0284c7',
+    }),
+    [isDark]
+  );
+
+  // کندل‌های نمایان چارت اولیه ۵ دقیقه‌ای
+  const visibleCandles = useMemo(
+    () => candles.slice(-Math.max(1, Math.min(visibleCandleCount, candles.length))),
+    [candles, visibleCandleCount]
+  );
+
+  // تولید کندل‌های کلان چارت دوم به صورت بدون سوگیری زمانی
+  const secondaryCandles = useMemo(() => {
+    if (!isSplitView || !candles || candles.length === 0) return [];
+    return DataWorkbench.aggregateCandles(candles, secondaryTimeframe);
+  }, [isSplitView, candles, secondaryTimeframe]);
+
+  const visibleSecondaryCandles = useMemo(() => {
+    const count = Math.max(15, Math.floor(visibleCandleCount / (secondaryTimeframe === '15M' ? 2.5 : 5)));
+    return secondaryCandles.slice(-Math.min(count, secondaryCandles.length));
+  }, [secondaryCandles, visibleCandleCount, secondaryTimeframe]);
+
+  // مدیریت کراس‌هیر مشترک دوسویه
+  const handleCrosshairUpdate = useCallback(
+    (price: number | null, timestamp: number | null) => {
+      setInternalCrosshairPrice(price);
+      if (onCrosshairChange) {
+        onCrosshairChange(price, timestamp);
+      }
+    },
+    [onCrosshairChange]
+  );
+
+  const activeCrosshairPrice = crosshairPrice !== null ? crosshairPrice : internalCrosshairPrice;
+
+  const CHART_TOTAL_HEIGHT = isExpanded ? 640 : isSplitView ? 340 : 360;
+
+  if (!candles || candles.length === 0) {
+    return (
+      <div className="w-full h-[360px] flex items-center justify-center bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-2xl text-[var(--text-muted)] text-xs font-sans">
+        در حال بارگذاری کندل‌های بازار...
+      </div>
+    );
+  }
+
+  const lastCandle = visibleCandles[visibleCandles.length - 1];
+
+  return (
+    <div
+      id="chart-main-container"
+      className={`w-full bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-2xl p-3 flex flex-col relative select-none font-sans shadow-xs transition-all ${
+        isExpanded
+          ? 'fixed inset-3 md:inset-6 z-[100] h-[calc(100vh-1.5rem)] md:h-[calc(100vh-3rem)] shadow-2xl overflow-y-auto'
+          : 'h-auto min-h-[380px]'
+      }`}
+    >
+      {/* نوار ابزار مستر بالای چارت: نماد، وضعیت چندتایم‌فریمه، دکمه سوئیچ نمای دوگانه، زوم و تمام‌صفحه */}
+      <div className="flex flex-wrap items-center justify-between mb-2.5 px-1 text-xs shrink-0 gap-2 border-b border-[var(--border-subtle)] pb-2">
+        <div className="flex items-center gap-2 font-mono flex-wrap">
+          <span className="font-bold text-base text-[var(--text-primary)]">{symbol}</span>
+          <span className="text-emerald-500 font-bold">
+            ${lastCandle.close.toFixed(symbol === 'XAUUSD' ? 2 : 5)}
+          </span>
+
+          {/* برچسب‌های وضعیت */}
+          <div className="hidden sm:flex items-center gap-1 text-[10px] font-sans">
+            <span className="px-1.5 py-0.5 rounded bg-[var(--bg-canvas)] border border-[var(--border-subtle)] text-[var(--text-muted)]">
+              بستر: H1/4H ({activeCandidate ? (activeCandidate.direction === 'BUY' ? 'صعودی' : 'نزولی') : 'خنثی'})
+            </span>
+            <span className="px-1.5 py-0.5 rounded bg-cyan-500/10 border border-cyan-500/20 text-cyan-500 font-bold">
+              ورود: 5M
+            </span>
+          </div>
+        </div>
+
+        {/* بخش ابزارها: انتخابگر نمای دوگانه + انتخابگر تایم‌فریم + زوم + فول‌اسکرین */}
+        <div className="flex items-center gap-2 flex-wrap">
+          {/* دکمه‌های سوئیچ تک‌چارت / نمای دوگانه */}
+          <div className="flex items-center bg-[var(--bg-canvas)] rounded-lg p-0.5 border border-[var(--border-subtle)] text-[11px]">
+            <button
+              type="button"
+              onClick={() => setIsSplitView(false)}
+              className={`flex items-center gap-1 px-2 py-1 rounded-md transition-all ${
+                !isSplitView
+                  ? 'bg-cyan-500 text-slate-950 font-bold shadow-xs'
+                  : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'
+              }`}
+              title="نمای تک‌چارت ۵ دقیقه‌ای"
+            >
+              <Square className="w-3 h-3" />
+              <span className="hidden sm:inline">تک‌چارت</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setIsSplitView(true)}
+              className={`flex items-center gap-1 px-2 py-1 rounded-md transition-all ${
+                isSplitView
+                  ? 'bg-cyan-500 text-slate-950 font-bold shadow-xs'
+                  : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'
+              }`}
+              title="نمای دوگانه همگام چندتایم‌فریمه"
+            >
+              <Columns className="w-3 h-3" />
+              <span className="font-semibold">نمای دوگانه</span>
+            </button>
+          </div>
+
+          {/* در صورت فعال بودن نمای دوگانه: انتخابگر تایم‌فریم ثانویه */}
+          {isSplitView && (
+            <div className="flex items-center bg-[var(--bg-canvas)] rounded-lg p-0.5 border border-[var(--border-subtle)] text-[11px] font-mono">
+              {(['15M', '1H', '4H'] as Timeframe[]).map((tf) => (
+                <button
+                  key={tf}
+                  type="button"
+                  onClick={() => setSecondaryTimeframe(tf)}
+                  className={`px-2 py-0.5 rounded transition-all ${
+                    secondaryTimeframe === tf
+                      ? 'bg-cyan-500/20 text-cyan-400 font-bold border border-cyan-500/30'
+                      : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'
+                  }`}
+                >
+                  {tf}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {/* کنترل‌های بزرگ‌نمایی و تمام‌صفحه */}
+          <div className="flex items-center gap-1 border-r border-[var(--border-subtle)] pr-2">
+            <button
+              type="button"
+              onClick={() => setVisibleCandleCount((count) => Math.max(20, Math.floor(count / 1.5)))}
+              disabled={visibleCandles.length <= 20}
+              className="p-1 rounded hover:bg-[var(--bg-surface-raised)] disabled:opacity-40"
+              title="بزرگ‌نمایی کندل‌ها"
+              aria-label="بزرگ‌نمایی نمودار"
+            >
+              <ZoomIn className="w-3.5 h-3.5" />
+            </button>
+            <button
+              type="button"
+              onClick={() => setVisibleCandleCount((count) => Math.min(candles.length, Math.ceil(count * 1.5)))}
+              disabled={visibleCandles.length >= candles.length}
+              className="p-1 rounded hover:bg-[var(--bg-surface-raised)] disabled:opacity-40"
+              title="کوچک‌نمایی کندل‌ها"
+              aria-label="کوچک‌نمایی نمودار"
+            >
+              <ZoomOut className="w-3.5 h-3.5" />
+            </button>
+            <button
+              type="button"
+              onClick={() => setIsExpanded((value) => !value)}
+              className="p-1 rounded hover:bg-[var(--bg-surface-raised)]"
+              title={isExpanded ? 'بستن نمای بزرگ' : 'تمام‌صفحه نمودار'}
+              aria-label={isExpanded ? 'بستن نمای بزرگ نمودار' : 'نمای بزرگ نمودار'}
+            >
+              {isExpanded ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* ناحیه رندر چارت‌ها: تک‌چارت یا شبکه دو ستونه موازی با کراس‌هیر همگام */}
+      {!isSplitView ? (
+        <div className="flex-1 w-full min-h-0 flex flex-col">
+          <SingleChartPane
+            symbol={symbol}
+            candles={visibleCandles}
+            timeframe="5M"
+            title={`نمودار تحلیلی و ورود ۵ دقیقه‌ای`}
+            activeCandidate={activeCandidate}
+            multiTimeframeLevels={multiTimeframeLevels}
+            monteCarloCone={monteCarloCone}
+            crosshairPrice={activeCrosshairPrice}
+            onCrosshairChange={handleCrosshairUpdate}
+            themeColors={themeColors}
+            chartHeight={CHART_TOTAL_HEIGHT}
+          />
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 xl:grid-cols-2 gap-3 w-full flex-1 min-h-0">
+          {/* چارت اول: تایم‌فریم ورود ۵ دقیقه‌ای (Execution Chart) */}
+          <SingleChartPane
+            symbol={symbol}
+            candles={visibleCandles}
+            timeframe="5M"
+            title="چارت ۱: ورود و نقدینگی ریزساختار"
+            activeCandidate={activeCandidate}
+            multiTimeframeLevels={multiTimeframeLevels}
+            monteCarloCone={monteCarloCone}
+            crosshairPrice={activeCrosshairPrice}
+            onCrosshairChange={handleCrosshairUpdate}
+            themeColors={themeColors}
+            chartHeight={CHART_TOTAL_HEIGHT}
+          />
+
+          {/* چارت دوم: تایم‌فریم کلان تجمیع‌شده (Macro Context Chart) */}
+          <SingleChartPane
+            symbol={symbol}
+            candles={visibleSecondaryCandles}
+            timeframe={secondaryTimeframe}
+            title={`چارت ۲: ساختار روند کلان`}
+            activeCandidate={activeCandidate}
+            multiTimeframeLevels={multiTimeframeLevels}
+            monteCarloCone={[]}
+            crosshairPrice={activeCrosshairPrice}
+            onCrosshairChange={handleCrosshairUpdate}
+            themeColors={themeColors}
+            isSecondary={true}
+            chartHeight={CHART_TOTAL_HEIGHT}
+          />
+        </div>
+      )}
     </div>
   );
 };

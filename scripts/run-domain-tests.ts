@@ -30,6 +30,8 @@ const suiteModules = [
   '../lib/core/__tests__/economic-calendar.test',
   '../lib/core/__tests__/equity-curve-monte-carlo.test',
   '../lib/core/__tests__/prop-firms.test',
+  '../lib/core/__tests__/multi-timeframe-split.test',
+  '../lib/core/__tests__/shareable-trade-card.test',
 ];
 
 export {};

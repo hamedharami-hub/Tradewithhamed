@@ -21,6 +21,7 @@ import {
   Brain,
   Target,
   Sparkles,
+  Share2,
 } from 'lucide-react';
 import {
   TradeLifecycleRecord,
@@ -34,6 +35,7 @@ import {
 import { SimulatedPosition } from '@/lib/contracts/orders';
 import { PostTradeAnalyticsEngine } from '@/lib/core/post-trade-analytics';
 import { runW5AcceptanceSuite, W5AcceptanceTestResult } from '@/lib/core/__tests__/w5-acceptance.test';
+import { ShareableTradeCardModal, ShareableTradeData } from '@/components/trading/shareable-trade-card-modal';
 
 type SubTab = 'ALPHA' | 'BEHAVIORAL' | 'EXCURSION' | 'TIME' | 'AI_ATTRIBUTION' | 'TESTS';
 
@@ -43,6 +45,7 @@ interface JournalWorkbenchW5Props {
 
 export function JournalWorkbenchW5({ positions }: JournalWorkbenchW5Props = {}) {
   const [subTab, setSubTab] = useState<SubTab>('ALPHA');
+  const [selectedTradeForCard, setSelectedTradeForCard] = useState<TradeLifecycleRecord | null>(null);
   const [serverTrades, setServerTrades] = useState<TradeLifecycleRecord[]>(DEFAULT_W5_TRADES);
   const [expandedTradeId, setExpandedTradeId] = useState<string | null>(null);
   const [testResults, setTestResults] = useState<W5AcceptanceTestResult[]>([]);
@@ -694,12 +697,24 @@ export function JournalWorkbenchW5({ positions }: JournalWorkbenchW5Props = {}) 
                           </span>
                         </td>
                         <td className="py-2.5 px-2 text-center">
-                          <button
-                            onClick={() => setExpandedTradeId(isExpanded ? null : trade.tradeId)}
-                            className="p-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 transition-colors"
-                          >
-                            {isExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
-                          </button>
+                          <div className="flex items-center justify-center gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => setSelectedTradeForCard(trade)}
+                              className="p-1 px-1.5 rounded-lg bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 transition-colors flex items-center gap-1 text-[10px] font-sans"
+                              title="تولید کارت گرافیکی اشتراک‌گذاری معامله"
+                            >
+                              <Share2 className="w-3 h-3" />
+                              <span className="hidden sm:inline">کارت PnL</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setExpandedTradeId(isExpanded ? null : trade.tradeId)}
+                              className="p-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 transition-colors"
+                            >
+                              {isExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                            </button>
+                          </div>
                         </td>
                       </tr>
 
@@ -731,21 +746,31 @@ export function JournalWorkbenchW5({ positions }: JournalWorkbenchW5Props = {}) 
                                 </div>
                               </div>
 
-                              <div className="bg-slate-900/60 rounded-xl p-2.5 border border-slate-800 space-y-1">
-                                <span className="text-slate-400 text-[11px] block">روان‌شناسی و قوانین:</span>
-                                {trade.psychologyMood && (
-                                  <div className="text-slate-300 text-[11px]">
-                                    وضعیت ذهنی: <span className="font-bold text-purple-300">{trade.psychologyMood}</span>
-                                  </div>
-                                )}
-                                {trade.propFirmId && (
-                                  <div className="text-slate-300 text-[11px]">
-                                    پراپ‌فرم: <span className="font-bold text-amber-300 font-mono">{trade.propFirmId}</span>
-                                  </div>
-                                )}
-                                <p className="text-slate-400 text-[10px] leading-relaxed mt-1">
-                                  {trade.traderNotesFa || 'یادداشتی ثبت نشده است.'}
-                                </p>
+                              <div className="bg-slate-900/60 rounded-xl p-2.5 border border-slate-800 space-y-2 flex flex-col justify-between">
+                                <div className="space-y-1">
+                                  <span className="text-slate-400 text-[11px] block">روان‌شناسی و قوانین:</span>
+                                  {trade.psychologyMood && (
+                                    <div className="text-slate-300 text-[11px]">
+                                      وضعیت ذهنی: <span className="font-bold text-purple-300">{trade.psychologyMood}</span>
+                                    </div>
+                                  )}
+                                  {trade.propFirmId && (
+                                    <div className="text-slate-300 text-[11px]">
+                                      پراپ‌فرم: <span className="font-bold text-amber-300 font-mono">{trade.propFirmId}</span>
+                                    </div>
+                                  )}
+                                  <p className="text-slate-400 text-[10px] leading-relaxed mt-1">
+                                    {trade.traderNotesFa || 'یادداشتی ثبت نشده است.'}
+                                  </p>
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => setSelectedTradeForCard(trade)}
+                                  className="w-full flex items-center justify-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-slate-950 text-xs font-bold transition-all shadow-sm active:scale-95"
+                                >
+                                  <Share2 className="w-3.5 h-3.5" />
+                                  <span>کارت گرافیکی اشتراک معامله</span>
+                                </button>
                               </div>
                             </div>
                           </td>
@@ -1120,6 +1145,38 @@ export function JournalWorkbenchW5({ positions }: JournalWorkbenchW5Props = {}) 
           )}
         </div>
       )}
+
+      {/* مودال تولید و صادرات کارت گرافیکی اشتراک‌گذاری معامله */}
+      <ShareableTradeCardModal
+        isOpen={!!selectedTradeForCard}
+        onClose={() => setSelectedTradeForCard(null)}
+        data={
+          selectedTradeForCard
+            ? {
+                symbol: selectedTradeForCard.symbol,
+                direction: selectedTradeForCard.direction,
+                entryPrice: selectedTradeForCard.entryPrice,
+                exitPrice: selectedTradeForCard.exitPrice,
+                stopLossPrice: selectedTradeForCard.stopLossPrice,
+                takeProfitPrice: selectedTradeForCard.takeProfitPrice,
+                realizedNetPnL: selectedTradeForCard.realizedNetPnL,
+                realizedRMultiple: selectedTradeForCard.realizedRMultiple,
+                volumeLots: selectedTradeForCard.volumeLots,
+                maePips: selectedTradeForCard.maxAdverseExcursionPips,
+                maeDollar: selectedTradeForCard.maxAdverseExcursionDollar,
+                mfePips: selectedTradeForCard.maxFavorableExcursionPips,
+                mfeDollar: selectedTradeForCard.maxFavorableExcursionDollar,
+                exitEfficiencyPercent: selectedTradeForCard.exitEfficiencyPercent,
+                psychologyMood: selectedTradeForCard.psychologyMood,
+                propFirmId: selectedTradeForCard.propFirmId,
+                setupGrade: selectedTradeForCard.setupGrade,
+                openedAt: selectedTradeForCard.openedAt,
+                closedAt: selectedTradeForCard.closedAt,
+                traderNotesFa: selectedTradeForCard.traderNotesFa,
+              }
+            : null
+        }
+      />
     </div>
   );
 }
