@@ -32,6 +32,7 @@ const suiteModules = [
   '../lib/core/__tests__/prop-firms.test',
   '../lib/core/__tests__/multi-timeframe-split.test',
   '../lib/core/__tests__/shareable-trade-card.test',
+  '../lib/core/__tests__/ruler-measurement.test',
 ];
 
 export {};

@@ -75,7 +75,7 @@ export async function runW4AcceptanceSuite(): Promise<W4AcceptanceTestResult[]> 
     stopLossPrice: 2640.0,
     takeProfitPrice: 2670.0, // 2R ریوارد
     reasonCode: 'W4_TEST',
-    createdTimestamp: Date.now(),
+    createdTimestamp: Date.UTC(2026, 8, 1, 10, 0, 0, 0),
     idempotencyKey: `KEY-W4-${Date.now()}`,
     ...overrides,
   });

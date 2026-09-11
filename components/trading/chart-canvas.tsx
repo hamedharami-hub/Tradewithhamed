@@ -1,6 +1,6 @@
 // components/trading/chart-canvas.tsx
-// بوم پیشرفته رسم نمودار کندل‌استیک با قابلیت نمای دوگانه چندتایم‌فریمه (Dual-Chart Multi-Timeframe Split View)
-// پشتیبانی از چارت ورود 5M در کنار چارت کلان 15M/1H/4H با کراس‌هیر مشترک و بدون سوگیری زمانی
+// بوم پیشرفته رسم نمودار کندل‌استیک با خط‌کش اندازه‌گیری پیپ (Pip Ruler)، ابزارهای ترسیمی
+// و نمای دوگانه چندتایم‌فریمه (Dual-Chart Multi-Timeframe Split View) با کراس‌هیر مشترک و بدون سوگیری زمانی
 // سازگار کامل با حالت روز (Light Mode) و شب (Dark Mode) و کاملاً ریسپانسیو
 
 'use client';
@@ -11,6 +11,7 @@ import { StrategyCandidate } from '@/lib/contracts/strategy';
 import { MultiTimeframeLevel, PercentileStepPoint } from '@/lib/contracts/monte-carlo';
 import { useTheme } from '@/context/theme-context';
 import { DataWorkbench } from '@/lib/core/data-workbench';
+import { DriftMonitor } from '@/lib/core/drift-monitor';
 import {
   Maximize2,
   Minimize2,
@@ -18,8 +19,41 @@ import {
   ZoomOut,
   Columns,
   Square,
-  Layers,
+  Ruler,
+  MousePointer,
+  Minus,
+  Trash2,
+  BoxSelect,
 } from 'lucide-react';
+
+export type DrawingToolType = 'cursor' | 'ruler' | 'horizontal' | 'rectangle';
+
+export interface PersistentRuler {
+  id: string;
+  startPrice: number;
+  endPrice: number;
+  startIdx: number;
+  endIdx: number;
+  startTimestamp: number;
+  endTimestamp: number;
+}
+
+export interface PersistentHorizontalLine {
+  id: string;
+  price: number;
+  color?: string;
+}
+
+export interface PersistentRectangle {
+  id: string;
+  startPrice: number;
+  endPrice: number;
+  startIdx: number;
+  endIdx: number;
+  startTimestamp: number;
+  endTimestamp: number;
+  color?: string;
+}
 
 interface ChartCanvasProps {
   symbol: SymbolId;
@@ -52,9 +86,11 @@ interface SingleChartPaneProps {
   themeColors: Record<string, string>;
   isSecondary?: boolean;
   chartHeight: number;
+  activeTool: DrawingToolType;
+  onToolUsed?: () => void;
 }
 
-// کامپوننت داخلی رندر مستقل هر پانل چارت SVG با ابعاد واکنش‌گرا و کراس‌هیر مشترک
+// کامپوننت داخلی رندر مستقل هر پانل چارت SVG همراه با خط‌کش اندازه‌گیری پیپ و ابزارهای ترسیمی
 const SingleChartPane: React.FC<SingleChartPaneProps> = ({
   symbol,
   candles,
@@ -68,6 +104,8 @@ const SingleChartPane: React.FC<SingleChartPaneProps> = ({
   themeColors,
   isSecondary = false,
   chartHeight,
+  activeTool,
+  onToolUsed,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [paneWidth, setPaneWidth] = useState(500);
@@ -78,12 +116,20 @@ const SingleChartPane: React.FC<SingleChartPaneProps> = ({
     timestamp?: number;
   } | null>(null);
 
+  // وضعیت‌های اختصاصی ابزارهای ترسیمی
+  const [rulers, setRulers] = useState<PersistentRuler[]>([]);
+  const [activeRulerDraft, setActiveRulerDraft] = useState<PersistentRuler | null>(null);
+  const [horizontalLines, setHorizontalLines] = useState<PersistentHorizontalLine[]>([]);
+  const [rectangles, setRectangles] = useState<PersistentRectangle[]>([]);
+  const [activeRectDraft, setActiveRectDraft] = useState<PersistentRectangle | null>(null);
+  const [isDrawing, setIsDrawing] = useState(false);
+
   const PLOT_TOP = 24;
   const PLOT_BOTTOM = chartHeight - 55;
   const PLOT_HEIGHT = Math.max(100, PLOT_BOTTOM - PLOT_TOP);
   const RIGHT_PRICE_AXIS_WIDTH = 65;
 
-  // پایش عرض واقعی پانل به صورت مستقل
+  // پایش عرض واقعی پانل چارت با ResizeObserver
   useEffect(() => {
     if (!containerRef.current) return;
     const observer = new ResizeObserver((entries) => {
@@ -105,7 +151,7 @@ const SingleChartPane: React.FC<SingleChartPaneProps> = ({
     );
   }
 
-  // محاسبه بازه حداقل و حداکثر قیمت برای محور Y
+  // محاسبه بازه حداقل و حداکثر قیمت برای محور عمودی Y
   let minPrice = Infinity;
   let maxPrice = -Infinity;
 
@@ -147,6 +193,10 @@ const SingleChartPane: React.FC<SingleChartPaneProps> = ({
     return PLOT_BOTTOM - ratio * PLOT_HEIGHT;
   };
 
+  const getPriceAtY = (y: number) => {
+    return viewMaxPrice - ((y - PLOT_TOP) / PLOT_HEIGHT) * viewRange;
+  };
+
   const getClampedLabelY = (price: number) => {
     const rawY = getY(price);
     return Math.max(PLOT_TOP + 18, Math.min(PLOT_BOTTOM, rawY));
@@ -158,6 +208,71 @@ const SingleChartPane: React.FC<SingleChartPaneProps> = ({
   const candleBodyWidth = Math.max(2, Math.min(16, Math.floor(slotWidth * 0.72)));
   const lastCandle = candles[candles.length - 1];
 
+  const getCandleIdxAtX = (x: number) => {
+    return Math.min(candleCount - 1, Math.max(0, Math.floor((x - 10) / slotWidth)));
+  };
+
+  const getXForCandleIdx = (idx: number) => {
+    return 10 + Math.min(candleCount - 1, Math.max(0, idx)) * slotWidth + slotWidth / 2;
+  };
+
+  // رویداد فشردن ماوس جهت شروع ترسیم خط‌کش، باکس یا ثبت خط افقی
+  const handleMouseDown = (e: React.MouseEvent<SVGSVGElement>) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+
+    if (x < 10 || x > usableWidth || y < PLOT_TOP || y > PLOT_BOTTOM) return;
+
+    const clickedPrice = getPriceAtY(y);
+    const clickedIdx = getCandleIdxAtX(x);
+    const clickedTimestamp = candles[clickedIdx]?.timestamp || Date.now();
+
+    const isRulerMode = activeTool === 'ruler' || e.shiftKey;
+
+    if (isRulerMode) {
+      setIsDrawing(true);
+      setActiveRulerDraft({
+        id: `RL-DRAFT-${Date.now()}`,
+        startPrice: clickedPrice,
+        endPrice: clickedPrice,
+        startIdx: clickedIdx,
+        endIdx: clickedIdx,
+        startTimestamp: clickedTimestamp,
+        endTimestamp: clickedTimestamp,
+      });
+      return;
+    }
+
+    if (activeTool === 'rectangle') {
+      setIsDrawing(true);
+      setActiveRectDraft({
+        id: `RC-DRAFT-${Date.now()}`,
+        startPrice: clickedPrice,
+        endPrice: clickedPrice,
+        startIdx: clickedIdx,
+        endIdx: clickedIdx,
+        startTimestamp: clickedTimestamp,
+        endTimestamp: clickedTimestamp,
+        color: '#a855f7',
+      });
+      return;
+    }
+
+    if (activeTool === 'horizontal') {
+      setHorizontalLines((prev) => [
+        ...prev,
+        {
+          id: `HL-${Date.now()}`,
+          price: clickedPrice,
+          color: '#38bdf8',
+        },
+      ]);
+      if (onToolUsed) onToolUsed();
+    }
+  };
+
+  // رویداد حرکت ماوس
   const handleMouseMove = (e: React.MouseEvent<SVGSVGElement>) => {
     const rect = e.currentTarget.getBoundingClientRect();
     const x = e.clientX - rect.left;
@@ -169,28 +284,108 @@ const SingleChartPane: React.FC<SingleChartPaneProps> = ({
       return;
     }
 
-    const price = viewMaxPrice - ((y - PLOT_TOP) / PLOT_HEIGHT) * viewRange;
-    const candleIdx = Math.min(
-      candleCount - 1,
-      Math.max(0, Math.floor((x - 10) / slotWidth))
-    );
+    const price = getPriceAtY(y);
+    const candleIdx = getCandleIdxAtX(x);
     const timestamp = candles[candleIdx]?.timestamp;
 
     setHoverState({ x, y, price, timestamp });
     if (onCrosshairChange) {
       onCrosshairChange(price, timestamp || null);
     }
+
+    // به‌روزرسانی زنده ابزار در حال ترسیم
+    if (isDrawing) {
+      if (activeRulerDraft) {
+        setActiveRulerDraft((prev) =>
+          prev
+            ? {
+                ...prev,
+                endPrice: price,
+                endIdx: candleIdx,
+                endTimestamp: timestamp || prev.endTimestamp,
+              }
+            : null
+        );
+      } else if (activeRectDraft) {
+        setActiveRectDraft((prev) =>
+          prev
+            ? {
+                ...prev,
+                endPrice: price,
+                endIdx: candleIdx,
+                endTimestamp: timestamp || prev.endTimestamp,
+              }
+            : null
+        );
+      }
+    }
+  };
+
+  // رویداد رها کردن ماوس و تثبیت ترسیم
+  const handleMouseUp = () => {
+    if (!isDrawing) return;
+
+    if (activeRulerDraft) {
+      const pDiff = Math.abs(activeRulerDraft.endPrice - activeRulerDraft.startPrice);
+      const bDiff = Math.abs(activeRulerDraft.endIdx - activeRulerDraft.startIdx);
+      if (pDiff > 0.0001 || bDiff > 0) {
+        setRulers((prev) => [
+          ...prev,
+          { ...activeRulerDraft, id: `RL-${Date.now()}` },
+        ]);
+      }
+      setActiveRulerDraft(null);
+    }
+
+    if (activeRectDraft) {
+      const pDiff = Math.abs(activeRectDraft.endPrice - activeRectDraft.startPrice);
+      const bDiff = Math.abs(activeRectDraft.endIdx - activeRectDraft.startIdx);
+      if (pDiff > 0.0001 || bDiff > 0) {
+        setRectangles((prev) => [
+          ...prev,
+          { ...activeRectDraft, id: `RC-${Date.now()}` },
+        ]);
+      }
+      setActiveRectDraft(null);
+    }
+
+    setIsDrawing(false);
+    if (onToolUsed && activeTool !== 'cursor') {
+      onToolUsed();
+    }
   };
 
   const handleMouseLeave = () => {
     setHoverState(null);
     if (onCrosshairChange) onCrosshairChange(null, null);
+    if (isDrawing) {
+      handleMouseUp();
+    }
+  };
+
+  const removeRuler = (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setRulers((prev) => prev.filter((r) => r.id !== id));
+  };
+
+  const removeHorizontalLine = (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setHorizontalLines((prev) => prev.filter((h) => h.id !== id));
+  };
+
+  const removeRectangle = (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setRectangles((prev) => prev.filter((rc) => rc.id !== id));
   };
 
   const gridLines = [0.2, 0.4, 0.6, 0.8].map((ratio) => {
     const p = viewMinPrice + ratio * viewRange;
     return { y: getY(p), price: p };
   });
+
+  const pipSize = DriftMonitor.getPipSize(symbol);
+  const allRulersToRender = activeRulerDraft ? [...rulers, activeRulerDraft] : rulers;
+  const allRectsToRender = activeRectDraft ? [...rectangles, activeRectDraft] : rectangles;
 
   return (
     <div
@@ -199,7 +394,7 @@ const SingleChartPane: React.FC<SingleChartPaneProps> = ({
     >
       {/* سربرگ پانل چارت */}
       <div className="flex items-center justify-between mb-1 px-1 text-xs shrink-0 font-sans">
-        <div className="flex items-center gap-1.5 font-mono">
+        <div className="flex items-center gap-1.5 font-mono flex-wrap">
           <span className="font-bold text-[var(--text-primary)]">{title}</span>
           <span className="px-1.5 py-0.2 rounded bg-cyan-500/10 text-cyan-400 font-bold border border-cyan-500/20 text-[10px]">
             {timeframe}
@@ -216,16 +411,29 @@ const SingleChartPane: React.FC<SingleChartPaneProps> = ({
             </span>
           )}
           <span>{candles.length} کندل</span>
+          {activeTool === 'ruler' && (
+            <span className="px-1.5 py-0.2 rounded bg-amber-500/15 text-amber-300 font-bold border border-amber-500/30 text-[9px] animate-pulse">
+              📏 خط‌کش فعال (درگ کنید)
+            </span>
+          )}
         </div>
       </div>
 
-      {/* ناحیه SVG رسم کندل‌ها */}
+      {/* ناحیه بوم SVG رسم کندل‌ها، خط‌کش و ابزارهای ترسیمی */}
       <div className="flex-1 w-full relative min-h-0 overflow-hidden">
         <svg
           width={paneWidth}
           height={chartHeight - 50}
-          className="overflow-visible cursor-crosshair"
+          className={`overflow-visible ${
+            activeTool === 'ruler' || activeTool === 'rectangle'
+              ? 'cursor-crosshair'
+              : activeTool === 'horizontal'
+              ? 'cursor-row-resize'
+              : 'cursor-crosshair'
+          }`}
+          onMouseDown={handleMouseDown}
           onMouseMove={handleMouseMove}
+          onMouseUp={handleMouseUp}
           onMouseLeave={handleMouseLeave}
         >
           {/* خطوط پس‌زمینه شبکه قیمت */}
@@ -466,7 +674,253 @@ const SingleChartPane: React.FC<SingleChartPaneProps> = ({
             </g>
           )}
 
-          {/* ۵. کراس‌هیر تعاملی مشترک و همگام (Crosshair Overlay) */}
+          {/* ۵. ترسیم خطوط افقی تراز نقدینگی کاربر (Horizontal Rays) */}
+          {horizontalLines.map((hl) => {
+            const y = getY(hl.price);
+            if (y < PLOT_TOP || y > PLOT_BOTTOM) return null;
+
+            return (
+              <g key={hl.id} className="group">
+                <line
+                  x1={10}
+                  y1={y}
+                  x2={paneWidth - RIGHT_PRICE_AXIS_WIDTH}
+                  y2={y}
+                  stroke={hl.color || '#38bdf8'}
+                  strokeWidth="1.5"
+                  strokeDasharray="4,4"
+                  opacity={0.9}
+                />
+                <rect
+                  x={12}
+                  y={y - 10}
+                  width={75}
+                  height={15}
+                  rx={3}
+                  fill="#0f172a"
+                  stroke={hl.color || '#38bdf8'}
+                  strokeWidth="1"
+                />
+                <text
+                  x={16}
+                  y={y + 1}
+                  fill={hl.color || '#38bdf8'}
+                  fontSize="9"
+                  fontFamily="monospace"
+                  fontWeight="bold"
+                >
+                  HL: {hl.price.toFixed(symbol === 'XAUUSD' ? 2 : 4)}
+                </text>
+                <g
+                  onClick={(e) => removeHorizontalLine(hl.id, e)}
+                  className="cursor-pointer"
+                >
+                  <circle cx={92} cy={y - 2} r={6} fill="#ef4444" opacity={0.8} />
+                  <text x={92} y={y + 1} fill="#ffffff" fontSize="8" textAnchor="middle">
+                    ✕
+                  </text>
+                </g>
+              </g>
+            );
+          })}
+
+          {/* ۶. ترسیم باکس‌های محدوده نقدینگی / اوردربلاک / FVG */}
+          {allRectsToRender.map((rc) => {
+            const x1 = getXForCandleIdx(rc.startIdx);
+            const x2 = getXForCandleIdx(rc.endIdx);
+            const y1 = getY(rc.startPrice);
+            const y2 = getY(rc.endPrice);
+
+            const minX = Math.min(x1, x2);
+            const maxX = Math.max(x1, x2);
+            const minY = Math.min(y1, y2);
+            const maxY = Math.max(y1, y2);
+            const w = Math.max(4, maxX - minX);
+            const h = Math.max(4, maxY - minY);
+
+            return (
+              <g key={rc.id}>
+                <rect
+                  x={minX}
+                  y={minY}
+                  width={w}
+                  height={h}
+                  fill="rgba(168, 85, 247, 0.15)"
+                  stroke="#a855f7"
+                  strokeWidth="1.2"
+                  strokeDasharray="3,2"
+                  rx={4}
+                />
+                <text
+                  x={minX + 6}
+                  y={minY + 12}
+                  fill="#c084fc"
+                  fontSize="9"
+                  fontFamily="sans-serif"
+                  fontWeight="bold"
+                >
+                  Zone / FVG
+                </text>
+                {!rc.id.includes('DRAFT') && (
+                  <g
+                    onClick={(e) => removeRectangle(rc.id, e)}
+                    className="cursor-pointer"
+                  >
+                    <circle cx={maxX - 8} cy={minY + 8} r={6} fill="#ef4444" opacity={0.8} />
+                    <text x={maxX - 8} y={minY + 11} fill="#ffffff" fontSize="8" textAnchor="middle">
+                      ✕
+                    </text>
+                  </g>
+                )}
+              </g>
+            );
+          })}
+
+          {/* ۷. ابزار ستاره: خط‌کش اندازه‌گیری پیپ و درصد (Pip & Time Measurement Ruler) */}
+          {allRulersToRender.map((r) => {
+            const x1 = getXForCandleIdx(r.startIdx);
+            const x2 = getXForCandleIdx(r.endIdx);
+            const y1 = getY(r.startPrice);
+            const y2 = getY(r.endPrice);
+
+            const minX = Math.min(x1, x2);
+            const maxX = Math.max(x1, x2);
+            const minY = Math.min(y1, y2);
+            const maxY = Math.max(y1, y2);
+            const w = Math.max(2, maxX - minX);
+            const h = Math.max(2, maxY - minY);
+
+            const isUp = r.endPrice >= r.startPrice;
+            const strokeColor = isUp ? '#10b981' : '#f43f5e';
+            const fillColor = isUp ? 'rgba(16, 185, 129, 0.14)' : 'rgba(244, 63, 94, 0.14)';
+
+            const priceDiff = r.endPrice - r.startPrice;
+            const pipsDiff = Number((priceDiff / pipSize).toFixed(1));
+            const percentDiff = Number((((r.endPrice - r.startPrice) / r.startPrice) * 100).toFixed(2));
+            const bars = Math.abs(r.endIdx - r.startIdx) + 1;
+            const timeMinutes = bars * (timeframe === '15M' ? 15 : timeframe === '1H' ? 60 : 5);
+            const timeStr =
+              timeMinutes >= 60
+                ? `${Math.floor(timeMinutes / 60)}h ${timeMinutes % 60}m`
+                : `${timeMinutes}m`;
+
+            // موقعیت قرارگیری هوشمند کارت HUD اندازه‌گیری
+            const cardWidth = 168;
+            const cardHeight = 52;
+            let cardX = Math.min(usableWidth - cardWidth, Math.max(15, (minX + maxX) / 2 - cardWidth / 2));
+            let cardY = minY - cardHeight - 8;
+            if (cardY < PLOT_TOP + 5) {
+              cardY = maxY + 10;
+            }
+
+            return (
+              <g key={r.id} id={`ruler-${r.id}`}>
+                {/* سایه روشن و حاشیه محدوده خط‌کش */}
+                <rect
+                  x={minX}
+                  y={minY}
+                  width={w}
+                  height={h}
+                  fill={fillColor}
+                  stroke={strokeColor}
+                  strokeWidth="1.2"
+                  strokeDasharray="4,3"
+                  rx={4}
+                />
+
+                {/* بردار قطری خط‌کش */}
+                <line
+                  x1={x1}
+                  y1={y1}
+                  x2={x2}
+                  y2={y2}
+                  stroke={strokeColor}
+                  strokeWidth="1.6"
+                />
+
+                {/* نقاط ابتدا و انتهای خط‌کش */}
+                <circle cx={x1} cy={y1} r={3.5} fill={strokeColor} />
+                <circle cx={x2} cy={y2} r={3.5} fill={strokeColor} />
+
+                {/* کارت نمایشگر شناور مشخصات اندازه‌گیری (HUD Floating Card) */}
+                <rect
+                  x={cardX}
+                  y={cardY}
+                  width={cardWidth}
+                  height={cardHeight}
+                  rx={8}
+                  fill="#0b0f19"
+                  stroke={strokeColor}
+                  strokeWidth="1.2"
+                  filter="drop-shadow(0 4px 6px rgba(0, 0, 0, 0.5))"
+                />
+
+                {/* خط اول کارت: پیپ و درصد */}
+                <text
+                  x={cardX + 10}
+                  y={cardY + 18}
+                  fill={strokeColor}
+                  fontSize="12"
+                  fontFamily="monospace"
+                  fontWeight="bold"
+                >
+                  {isUp ? '+' : ''}{pipsDiff} pips ({isUp ? '+' : ''}{percentDiff}%)
+                </text>
+
+                {/* خط دوم کارت: تغییر قیمت دلاری و تعداد کندل */}
+                <text
+                  x={cardX + 10}
+                  y={cardY + 33}
+                  fill="#f8fafc"
+                  fontSize="11"
+                  fontFamily="monospace"
+                  fontWeight="bold"
+                >
+                  Δ {isUp ? '+' : ''}${Math.abs(priceDiff).toFixed(symbol === 'XAUUSD' ? 2 : 4)}
+                </text>
+
+                {/* خط سوم کارت: مدت زمان و تعداد بارها */}
+                <text
+                  x={cardX + 10}
+                  y={cardY + 45}
+                  fill="#94a3b8"
+                  fontSize="9"
+                  fontFamily="sans-serif"
+                >
+                  {bars} کندل • {timeStr}
+                </text>
+
+                {/* دکمه حذف اندازه خط‌کش */}
+                {!r.id.includes('DRAFT') && (
+                  <g
+                    onClick={(e) => removeRuler(r.id, e)}
+                    className="cursor-pointer"
+                  >
+                    <rect
+                      x={cardX + cardWidth - 22}
+                      y={cardY + 6}
+                      width={16}
+                      height={16}
+                      rx={4}
+                      fill="#1e293b"
+                    />
+                    <text
+                      x={cardX + cardWidth - 14}
+                      y={cardY + 18}
+                      fill="#f43f5e"
+                      fontSize="10"
+                      fontWeight="bold"
+                      textAnchor="middle"
+                    >
+                      ✕
+                    </text>
+                  </g>
+                )}
+              </g>
+            );
+          })}
+
+          {/* ۸. کراس‌هیر تعاملی مشترک و همگام (Crosshair Overlay) */}
           {(() => {
             const hasHover = hoverState !== null;
             const hasSyncedPrice = crosshairPrice !== null;
@@ -544,6 +998,7 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
   const [visibleCandleCount, setVisibleCandleCount] = useState(80);
   const [isExpanded, setIsExpanded] = useState(false);
   const [internalCrosshairPrice, setInternalCrosshairPrice] = useState<number | null>(null);
+  const [activeDrawingTool, setActiveDrawingTool] = useState<DrawingToolType>('cursor');
 
   const { actualTheme } = useTheme();
   const isDark = actualTheme === 'dark';
@@ -622,7 +1077,7 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
           : 'h-auto min-h-[380px]'
       }`}
     >
-      {/* نوار ابزار مستر بالای چارت: نماد، وضعیت چندتایم‌فریمه، دکمه سوئیچ نمای دوگانه، زوم و تمام‌صفحه */}
+      {/* نوار ابزار مستر بالای چارت: نماد، انتخابگر ابزارهای ترسیمی (خط‌کش و باکس)، سوئیچ نمای دوگانه، زوم و تمام‌صفحه */}
       <div className="flex flex-wrap items-center justify-between mb-2.5 px-1 text-xs shrink-0 gap-2 border-b border-[var(--border-subtle)] pb-2">
         <div className="flex items-center gap-2 font-mono flex-wrap">
           <span className="font-bold text-base text-[var(--text-primary)]">{symbol}</span>
@@ -641,8 +1096,74 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
           </div>
         </div>
 
-        {/* بخش ابزارها: انتخابگر نمای دوگانه + انتخابگر تایم‌فریم + زوم + فول‌اسکرین */}
+        {/* بخش ابزارهای تعاملی: پالت ابزارهای ترسیمی + سوئیچ نما + زوم + فول‌اسکرین */}
         <div className="flex items-center gap-2 flex-wrap">
+          {/* پالت ابزارهای ترسیمی تعاملی و خط‌کش اندازه‌گیری پیپ */}
+          <div className="flex items-center bg-[var(--bg-canvas)] rounded-lg p-0.5 border border-[var(--border-subtle)] text-[11px]">
+            <button
+              type="button"
+              onClick={() => setActiveDrawingTool('cursor')}
+              className={`p-1.5 rounded-md transition-all ${
+                activeDrawingTool === 'cursor'
+                  ? 'bg-slate-700 text-white font-bold shadow-xs'
+                  : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'
+              }`}
+              title="نشانگر عادی (پیمایش و کراس‌هیر)"
+              aria-label="نشانگر عادی"
+            >
+              <MousePointer className="w-3.5 h-3.5" />
+            </button>
+
+            <button
+              type="button"
+              onClick={() =>
+                setActiveDrawingTool(activeDrawingTool === 'ruler' ? 'cursor' : 'ruler')
+              }
+              className={`flex items-center gap-1 px-2 py-1 rounded-md transition-all ${
+                activeDrawingTool === 'ruler'
+                  ? 'bg-amber-500 text-slate-950 font-bold shadow-xs'
+                  : 'text-[var(--text-muted)] hover:text-amber-400'
+              }`}
+              title="خط‌کش اندازه‌گیری پیپ، درصد و کندل‌ها (کلیک و درگ روی چارت یا نگه‌داشتن Shift)"
+              aria-label="خط‌کش اندازه‌گیری پیپ"
+            >
+              <Ruler className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline font-bold">خط‌کش پیپ</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() =>
+                setActiveDrawingTool(activeDrawingTool === 'horizontal' ? 'cursor' : 'horizontal')
+              }
+              className={`p-1.5 rounded-md transition-all ${
+                activeDrawingTool === 'horizontal'
+                  ? 'bg-cyan-500 text-slate-950 font-bold shadow-xs'
+                  : 'text-[var(--text-muted)] hover:text-cyan-400'
+              }`}
+              title="خط افقی تراز قیمت (کلیک روی سطح مورد نظر)"
+              aria-label="خط افقی تراز قیمت"
+            >
+              <Minus className="w-3.5 h-3.5" />
+            </button>
+
+            <button
+              type="button"
+              onClick={() =>
+                setActiveDrawingTool(activeDrawingTool === 'rectangle' ? 'cursor' : 'rectangle')
+              }
+              className={`p-1.5 rounded-md transition-all ${
+                activeDrawingTool === 'rectangle'
+                  ? 'bg-purple-500 text-slate-950 font-bold shadow-xs'
+                  : 'text-[var(--text-muted)] hover:text-purple-400'
+              }`}
+              title="باکس محدوده نقدینگی / اوردربلاک / FVG"
+              aria-label="باکس محدوده نقدینگی"
+            >
+              <BoxSelect className="w-3.5 h-3.5" />
+            </button>
+          </div>
+
           {/* دکمه‌های سوئیچ تک‌چارت / نمای دوگانه */}
           <div className="flex items-center bg-[var(--bg-canvas)] rounded-lg p-0.5 border border-[var(--border-subtle)] text-[11px]">
             <button
@@ -728,7 +1249,7 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
         </div>
       </div>
 
-      {/* ناحیه رندر چارت‌ها: تک‌چارت یا شبکه دو ستونه موازی با کراس‌هیر همگام */}
+      {/* ناحیه رندر چارت‌ها: تک‌چارت یا شبکه دو ستونه موازی با خط‌کش و کراس‌هیر همگام */}
       {!isSplitView ? (
         <div className="flex-1 w-full min-h-0 flex flex-col">
           <SingleChartPane
@@ -743,6 +1264,7 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
             onCrosshairChange={handleCrosshairUpdate}
             themeColors={themeColors}
             chartHeight={CHART_TOTAL_HEIGHT}
+            activeTool={activeDrawingTool}
           />
         </div>
       ) : (
@@ -760,6 +1282,7 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
             onCrosshairChange={handleCrosshairUpdate}
             themeColors={themeColors}
             chartHeight={CHART_TOTAL_HEIGHT}
+            activeTool={activeDrawingTool}
           />
 
           {/* چارت دوم: تایم‌فریم کلان تجمیع‌شده (Macro Context Chart) */}
@@ -776,6 +1299,7 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
             themeColors={themeColors}
             isSecondary={true}
             chartHeight={CHART_TOTAL_HEIGHT}
+            activeTool={activeDrawingTool}
           />
         </div>
       )}
