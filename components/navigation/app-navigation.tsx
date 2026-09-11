@@ -132,7 +132,7 @@ export const AppNavigation: React.FC<AppNavigationProps> = ({
           forceMobile ? 'hidden' : forceWindows ? 'flex' : 'hidden md:flex'
         } shrink-0 flex-col transition-all duration-300 ${
           isCollapsed ? 'w-16' : 'w-64'
-        } bg-[var(--bg-surface)] border-l border-[var(--border-subtle)] min-h-[calc(100vh-61px)] sticky top-[61px] z-30`}
+        } bg-[var(--bg-surface)] border-l border-[var(--border-subtle)] min-h-[calc(100vh-48px)] sticky top-12 z-30`}
         dir="rtl"
       >
         <div className="p-3 flex items-center justify-between border-b border-[var(--border-subtle)]">

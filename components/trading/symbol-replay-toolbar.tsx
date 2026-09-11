@@ -1,4 +1,6 @@
 // components/trading/symbol-replay-toolbar.tsx
+// نوار کنترل نمادها، بازپخش و نشست معاملاتی با طراحی فشرده و مدرن
+
 'use client';
 
 import React from 'react';
@@ -14,8 +16,7 @@ import {
   Power,
   Database,
   Bot,
-  Sliders,
-  Layers,
+  SlidersHorizontal,
 } from 'lucide-react';
 
 interface SymbolReplayToolbarProps {
@@ -58,7 +59,6 @@ export const SymbolReplayToolbar: React.FC<SymbolReplayToolbarProps> = React.mem
   onOpenExportModal,
   onOpenAIModal,
   onOpenMultiAgentModal,
-  activeModelNameFa = 'S0 آفلاین',
   activeTradingStyleBadgeFa = 'سبک S0',
   activeStyleFilter = 'ALL',
   onChangeStyleFilter,
@@ -77,212 +77,136 @@ export const SymbolReplayToolbar: React.FC<SymbolReplayToolbarProps> = React.mem
 
   return (
     <div
-      className="bg-[#161a22] border border-[#272d3b] rounded-2xl p-3 flex flex-wrap items-center justify-between gap-3 text-xs shadow-sm"
+      className="bg-[#0e121b]/90 border border-[#1e2535] rounded-xl px-3 py-1.5 flex flex-wrap items-center justify-between gap-2 text-xs shadow-xs select-none font-sans"
       dir="rtl"
     >
-      {/* انتخاب نماد معاملاتی با استایل متریال ۳ */}
-      <div className="flex items-center gap-2">
-        <span className="text-zinc-300 font-medium">نماد معاملاتی:</span>
-        <button
-          type="button"
-          onClick={() => onSymbolChange('XAUUSD')}
-          className={`px-3 py-1.5 rounded-xl font-mono font-bold flex items-center gap-2 border transition-all ${
-            symbol === 'XAUUSD'
-              ? 'bg-[#2a2216] border-amber-500/70 text-amber-300 shadow-sm'
-              : 'bg-[#12151b] border-[#252b38] text-zinc-400 hover:text-zinc-200 hover:bg-[#1a1f29]'
-          }`}
-          title="طلا در برابر دلار آمریکا"
-        >
-          <Coins className="w-4 h-4 text-amber-400" />
-          <span dir="ltr" className="tracking-wide">XAUUSD (Gold)</span>
-        </button>
-        <button
-          type="button"
-          onClick={() => onSymbolChange('EURUSD')}
-          className={`px-3 py-1.5 rounded-xl font-mono font-bold flex items-center gap-2 border transition-all ${
-            symbol === 'EURUSD'
-              ? 'bg-[#132533] border-cyan-500/70 text-cyan-300 shadow-sm'
-              : 'bg-[#12151b] border-[#252b38] text-zinc-400 hover:text-zinc-200 hover:bg-[#1a1f29]'
-          }`}
-          title="یورو در برابر دلار آمریکا"
-        >
-          <DollarSign className="w-4 h-4 text-cyan-400" />
-          <span dir="ltr" className="tracking-wide">EURUSD (Euro)</span>
-        </button>
-        <button
-          type="button"
-          onClick={() => onSymbolChange('GBPUSD')}
-          className={`px-3 py-1.5 rounded-xl font-mono font-bold flex items-center gap-2 border transition-all ${
-            symbol === 'GBPUSD'
-              ? 'bg-[#251833] border-violet-500/70 text-violet-300 shadow-sm'
-              : 'bg-[#12151b] border-[#252b38] text-zinc-400 hover:text-zinc-200 hover:bg-[#1a1f29]'
-          }`}
-          title="پوند بریتانیا در برابر دلار آمریکا"
-        >
-          <DollarSign className="w-4 h-4 text-violet-400" />
-          <span dir="ltr" className="tracking-wide">GBPUSD (Pound)</span>
-        </button>
-        <button
-          type="button"
-          onClick={() => onSymbolChange('USDJPY')}
-          className={`px-3 py-1.5 rounded-xl font-mono font-bold flex items-center gap-2 border transition-all ${
-            symbol === 'USDJPY'
-              ? 'bg-[#122822] border-emerald-500/70 text-emerald-300 shadow-sm'
-              : 'bg-[#12151b] border-[#252b38] text-zinc-400 hover:text-zinc-200 hover:bg-[#1a1f29]'
-          }`}
-          title="دلار آمریکا در برابر ین ژاپن"
-        >
-          <Coins className="w-4 h-4 text-emerald-400" />
-          <span dir="ltr" className="tracking-wide">USDJPY (Yen)</span>
-        </button>
-      </div>
-
-      {/* انتخاب فیلتر سبک معاملاتی ۴ گانه */}
-      {onChangeStyleFilter && (
-        <div className="flex items-center gap-1 bg-[#12151b] border border-[#272d3b] rounded-xl p-1">
-          <Layers className="w-3.5 h-3.5 text-cyan-400 mr-1 ml-1" />
-          <span className="text-zinc-400 text-[11px] ml-1">سبک:</span>
-          {[
-            { id: 'ALL', label: 'همه' },
-            { id: 'SCALP_M1_M5', label: 'اسکلپ' },
-            { id: 'SMC_INTRADAY', label: 'SMC' },
-            { id: 'SWING_MACRO', label: 'سوئینگ' },
-            { id: 'MEAN_REVERSION', label: 'رنج' },
-          ].map(st => (
+      {/* انتخاب نماد معاملاتی */}
+      <div className="flex items-center gap-1 bg-[#141926] p-0.5 rounded-lg border border-[#222a3a]">
+        {[
+          { id: 'XAUUSD', label: 'Gold', icon: Coins, color: 'text-amber-400' },
+          { id: 'EURUSD', label: 'EUR', icon: DollarSign, color: 'text-cyan-400' },
+          { id: 'GBPUSD', label: 'GBP', icon: DollarSign, color: 'text-violet-400' },
+          { id: 'USDJPY', label: 'JPY', icon: Coins, color: 'text-emerald-400' },
+        ].map((item) => {
+          const isSelected = symbol === item.id;
+          const Icon = item.icon;
+          return (
             <button
-              key={st.id}
+              key={item.id}
               type="button"
-              onClick={() => onChangeStyleFilter(st.id as TradingStyleType | 'ALL')}
-              className={`px-2 py-1 rounded-lg text-[11px] transition-all ${
-                activeStyleFilter === st.id
-                  ? 'bg-cyan-600 text-white font-bold shadow-sm'
-                  : 'text-zinc-400 hover:text-zinc-200 hover:bg-[#1b212c]'
+              onClick={() => onSymbolChange(item.id as SymbolId)}
+              className={`px-2 py-1 rounded-md font-mono font-bold flex items-center gap-1 transition-all ${
+                isSelected
+                  ? 'bg-cyan-600 text-white shadow-xs'
+                  : 'text-zinc-400 hover:text-zinc-200 hover:bg-[#1a2130]'
               }`}
             >
-              {st.label}
+              <Icon className={`w-3 h-3 ${isSelected ? 'text-white' : item.color}`} />
+              <span>{item.id}</span>
             </button>
-          ))}
-        </div>
-      )}
-
-      {/* نوار کنترل نشست معاملاتی و زمان سپری‌شده */}
-      <div className="flex items-center gap-2">
-        <button
-          type="button"
-          onClick={onToggleSession}
-          className={`px-3 py-1.5 rounded-xl font-medium flex items-center gap-2 border transition-all ${
-            isSessionActive
-              ? 'bg-rose-950/70 border-rose-700/60 text-rose-300'
-              : 'bg-emerald-950/70 border-emerald-700/60 text-emerald-300'
-          }`}
-          title={isSessionActive ? 'توقف نشست آزمایشی' : 'شروع نشست آزمایشی جدید'}
-        >
-          <Power className="w-3.5 h-3.5" />
-          <span>{isSessionActive ? 'پایان نشست' : 'شروع نشست'}</span>
-        </button>
-
-        {isSessionActive && (
-          <div className="flex items-center gap-1.5 bg-[#12151b] border border-[#262c39] px-2.5 py-1 rounded-xl text-zinc-300 font-mono">
-            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-            <span>زمان: {formatSessionTime(sessionSeconds)}</span>
-          </div>
-        )}
+          );
+        })}
       </div>
 
-      {/* کنترل‌های بازپخش خودکار کندل‌ها، گام دستی، ریست، خروجی و هوش مصنوعی */}
-      <div className="flex items-center flex-wrap gap-2">
-        {/* نشانگر گام کندل */}
-        <span dir="ltr" className="font-mono text-zinc-400 bg-[#12151b] px-2.5 py-1 rounded-xl border border-[#232936]">
-          Step {currentStepIndex + 1}/{totalSteps}
+      {/* موتور بازپخش (Replay Engine) */}
+      <div className="flex items-center gap-1.5">
+        <span dir="ltr" className="font-mono text-[10px] text-zinc-500 bg-[#141926] px-2 py-1 rounded-md border border-[#222a3a]">
+          {currentStepIndex + 1}/{totalSteps}
         </span>
+
+        {/* بازنشانی */}
+        <button
+          type="button"
+          onClick={onReset}
+          className="p-1.5 text-zinc-400 hover:text-zinc-100 hover:bg-[#182030] rounded-lg border border-[#222a3a] transition-colors"
+          title="بازنشانی ریپلی"
+        >
+          <RotateCcw className="w-3.5 h-3.5" />
+        </button>
 
         {/* دکمه Play / Pause */}
         <button
           type="button"
           onClick={onTogglePlay}
-          className={`px-3 py-1.5 rounded-xl font-medium flex items-center gap-1.5 border transition-all ${
+          className={`px-2.5 py-1 rounded-lg font-medium flex items-center gap-1 border transition-all ${
             isPlaying
-              ? 'bg-amber-950/80 border-amber-600/70 text-amber-300'
-              : 'bg-cyan-950/80 border-cyan-600/70 text-cyan-300 hover:bg-cyan-900'
+              ? 'bg-amber-500/20 border-amber-500 text-amber-300'
+              : 'bg-cyan-600 hover:bg-cyan-500 border-cyan-500 text-white font-bold'
           }`}
-          title={isPlaying ? 'توقف بازپخش خودکار' : 'پخش خودکار کندل‌ها'}
+          title={isPlaying ? 'توقف پخش' : 'پخش خودکار'}
         >
-          {isPlaying ? (
-            <>
-              <Pause className="w-4 h-4" />
-              <span>توقف</span>
-            </>
-          ) : (
-            <>
-              <Play className="w-4 h-4" />
-              <span>پخش</span>
-            </>
-          )}
+          {isPlaying ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}
+          <span className="text-[11px]">{isPlaying ? 'توقف' : 'پخش'}</span>
         </button>
 
-        {/* انتخاب سرعت بازپخش */}
-        <div className="flex items-center bg-[#12151b] border border-[#272d3a] rounded-xl p-0.5">
+        {/* گام بعدی */}
+        <button
+          type="button"
+          onClick={onStepForward}
+          disabled={currentStepIndex >= totalSteps - 1}
+          className="p-1.5 text-zinc-300 hover:text-white hover:bg-[#182030] disabled:opacity-40 rounded-lg border border-[#222a3a] transition-colors"
+          title="کندل بعدی"
+        >
+          <SkipForward className="w-3.5 h-3.5 text-cyan-400" />
+        </button>
+
+        {/* سرعت‌ها */}
+        <div className="flex items-center bg-[#141926] p-0.5 rounded-lg border border-[#222a3a]">
           {speeds.map(s => (
             <button
               key={s.ms}
               type="button"
               onClick={() => onChangeSpeed(s.ms)}
-              className={`px-2 py-1 rounded-lg font-mono text-[11px] transition-colors ${
+              className={`px-1.5 py-0.5 rounded text-[10px] font-mono transition-colors ${
                 speedMs === s.ms
                   ? 'bg-cyan-600 text-white font-bold'
-                  : 'text-zinc-400 hover:text-zinc-200'
+                  : 'text-zinc-500 hover:text-zinc-300'
               }`}
             >
               {s.label}
             </button>
           ))}
         </div>
+      </div>
 
-        {/* گام دستی یک کندل به جلو */}
+      {/* نشست کاری و ابزارهای تحلیلی */}
+      <div className="flex items-center gap-1.5">
+        {/* کلید نشست */}
         <button
           type="button"
-          onClick={onStepForward}
-          disabled={currentStepIndex >= totalSteps - 1}
-          className="px-3 py-1.5 bg-[#1d232f] hover:bg-[#252c3b] disabled:opacity-40 text-zinc-100 border border-[#2f3747] rounded-xl flex items-center gap-1.5 font-medium transition-colors"
-          title="پیشروی یک کندل ۵ دقیقه‌ای به جلو"
+          onClick={onToggleSession}
+          className={`px-2 py-1 rounded-lg text-[11px] font-medium flex items-center gap-1 border transition-all ${
+            isSessionActive
+              ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400'
+              : 'bg-zinc-800 border-zinc-700 text-zinc-400'
+          }`}
         >
-          <SkipForward className="w-4 h-4 text-cyan-400" />
-          <span>کندل بعدی</span>
+          <Power className="w-3 h-3" />
+          <span>{isSessionActive ? formatSessionTime(sessionSeconds) : 'شروع نشست'}</span>
         </button>
 
-        {/* بازنشانی ریپلی */}
-        <button
-          type="button"
-          onClick={onReset}
-          className="p-2 bg-[#1d232f] hover:bg-[#252c3b] text-zinc-400 hover:text-white border border-[#2f3747] rounded-xl transition-colors"
-          title="بازنشانی ریپلی به کندل اولیه"
-        >
-          <RotateCcw className="w-4 h-4" />
-        </button>
-
-        {/* دکمه پشتیبان‌گیری و بازیابی */}
-        <button
-          type="button"
-          onClick={onOpenExportModal}
-          className="px-2.5 py-1.5 bg-[#181c25] hover:bg-[#202532] border border-[#2b3342] text-zinc-200 rounded-xl flex items-center gap-1.5 font-medium transition-colors"
-          title="پشتیبان‌گیری و بازیابی داده‌ها (JSON v1.0)"
-        >
-          <Database className="w-4 h-4 text-cyan-400" />
-          <span className="hidden sm:inline">پشتیبان</span>
-        </button>
-
-        {/* دکمه اتاق فرمان ۴ ایجنت هوشمند و سبک ترید */}
+        {/* اتاق فرمان ۴ ایجنت */}
         <button
           type="button"
           onClick={onOpenMultiAgentModal || onOpenAIModal}
-          className="px-3 py-1.5 bg-[#152230] hover:bg-[#1b2b3d] border border-cyan-600/70 text-cyan-300 rounded-xl flex items-center gap-1.5 font-medium transition-colors shadow-sm"
-          title="پیکربندی ۴ ایجنت تیمی و سبک معاملاتی"
+          className="px-2 py-1 bg-[#162030] hover:bg-[#1d2b40] border border-cyan-600/50 text-cyan-300 rounded-lg flex items-center gap-1 transition-colors text-[11px]"
+          title="اتاق فرمان ۴ ایجنت"
         >
-          <Bot className="w-4 h-4 text-cyan-400" />
-          <span className="font-bold text-xs">اتاق فرمان ۴ ایجنت</span>
-          <span className="px-1.5 py-0.2 rounded-md bg-cyan-900/60 border border-cyan-700/50 text-[10px] text-cyan-200">
+          <Bot className="w-3 h-3 text-cyan-400" />
+          <span className="hidden sm:inline">شورای ایجنت‌ها</span>
+          <span className="text-[9px] font-mono bg-cyan-950 px-1 rounded text-cyan-300">
             {activeTradingStyleBadgeFa}
           </span>
+        </button>
+
+        {/* پشتیبان */}
+        <button
+          type="button"
+          onClick={onOpenExportModal}
+          className="p-1.5 text-zinc-400 hover:text-white hover:bg-[#182030] rounded-lg border border-[#222a3a] transition-colors"
+          title="پشتیبان‌گیری / بازیابی"
+        >
+          <Database className="w-3.5 h-3.5" />
         </button>
       </div>
     </div>

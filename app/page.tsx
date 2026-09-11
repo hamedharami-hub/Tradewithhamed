@@ -570,7 +570,7 @@ export default function TradingLabPage() {
       />
 
       {/* بخش اصلی بدنه همراه با سایدبار راست دسکتاپ و ناوبری موبایل */}
-      <div className="flex-1 flex w-full relative min-h-[calc(100vh-61px)]" dir="rtl">
+      <div className="flex-1 flex w-full relative min-h-[calc(100vh-48px)]" dir="rtl">
         {/* نوار ناوبری ۵ محیط کاری (سایدبار دسکتاپ و نوار پایینی موبایل) */}
         <AppNavigation
           activeWorkspace={activeWorkspace}
@@ -583,12 +583,10 @@ export default function TradingLabPage() {
 
         {/* محتوای محیط کاری فعال */}
         <div
-          className={`flex-1 w-full max-w-full overflow-x-hidden p-3 sm:p-4 md:p-5 pb-28 md:pb-8 space-y-4 transition-all duration-300 ${
+          className={`flex-1 w-full max-w-full overflow-x-hidden p-2 sm:p-4 pb-28 md:pb-6 space-y-3 transition-all duration-300 ${
             viewMode === 'mobile'
               ? 'max-w-md mx-auto'
-              : viewMode === 'windows'
-              ? 'max-w-[1600px] mx-auto'
-              : 'max-w-7xl mx-auto'
+              : 'max-w-[1800px] mx-auto'
           }`}
         >
           {/* پیام‌های سیستمی و اعلانات امنیتی */}

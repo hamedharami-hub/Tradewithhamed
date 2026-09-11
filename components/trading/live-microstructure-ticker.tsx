@@ -1,9 +1,10 @@
 // components/trading/live-microstructure-ticker.tsx
-// نوار دیده‌بان بلادرنگ ریزساختار بازار، سشن، اسپرد، تقویم اقتصادی و سپر ریسک ضد تیلت
+// نوار دیده‌بان مینیمال ریزساختار بازار، سشن، اسپرد، تقویم اقتصادی و سپر ضد تیلت
+// طراحی اختصاصی ذن مینیمالیستی تک‌خطی و فشرده با افشای تدریجی
 
 'use client';
 
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { SymbolId } from '@/lib/contracts/market';
 import {
   getSessionForTimestamp,
@@ -18,6 +19,8 @@ import {
   ShieldCheck,
   AlertTriangle,
   Flame,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react';
 
 interface LiveMicrostructureTickerProps {
@@ -37,33 +40,35 @@ export const LiveMicrostructureTicker: React.FC<LiveMicrostructureTickerProps> =
   maxDailyDrawdownPercent = 3.0,
   consecutiveLossCount = 0,
 }) => {
+  const [isExpanded, setIsExpanded] = useState(false);
+
   // ۱. محاسبه سشن و بررسی رول‌اور
   const sessionInfo = useMemo(() => {
     const ts = currentTimestamp;
     const session = getSessionForTimestamp(ts);
     const inRollover = isRolloverBlackout(ts);
 
-    let sessionLabelFa = 'ساعات کم‌حجم';
+    let sessionLabelFa = 'کم‌حجم';
     let isKillzone = false;
-    let badgeColor = 'bg-zinc-500/10 text-zinc-400 border-zinc-500/20';
+    let badgeColor = 'bg-zinc-800/60 text-zinc-400 border-zinc-700/40';
 
     if (inRollover) {
-      sessionLabelFa = 'رول‌اور شبانه نیویورک';
-      badgeColor = 'bg-amber-500/10 text-amber-400 border-amber-500/30';
+      sessionLabelFa = 'رول‌اور شب';
+      badgeColor = 'bg-amber-500/15 text-amber-300 border-amber-500/30';
     } else if (session === 'LONDON_NY_OVERLAP') {
-      sessionLabelFa = 'کیل‌زون لندن و نیویورک';
+      sessionLabelFa = 'کیل‌زون هم‌پوشانی';
       isKillzone = true;
-      badgeColor = 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30';
+      badgeColor = 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30';
     } else if (session === 'LONDON') {
-      sessionLabelFa = 'سشن اصلی لندن';
+      sessionLabelFa = 'سشن لندن';
       isKillzone = true;
-      badgeColor = 'bg-cyan-500/10 text-cyan-400 border-cyan-500/30';
+      badgeColor = 'bg-cyan-500/15 text-cyan-300 border-cyan-500/30';
     } else if (session === 'NEW_YORK') {
-      sessionLabelFa = 'سشن عصر نیویورک';
-      badgeColor = 'bg-blue-500/10 text-blue-400 border-blue-500/30';
+      sessionLabelFa = 'سشن نیویورک';
+      badgeColor = 'bg-blue-500/15 text-blue-300 border-blue-500/30';
     } else if (session === 'ASIA') {
-      sessionLabelFa = 'سشن توکیو و سیدنی';
-      badgeColor = 'bg-purple-500/10 text-purple-400 border-purple-500/30';
+      sessionLabelFa = 'سشن آسیا';
+      badgeColor = 'bg-purple-500/15 text-purple-300 border-purple-500/30';
     }
 
     return { session, inRollover, sessionLabelFa, isKillzone, badgeColor };
@@ -97,7 +102,6 @@ export const LiveMicrostructureTicker: React.FC<LiveMicrostructureTickerProps> =
       };
     }
 
-    // جستجوی نزدیک‌ترین رویداد تا ۴ ساعت آینده
     const upcoming = EconomicCalendarEngine.getEventsForTimeRange(
       ts,
       ts + 4 * 3600 * 1000,
@@ -116,7 +120,7 @@ export const LiveMicrostructureTicker: React.FC<LiveMicrostructureTickerProps> =
 
     return {
       status: 'CLEAR' as const,
-      title: 'بازار بدون خبر سنگین تا ۴ ساعت آینده',
+      title: 'بازار آرام',
       minutes: 0,
     };
   }, [symbol, currentTimestamp]);
@@ -138,114 +142,116 @@ export const LiveMicrostructureTicker: React.FC<LiveMicrostructureTickerProps> =
   }, [consecutiveLossCount, dailyDrawdownPercent, maxDailyDrawdownPercent]);
 
   return (
-    <div
-      className="bg-[#0f131d] border border-[#202738] rounded-2xl p-2.5 sm:px-3.5 sm:py-2.5 shadow-md flex flex-wrap items-center justify-between gap-2.5 text-xs select-none transition-all"
-      dir="rtl"
-    >
-      {/* بخش ۱: سشن بازار و کیل‌زون */}
-      <div className="flex items-center gap-2 min-w-fit">
-        <div className="p-1.5 rounded-lg bg-[#151b29] border border-[#242d40] text-zinc-300">
-          <Clock className="w-3.5 h-3.5 text-cyan-400" />
-        </div>
-        <div className="flex flex-col">
-          <span className="text-[10px] text-zinc-400 leading-none">سشن معاملاتی:</span>
-          <div className="flex items-center gap-1.5 mt-0.5">
-            <span className={`text-[11px] font-bold px-2 py-0.5 rounded-md border ${sessionInfo.badgeColor}`}>
-              {sessionInfo.sessionLabelFa}
-            </span>
-            {sessionInfo.isKillzone && (
-              <span className="flex h-2 w-2 relative">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
-              </span>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {/* بخش ۲: اسپرد دینامیک لحظه‌ای */}
-      <div className="flex items-center gap-2 min-w-fit">
-        <div className="p-1.5 rounded-lg bg-[#151b29] border border-[#242d40] text-zinc-300">
-          <Zap className={`w-3.5 h-3.5 ${spreadInfo.isSpike ? 'text-amber-400' : 'text-emerald-400'}`} />
-        </div>
-        <div className="flex flex-col">
-          <span className="text-[10px] text-zinc-400 leading-none">اسپرد زنده {symbol}:</span>
-          <div className="flex items-center gap-1 mt-0.5">
-            <span className={`font-mono font-bold text-xs ${spreadInfo.isSpike ? 'text-amber-300' : 'text-zinc-200'}`}>
-              {spreadInfo.finalSpread} پیپ
-            </span>
-            <span className="text-[10px] text-zinc-400">
-              {spreadInfo.isSpike ? '(اتساع شب/خبر)' : '(نرمال)'}
+    <div className="w-full bg-[#0d111a]/80 border border-[#1e2536] rounded-xl px-3 py-1.5 text-xs select-none transition-all shadow-xs font-sans" dir="rtl">
+      {/* نوار تک‌خطی جمع‌وجور و آرامش‌بخش */}
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+          {/* چیپ ۱: سشن و کیل‌زون */}
+          <div className="flex items-center gap-1.5">
+            <Clock className="w-3.5 h-3.5 text-cyan-400" />
+            <span className="text-[10px] text-zinc-400 hidden sm:inline">سشن:</span>
+            <span className={`px-2 py-0.5 rounded-md text-[11px] font-bold border flex items-center gap-1 ${sessionInfo.badgeColor}`}>
+              {sessionInfo.isKillzone && (
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+              )}
+              <span>{sessionInfo.sessionLabelFa}</span>
             </span>
           </div>
-        </div>
-      </div>
 
-      {/* بخش ۳: رادار تقویم اقتصادی */}
-      <div className="flex items-center gap-2 min-w-fit">
-        <div className="p-1.5 rounded-lg bg-[#151b29] border border-[#242d40]">
-          {newsInfo.status === 'BLACKOUT' ? (
-            <ShieldAlert className="w-3.5 h-3.5 text-rose-400 animate-pulse" />
-          ) : newsInfo.status === 'WARNING' ? (
-            <AlertTriangle className="w-3.5 h-3.5 text-amber-400" />
-          ) : (
-            <ShieldCheck className="w-3.5 h-3.5 text-cyan-400" />
-          )}
-        </div>
-        <div className="flex flex-col">
-          <span className="text-[10px] text-zinc-400 leading-none">دیده‌بان رویدادهای ماکرو:</span>
-          <div className="mt-0.5">
+          <span className="text-zinc-700 hidden sm:inline">•</span>
+
+          {/* چیپ ۲: اسپرد دینامیک */}
+          <div className="flex items-center gap-1.5 font-mono">
+            <Zap className={`w-3.5 h-3.5 ${spreadInfo.isSpike ? 'text-amber-400' : 'text-emerald-400'}`} />
+            <span className="text-[10px] text-zinc-400 hidden sm:inline">اسپرد:</span>
+            <span className={`text-[11px] font-bold ${spreadInfo.isSpike ? 'text-amber-300' : 'text-zinc-200'}`}>
+              {spreadInfo.finalSpread} Pip
+            </span>
+          </div>
+
+          <span className="text-zinc-700 hidden sm:inline">•</span>
+
+          {/* چیپ ۳: تقویم ماکرو */}
+          <div className="flex items-center gap-1.5">
             {newsInfo.status === 'BLACKOUT' ? (
-              <span className="text-[11px] font-bold text-rose-400 bg-rose-500/10 px-2 py-0.5 rounded-md border border-rose-500/30 flex items-center gap-1">
-                <span>بلک‌اوت خبر</span>
-                <span className="font-mono text-[10px]">({newsInfo.title})</span>
-              </span>
+              <ShieldAlert className="w-3.5 h-3.5 text-rose-400 animate-pulse" />
             ) : newsInfo.status === 'WARNING' ? (
-              <span className="text-[11px] font-bold text-amber-300">
-                {newsInfo.minutes} دقیقه تا {newsInfo.title}
-              </span>
-            ) : newsInfo.status === 'UPCOMING' ? (
-              <span className="text-[11px] text-zinc-300">
-                {newsInfo.minutes} دقیقه تا {newsInfo.title}
-              </span>
+              <AlertTriangle className="w-3.5 h-3.5 text-amber-400" />
             ) : (
-              <span className="text-[11px] text-zinc-300 font-medium">
-                بازار آرام (بدون خبر سنگین)
-              </span>
+              <ShieldCheck className="w-3.5 h-3.5 text-cyan-400" />
             )}
-          </div>
-        </div>
-      </div>
-
-      {/* بخش ۴: سپر ریسک و ضد تیلت */}
-      <div className="flex items-center gap-2 min-w-fit">
-        <div className="p-1.5 rounded-lg bg-[#151b29] border border-[#242d40]">
-          {tiltInfo.scalePercent < 100 ? (
-            <Flame className="w-3.5 h-3.5 text-amber-400" />
-          ) : (
-            <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
-          )}
-        </div>
-        <div className="flex flex-col">
-          <span className="text-[10px] text-zinc-400 leading-none">سپر ریسک و ضد تیلت:</span>
-          <div className="flex items-center gap-1.5 mt-0.5">
-            <span className={`text-[11px] font-bold ${
-              tiltInfo.isCapHit
-                ? 'text-rose-400'
-                : tiltInfo.isNearCap
-                ? 'text-amber-400'
-                : 'text-zinc-200'
+            <span className="text-[10px] text-zinc-400 hidden sm:inline">تقویم:</span>
+            <span className={`text-[11px] ${
+              newsInfo.status === 'BLACKOUT'
+                ? 'text-rose-400 font-bold bg-rose-500/10 px-1.5 py-0.2 rounded border border-rose-500/30'
+                : newsInfo.status === 'WARNING'
+                ? 'text-amber-300 font-bold'
+                : 'text-zinc-300'
             }`}>
-              افت روز: {dailyDrawdownPercent.toFixed(1)}٪ / {maxDailyDrawdownPercent}٪
+              {newsInfo.status === 'BLACKOUT'
+                ? `بلک‌اوت (${newsInfo.title})`
+                : newsInfo.status === 'WARNING' || newsInfo.status === 'UPCOMING'
+                ? `${newsInfo.minutes}د تا ${newsInfo.title}`
+                : 'آرام (بدون خبر)'}
+            </span>
+          </div>
+
+          <span className="text-zinc-700 hidden sm:inline">•</span>
+
+          {/* چیپ ۴: سپر ریسک و افت روز */}
+          <div className="flex items-center gap-1.5 font-mono">
+            {tiltInfo.scalePercent < 100 ? (
+              <Flame className="w-3.5 h-3.5 text-amber-400" />
+            ) : (
+              <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+            )}
+            <span className="text-[10px] text-zinc-400 hidden sm:inline">افت روز:</span>
+            <span className={`text-[11px] font-bold ${
+              tiltInfo.isCapHit ? 'text-rose-400' : tiltInfo.isNearCap ? 'text-amber-400' : 'text-zinc-300'
+            }`}>
+              {dailyDrawdownPercent.toFixed(1)}% / {maxDailyDrawdownPercent}%
             </span>
             {tiltInfo.scalePercent < 100 && (
-              <span className="text-[10px] px-1.5 py-0.2 bg-amber-500/15 text-amber-300 rounded font-bold border border-amber-500/30">
-                حجم: {tiltInfo.scalePercent}٪
+              <span className="text-[9px] px-1 py-0.2 bg-amber-500/20 text-amber-300 rounded font-bold">
+                حجم {tiltInfo.scalePercent}%
               </span>
             )}
           </div>
         </div>
+
+        {/* کلید باز کردن جزییات */}
+        <button
+          type="button"
+          onClick={() => setIsExpanded(!isExpanded)}
+          className="text-zinc-500 hover:text-zinc-300 p-1 flex items-center gap-1 text-[10px] transition-colors"
+          title={isExpanded ? 'بستن جزییات' : 'مشاهده جزییات ریزساختار'}
+        >
+          <span className="hidden md:inline">{isExpanded ? 'بستن' : 'جزییات'}</span>
+          {isExpanded ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+        </button>
       </div>
+
+      {/* بخش جزییات اختیاری بازشونده */}
+      {isExpanded && (
+        <div className="mt-2 pt-2 border-t border-[#1c2230] grid grid-cols-2 sm:grid-cols-4 gap-2 text-[11px] text-zinc-400">
+          <div className="bg-[#121622] p-2 rounded-lg border border-[#21293c]">
+            <span className="text-[10px] block text-zinc-500">منطقه زمانی:</span>
+            <span className="text-zinc-200 font-bold">{sessionInfo.session}</span>
+          </div>
+          <div className="bg-[#121622] p-2 rounded-lg border border-[#21293c]">
+            <span className="text-[10px] block text-zinc-500">ضریب جهش اسپرد:</span>
+            <span className="text-zinc-200 font-bold">{spreadInfo.newsMultiplier}x</span>
+          </div>
+          <div className="bg-[#121622] p-2 rounded-lg border border-[#21293c]">
+            <span className="text-[10px] block text-zinc-500">ضد ضرر متوالی:</span>
+            <span className="text-zinc-200 font-bold">{consecutiveLossCount} ضرر پیاپی</span>
+          </div>
+          <div className="bg-[#121622] p-2 rounded-lg border border-[#21293c]">
+            <span className="text-[10px] block text-zinc-500">قیمت جاری:</span>
+            <span className="text-zinc-200 font-bold font-mono">{currentPrice.toFixed(symbol === 'XAUUSD' ? 2 : 5)}</span>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
