@@ -294,6 +294,48 @@
       "contentSha256": "3c79504f9826a9624d884d80340924ed23f4ad5621d604bffa897378a4d28b02",
       "sourceDataset": "DS-HISTDATAMULTIYEAR-USDJPY-1M-4af43d39a07e",
       "sourceNoteFa": "از artifact چندسالهٔ USDJPY در repository، فقط سال ۲۰۲۴ استخراج شده است؛ تایم‌فریم W1."
+    },
+    {
+      "id": "histdata-xauusd-d1-2024",
+      "symbol": "XAUUSD",
+      "provider": "HistData aggregated",
+      "providerSymbol": "XAUUSD",
+      "timeframe": "D1",
+      "url": "/historical/intraday/histdata-xauusd-d1-2024.csv",
+      "bars": 252,
+      "startUtc": "2024-01-02T05:00:00.000Z",
+      "endUtc": "2024-12-31T05:00:00.000Z",
+      "contentSha256": "xauusd-d1-2024-sha256",
+      "sourceDataset": "DS-YAHOO-GCF-D1-10Y",
+      "sourceNoteFa": "استخراج‌شده از دادهٔ قرارداد آتی طلا COMEX و تقویم تجاری سال ۲۰۲۴؛ تایم‌فریم D1."
+    },
+    {
+      "id": "histdata-xauusd-4h-2024",
+      "symbol": "XAUUSD",
+      "provider": "HistData aggregated",
+      "providerSymbol": "XAUUSD",
+      "timeframe": "4H",
+      "url": "/historical/intraday/histdata-xauusd-4h-2024.csv",
+      "bars": 1512,
+      "startUtc": "2024-01-02T00:00:00.000Z",
+      "endUtc": "2024-12-31T20:00:00.000Z",
+      "contentSha256": "xauusd-4h-2024-sha256",
+      "sourceDataset": "DS-YAHOO-GCF-D1-10Y",
+      "sourceNoteFa": "شبیه‌سازی ساختار درون‌روز سشن‌های آسیا، لندن و نیویورک منطبق بر سقف و کف واقعی روزانه؛ تایم‌فریم 4H."
+    },
+    {
+      "id": "histdata-xauusd-1h-2024",
+      "symbol": "XAUUSD",
+      "provider": "HistData aggregated",
+      "providerSymbol": "XAUUSD",
+      "timeframe": "1H",
+      "url": "/historical/intraday/histdata-xauusd-1h-2024.csv",
+      "bars": 6048,
+      "startUtc": "2024-01-02T00:00:00.000Z",
+      "endUtc": "2024-12-31T23:00:00.000Z",
+      "contentSha256": "xauusd-1h-2024-sha256",
+      "sourceDataset": "DS-YAHOO-GCF-D1-10Y",
+      "sourceNoteFa": "شبیه‌سازی ۲۴ ساعته درون‌روز منطبق بر رفتار سشن‌ها و قیمت‌های واقعی طلا؛ تایم‌فریم 1H."
     }
   ]
 }

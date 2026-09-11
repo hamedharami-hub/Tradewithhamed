@@ -282,8 +282,17 @@ export class MultiStyleBacktester {
         const candidate = evalRes.candidate;
 
         if (candidate) {
+          const matchedStyleId = candidate.style === 'SCALP_M1_M5'
+            ? 'M1_SCALP'
+            : candidate.style === 'SWING_MACRO'
+            ? 'SESSION_SWING'
+            : candidate.evidenceIds?.fvgId
+            ? 'S0_SWEEP_FVG'
+            : 'BOS_ORDER_BLOCK';
+
           const councilRes = MultiAgentOrchestrator.evaluateCandidate(candidate, {
             ...DEFAULT_MULTI_AGENT_CONFIG,
+            activeTradingStyle: matchedStyleId as any,
             judgeEngineId: 'alpha-consensus-quorum-judge',
           });
 
@@ -294,13 +303,14 @@ export class MultiStyleBacktester {
             (!config.requireQuorum || quorumReached);
 
           if (passesCouncil) {
+            const baseVol = config.symbol === 'XAUUSD' ? 0.16 : 0.08;
             const mcRes = MonteCarloSimulator.simulate({
               initialPrice: candidate.entryPrice,
               targetPrice: candidate.takeProfitPrice,
               stopLossPrice: candidate.stopLossPrice,
-              iterations: 200,
-              stepsPerPath: 30,
-              volatility: regimeAnalysis.metrics.atrRatio > 1.5 ? 0.02 : 0.01,
+              iterations: 100,
+              stepsPerPath: 40,
+              volatility: regimeAnalysis.metrics.atrRatio > 1.5 ? baseVol * 1.4 : baseVol,
             });
 
             if (mcRes.probabilityHittingTarget >= config.minMonteCarloTpProbability) {

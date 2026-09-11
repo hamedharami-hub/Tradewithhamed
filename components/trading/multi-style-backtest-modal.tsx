@@ -4,7 +4,7 @@
 
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Candle, SymbolId } from '@/lib/contracts/market';
 import { TradingStyleType } from '@/lib/contracts/regimes';
 import {
@@ -12,6 +12,12 @@ import {
   BacktestSessionFilter,
 } from '@/lib/contracts/backtester';
 import { MultiStyleBacktester } from '@/lib/core/multi-style-backtester';
+import {
+  loadYearlyDataset,
+  filterCandlesByHorizon,
+  TimeHorizon,
+  TIME_HORIZONS,
+} from '@/lib/core/yearly-data-loader';
 import {
   X,
   Play,
@@ -22,6 +28,9 @@ import {
   ShieldAlert,
   Shield,
   Target,
+  Database,
+  Calendar,
+  Loader2,
 } from 'lucide-react';
 
 interface MultiStyleBacktestModalProps {
@@ -37,9 +46,34 @@ export const MultiStyleBacktestModal: React.FC<MultiStyleBacktestModalProps> = (
   candles,
   symbol,
 }) => {
+  const [customSymbol, setCustomSymbol] = useState<SymbolId | null>(null);
+  const selectedSymbol = customSymbol ?? symbol;
+
+  const [timeHorizon, setTimeHorizon] = useState<TimeHorizon>('FULL_YEAR');
+  const [backtestTimeframe, setBacktestTimeframe] = useState<'4H' | '1H' | 'D1'>('4H');
+  const [yearlyCandles, setYearlyCandles] = useState<Candle[]>([]);
+  const [loadedDataKey, setLoadedDataKey] = useState<string>('');
+
+  const currentDataKey = `${selectedSymbol}-${backtestTimeframe}-${timeHorizon}`;
+  const isLoadingData = timeHorizon !== 'REPLAY_WINDOW' && loadedDataKey !== currentDataKey;
+
+  const activeCandles = useMemo(() => {
+    if (timeHorizon === 'REPLAY_WINDOW') {
+      return candles;
+    }
+    return yearlyCandles.length > 0 ? yearlyCandles : candles;
+  }, [timeHorizon, candles, yearlyCandles]);
+
+  const dateSpanInfo = useMemo(() => {
+    if (activeCandles.length === 0) return '';
+    const start = new Date(activeCandles[0].timestamp).toLocaleDateString('fa-IR');
+    const end = new Date(activeCandles[activeCandles.length - 1].timestamp).toLocaleDateString('fa-IR');
+    return `${start} تا ${end}`;
+  }, [activeCandles]);
+
   const [style, setStyle] = useState<TradingStyleType | 'ALL'>('ALL');
   const [minCouncilScore, setMinCouncilScore] = useState<number>(70);
-  const [minMcProb, setMinMcProb] = useState<number>(55);
+  const [minMcProb, setMinMcProb] = useState<number>(35);
   const [riskPercent, setRiskPercent] = useState<number>(0.5);
   const [enablePartialTp, setEnablePartialTp] = useState<boolean>(true);
   const [sessionFilter, setSessionFilter] = useState<BacktestSessionFilter>('ALL');
@@ -51,13 +85,36 @@ export const MultiStyleBacktestModal: React.FC<MultiStyleBacktestModalProps> = (
   const [report, setReport] = useState<BacktestReport | null>(null);
   const [isRunning, setIsRunning] = useState<boolean>(false);
 
+  // بارگذاری داده‌های تاریخی ۱ ساله به صورت ناهمگام و کش‌شده
+  useEffect(() => {
+    if (!isOpen || timeHorizon === 'REPLAY_WINDOW') return;
+
+    let isCancelled = false;
+    loadYearlyDataset(selectedSymbol, backtestTimeframe)
+      .then((raw) => {
+        if (isCancelled) return;
+        const filtered = filterCandlesByHorizon(raw, timeHorizon, candles);
+        setYearlyCandles(filtered);
+        setLoadedDataKey(currentDataKey);
+      })
+      .catch((err) => {
+        console.error('Failed to load yearly dataset:', err);
+        if (!isCancelled) {
+          setLoadedDataKey(currentDataKey);
+        }
+      });
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [isOpen, selectedSymbol, timeHorizon, backtestTimeframe, candles, currentDataKey]);
+
   const handleRunBacktest = () => {
     setIsRunning(true);
-    // اجرای ماکروتسک با تاخیر ۵۰ میلی‌ثانیه برای جلوگیری از فریز شدن انیمیشن UI
     setTimeout(() => {
       try {
-        const res = MultiStyleBacktester.runBacktest(candles, {
-          symbol,
+        const res = MultiStyleBacktester.runBacktest(activeCandles, {
+          symbol: selectedSymbol,
           style,
           minAlphaConsensusScore: minCouncilScore,
           minMonteCarloTpProbability: minMcProb,
@@ -89,14 +146,19 @@ export const MultiStyleBacktestModal: React.FC<MultiStyleBacktestModalProps> = (
               <BarChart3 className="w-5 h-5" />
             </div>
             <div>
-              <h2 className="text-sm sm:text-base font-bold text-zinc-100 flex items-center gap-2">
-                <span>بک‌تست جامع چند سبکه با فیلتر شورا و مونت‌کارلو</span>
+              <h2 className="text-sm sm:text-base font-bold text-zinc-100 flex items-center gap-2 flex-wrap">
+                <span>آزمایشگاه جامع بک‌تست تاریخی چند سبکه</span>
                 <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-purple-950 text-purple-300 border border-purple-800">
-                  {symbol} ({candles.length} کندل)
+                  {selectedSymbol} ({activeCandles.length.toLocaleString('fa-IR')} کندل)
                 </span>
+                {timeHorizon === 'FULL_YEAR' && (
+                  <span className="text-[10px] font-sans px-2 py-0.5 rounded bg-emerald-950/80 text-emerald-300 border border-emerald-800/80 font-bold">
+                    دادهٔ ۱ ساله کامل ۲۰۲۴
+                  </span>
+                )}
               </h2>
               <p className="text-xs text-zinc-400">
-                شبیه‌سازی دقیق اسپرد پویای سشن‌ها، رفع ابهام کندلی، خروج پله‌ای ۵۰٪ و فیلتر رول‌اور
+                شبیه‌سازی ۱ ساله روی هر ۴ نماد با اسپرد پویا، اعتبارسنجی شورای هوش مصنوعی و مونت‌کارلو
               </p>
             </div>
           </div>
@@ -110,7 +172,89 @@ export const MultiStyleBacktestModal: React.FC<MultiStyleBacktestModalProps> = (
 
         {/* بدنه محتوا اسکرول‌خور */}
         <div className="p-4 sm:p-5 overflow-y-auto space-y-4 text-xs">
-          {/* پنل تنظیمات ردیف اول */}
+          {/* بخش انتخاب دامنه زمانی و منبع دیتای تاریخی */}
+          <div className="bg-[#0c0f17] p-3.5 rounded-2xl border border-purple-900/30 space-y-3">
+            <div className="flex items-center justify-between border-b border-[#1d2331] pb-2 flex-wrap gap-2">
+              <div className="flex items-center gap-2 text-purple-300 font-bold text-xs">
+                <Database className="w-4 h-4 text-purple-400" />
+                <span>دامنه زمانی و منبع دیتای تاریخی:</span>
+              </div>
+              <div className="flex items-center gap-2 text-[11px]">
+                {isLoadingData ? (
+                  <span className="flex items-center gap-1.5 text-amber-400 font-bold">
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    در حال بارگذاری داده‌های تاریخی...
+                  </span>
+                ) : (
+                  <span className="text-zinc-400 font-mono">
+                    بازه: <strong className="text-zinc-200">{dateSpanInfo || 'سال کامل ۲۰۲۴'}</strong> ({activeCandles.length.toLocaleString('fa-IR')} کندل {backtestTimeframe})
+                  </span>
+                )}
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              {/* نماد مورد آزمایش */}
+              <div className="space-y-1">
+                <label className="text-[11px] text-zinc-400">نماد معاملاتی:</label>
+                <div className="grid grid-cols-4 gap-1">
+                  {(['XAUUSD', 'EURUSD', 'GBPUSD', 'USDJPY'] as SymbolId[]).map(sym => (
+                    <button
+                      key={sym}
+                      type="button"
+                      onClick={() => setCustomSymbol(sym)}
+                      className={`py-1.5 rounded-xl text-center font-mono text-[11px] font-bold transition-all ${
+                        selectedSymbol === sym
+                          ? 'bg-purple-600 text-white shadow-md'
+                          : 'bg-[#151a24] text-zinc-400 hover:text-zinc-200 border border-[#232a3b]'
+                      }`}
+                    >
+                      {sym === 'XAUUSD' ? 'GOLD' : sym.slice(0, 3)}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* بازه افق زمانی */}
+              <div className="space-y-1">
+                <label className="text-[11px] text-zinc-400">افق زمانی بک‌تست:</label>
+                <select
+                  value={timeHorizon}
+                  onChange={e => setTimeHorizon(e.target.value as TimeHorizon)}
+                  className="w-full bg-[#151a24] border border-[#2a3344] rounded-xl px-2.5 py-1.5 text-zinc-100 text-xs font-bold"
+                >
+                  <option value="FULL_YEAR">۱ ساله کامل ۲۰۲۴ (۳۶۵ روز - پیشنهاد اصلی)</option>
+                  <option value="H2_6M">۶ ماهه دوم ۲۰۲۴ (از ۱ ژوئیه تا دسامبر)</option>
+                  <option value="Q4_3M">۳ ماهه پایانی ۲۰۲۴ (از ۱ اکتبر تا دسامبر)</option>
+                  <option value="REPLAY_WINDOW">پنجره جاری ریپلی زنده چارت</option>
+                </select>
+              </div>
+
+              {/* تایم‌فریم محاسباتی */}
+              <div className="space-y-1">
+                <label className="text-[11px] text-zinc-400">تایم‌فریم ساختار کندلی:</label>
+                <div className="grid grid-cols-3 gap-1">
+                  {(['4H', '1H', 'D1'] as const).map(tf => (
+                    <button
+                      key={tf}
+                      type="button"
+                      disabled={timeHorizon === 'REPLAY_WINDOW'}
+                      onClick={() => setBacktestTimeframe(tf)}
+                      className={`py-1.5 rounded-xl text-center font-mono text-[11px] font-bold transition-all disabled:opacity-40 ${
+                        backtestTimeframe === tf && timeHorizon !== 'REPLAY_WINDOW'
+                          ? 'bg-cyan-600 text-white shadow-md'
+                          : 'bg-[#151a24] text-zinc-400 hover:text-zinc-200 border border-[#232a3b]'
+                      }`}
+                    >
+                      {tf} {tf === '4H' ? '(۱,۶۰۰)' : tf === '1H' ? '(۶,۲۰۰)' : '(۳۰۰)'}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* پنل تنظیمات ردیف اول: سبک‌ها و فیلترهای هوشمند */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-[#0d1017] p-3.5 rounded-2xl border border-[#1d2331]">
             {/* سبک معاملاتی */}
             <div className="space-y-1">
@@ -153,8 +297,8 @@ export const MultiStyleBacktestModal: React.FC<MultiStyleBacktestModalProps> = (
               </label>
               <input
                 type="range"
-                min="45"
-                max="80"
+                min="20"
+                max="60"
                 step="5"
                 value={minMcProb}
                 onChange={e => setMinMcProb(Number(e.target.value))}
@@ -300,13 +444,18 @@ export const MultiStyleBacktestModal: React.FC<MultiStyleBacktestModalProps> = (
             <button
               type="button"
               onClick={handleRunBacktest}
-              disabled={isRunning}
-              className="w-full sm:w-auto px-6 py-2.5 rounded-xl font-bold bg-gradient-to-r from-purple-600 to-cyan-600 hover:from-purple-500 hover:to-cyan-500 text-white flex items-center justify-center gap-2 shadow-lg transition-all"
+              disabled={isRunning || isLoadingData || activeCandles.length === 0}
+              className="w-full sm:w-auto px-6 py-2.5 rounded-xl font-bold bg-gradient-to-r from-purple-600 to-cyan-600 hover:from-purple-500 hover:to-cyan-500 text-white flex items-center justify-center gap-2 shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {isRunning ? (
                 <>
-                  <Sparkles className="w-4 h-4 animate-spin" />
-                  <span>در حال شبیه‌سازی و بررسی شورا...</span>
+                  <Loader2 className="w-4 h-4 animate-spin text-purple-200" />
+                  <span>در حال اجرای شبیه‌سازی ۱ ساله...</span>
+                </>
+              ) : isLoadingData ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin text-cyan-200" />
+                  <span>در حال دریافت داده‌ها...</span>
                 </>
               ) : (
                 <>

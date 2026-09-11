@@ -43,6 +43,19 @@ export function bundledIntradayDatasetForSymbol(symbol: SymbolId, timeframe: Tim
     D1: 'روزانه',
     W1: 'هفتگی',
   };
+  if (symbol === 'XAUUSD' && ['1H', '4H', 'D1'].includes(timeframe)) {
+    const lower = timeframe.toLowerCase();
+    return {
+      id: `HISTDATA-XAUUSD-${timeframe}-2024`,
+      symbol: 'XAUUSD',
+      timeframe,
+      source: 'HistData aggregated',
+      providerSymbol: 'XAUUSD',
+      labelFa: `طلا (XAUUSD) ${labels[timeframe]}، سال ۲۰۲۴`,
+      url: `/historical/intraday/histdata-xauusd-${lower}-2024.csv`,
+      caveatFa: 'دادهٔ پژوهشی یک‌ساله استخراج‌شده از قرارداد آتی طلا COMEX و شبیه‌سازی ساختار درون‌روز سشن‌ها.',
+    };
+  }
   if (['1M', '5M', '15M', '1H', '4H', 'D1', 'W1'].includes(timeframe) && ['EURUSD', 'GBPUSD', 'USDJPY'].includes(symbol)) {
     const lower = timeframe.toLowerCase();
     return {

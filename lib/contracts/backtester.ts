@@ -42,7 +42,7 @@ export const DEFAULT_BACKTEST_CONFIG: BacktestConfig = {
   riskPerTradePercent: 0.5,
   minAlphaConsensusScore: 70,
   requireQuorum: true,
-  minMonteCarloTpProbability: 55,
+  minMonteCarloTpProbability: 35,
   enablePartialTp: true,
   spreadPips: 1.5,
   slippagePips: 0.2,
