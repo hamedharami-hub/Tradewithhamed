@@ -71,14 +71,28 @@ export function runAllCoreTests(): {
       accountEquity: 10000,
       riskPercentage: 0.25,
     });
+    const usdjpyRisk = calculateDeterministicRisk({
+      symbol: 'USDJPY',
+      direction: 'BUY',
+      entryPrice: 155.0,
+      stopLossPrice: 154.6, // 40 pips
+      takeProfitPrice: 156.0,
+      accountEquity: 10000,
+      riskPercentage: 0.25,
+    });
     const maxAllowedDollarRisk = 25; // 0.25% of 10000
-    const passed = risk.isValid && risk.plannedRiskAmount <= maxAllowedDollarRisk;
+    const passed =
+      risk.isValid &&
+      risk.plannedRiskAmount <= maxAllowedDollarRisk &&
+      usdjpyRisk.isValid &&
+      usdjpyRisk.plannedRiskAmount <= maxAllowedDollarRisk &&
+      usdjpyRisk.adjustedVolumeLots >= 0.01;
     results.push({
       name: 'Deterministic Risk 0.25% Cap',
       passed,
       details: passed
-        ? `Risk capped at $${risk.plannedRiskAmount} <= $${maxAllowedDollarRisk} (Equity: 10,000, Volume: ${risk.adjustedVolumeLots} lots)`
-        : `Violated 0.25% cap: $${risk.plannedRiskAmount}`,
+        ? `Risk capped: Gold=$${risk.plannedRiskAmount} (${risk.adjustedVolumeLots} lots), USDJPY=$${usdjpyRisk.plannedRiskAmount} (${usdjpyRisk.adjustedVolumeLots} lots)`
+        : `Violated 0.25% cap: Gold=$${risk.plannedRiskAmount}, USDJPY=$${usdjpyRisk.plannedRiskAmount}`,
     });
   } catch (e) {
     results.push({ name: 'Deterministic Risk 0.25% Cap', passed: false, details: (e as Error).message });

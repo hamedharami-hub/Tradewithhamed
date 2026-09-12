@@ -109,7 +109,9 @@ export function calculateDeterministicRisk(input: RiskCalculationInput): RiskPre
   }
 
   // ارزش دلاری حرکت هر واحد قیمت برای ۱ لات
-  const dollarPerPriceUnitPerLot = meta.contractSize;
+  // برای جفت‌ارزهایی مانند USDJPY که ارز مظنه (Quote) ین است، حرکت قیمت بر حسب ین است و باید بر نرخ ورود تقسیم شود
+  const quoteToAccountRate = input.symbol === 'USDJPY' ? (1 / Math.max(input.entryPrice, 0.0001)) : 1;
+  const dollarPerPriceUnitPerLot = meta.contractSize * quoteToAccountRate;
   // زیان ناخالص هر لات در صورت اصابت به SL
   const lossPerLot = slDistance * dollarPerPriceUnitPerLot;
   // کارمزد دوطرفه

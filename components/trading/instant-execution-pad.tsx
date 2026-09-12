@@ -78,14 +78,18 @@ export const InstantExecutionPad: React.FC<InstantExecutionPadProps> = React.mem
   const configRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
+    const handleClickOutside = (e: MouseEvent | TouchEvent) => {
       if (configRef.current && !configRef.current.contains(e.target as Node)) {
         setIsConfigOpen(false);
       }
     };
     if (isConfigOpen) {
       document.addEventListener('mousedown', handleClickOutside);
-      return () => document.removeEventListener('mousedown', handleClickOutside);
+      document.addEventListener('touchstart', handleClickOutside);
+      return () => {
+        document.removeEventListener('mousedown', handleClickOutside);
+        document.removeEventListener('touchstart', handleClickOutside);
+      };
     }
   }, [isConfigOpen]);
 
@@ -342,8 +346,8 @@ export const InstantExecutionPad: React.FC<InstantExecutionPadProps> = React.mem
                   <span>درصد ریسک در معامله:</span>
                   <span className="font-mono text-cyan-400 font-bold">{selectedRisk}%</span>
                 </div>
-                <div className="grid grid-cols-4 gap-1">
-                  {[0.05, 0.1, 0.2, 0.25].map(r => (
+                <div className="grid grid-cols-5 gap-1">
+                  {[0.05, 0.1, 0.15, 0.2, 0.25].map(r => (
                     <button
                       key={r}
                       type="button"

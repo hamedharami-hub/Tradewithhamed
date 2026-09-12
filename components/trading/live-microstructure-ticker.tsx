@@ -248,7 +248,7 @@ export const LiveMicrostructureTicker: React.FC<LiveMicrostructureTickerProps> =
           </div>
           <div className="bg-[#121622] p-2 rounded-lg border border-[#21293c]">
             <span className="text-[10px] block text-zinc-500">قیمت جاری:</span>
-            <span className="text-zinc-200 font-bold font-mono">{currentPrice.toFixed(symbol === 'XAUUSD' ? 2 : 5)}</span>
+            <span className="text-zinc-200 font-bold font-mono">{currentPrice.toFixed(symbol === 'XAUUSD' || symbol === 'BTCUSD' ? 2 : symbol === 'USDJPY' ? 3 : 5)}</span>
           </div>
         </div>
       )}

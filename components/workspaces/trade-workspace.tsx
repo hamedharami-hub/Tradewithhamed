@@ -120,14 +120,14 @@ export const TradeWorkspace: React.FC<TradeWorkspaceProps> = ({
   const currentCandle = replayState.visibleCandles[replayState.visibleCandles.length - 1];
   const currentPrice =
     currentCandle?.close ||
-    (symbol === 'XAUUSD' ? 2050 : 1.085);
+    (symbol === 'XAUUSD' ? 2650 : symbol === 'USDJPY' ? 155.0 : symbol === 'GBPUSD' ? 1.285 : 1.085);
   const currentTimestamp = currentCandle?.timestamp || 0;
 
   const [isTradeCardModalOpen, setIsTradeCardModalOpen] = useState(false);
   const [isAIDrawerOpen, setIsAIDrawerOpen] = useState(false);
   const [isZenMode, setIsZenMode] = useState(false);
 
-  const currentAtr = symbol === 'XAUUSD' ? 2.5 : 0.0015;
+  const currentAtr = symbol === 'XAUUSD' ? 2.5 : symbol === 'USDJPY' ? 0.35 : 0.0015;
 
   const macroTrend =
     replayState.marketRegime?.regime === 'TRENDING_BULLISH'
@@ -347,8 +347,8 @@ export const TradeWorkspace: React.FC<TradeWorkspaceProps> = ({
                 symbol,
                 direction: 'BUY',
                 entryPrice: currentPrice,
-                stopLossPrice: currentPrice - (symbol === 'XAUUSD' ? 5 : 0.003),
-                takeProfitPrice: currentPrice + (symbol === 'XAUUSD' ? 12 : 0.0075),
+                stopLossPrice: currentPrice - (symbol === 'XAUUSD' ? 5 : symbol === 'USDJPY' ? 0.4 : 0.003),
+                takeProfitPrice: currentPrice + (symbol === 'XAUUSD' ? 12 : symbol === 'USDJPY' ? 1.0 : 0.0075),
                 volumeLots: 0.05,
                 realizedRMultiple: 2.4,
                 realizedNetPnL: 240,

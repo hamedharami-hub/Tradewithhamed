@@ -218,11 +218,16 @@ const SingleChartPane: React.FC<SingleChartPaneProps> = ({
     return 10 + Math.min(candleCount - 1, Math.max(0, idx)) * slotWidth + slotWidth / 2;
   };
 
-  // رویداد فشردن ماوس جهت شروع ترسیم خط‌کش، باکس یا ثبت خط افقی
-  const handleMouseDown = (e: React.MouseEvent<SVGSVGElement>) => {
-    const rect = e.currentTarget.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
+  const formatPrice = (p: number) => {
+    const dec = symbol === 'XAUUSD' || symbol === 'BTCUSD' ? 2 : symbol === 'USDJPY' ? 3 : 5;
+    return p.toFixed(dec);
+  };
+
+  // رویداد مشترک شروع تعامل (ماوس و تاچ) جهت ترسیم خط‌کش، باکس یا ثبت خط افقی
+  const startInteraction = (clientX: number, clientY: number, currentTarget: SVGSVGElement, isShift = false) => {
+    const rect = currentTarget.getBoundingClientRect();
+    const x = clientX - rect.left;
+    const y = clientY - rect.top;
 
     if (x < 10 || x > usableWidth || y < PLOT_TOP || y > PLOT_BOTTOM) return;
 
@@ -230,7 +235,7 @@ const SingleChartPane: React.FC<SingleChartPaneProps> = ({
     const clickedIdx = getCandleIdxAtX(x);
     const clickedTimestamp = candles[clickedIdx]?.timestamp || Date.now();
 
-    const isRulerMode = activeTool === 'ruler' || e.shiftKey;
+    const isRulerMode = activeTool === 'ruler' || isShift;
 
     if (isRulerMode) {
       setIsDrawing(true);
@@ -274,11 +279,11 @@ const SingleChartPane: React.FC<SingleChartPaneProps> = ({
     }
   };
 
-  // رویداد حرکت ماوس
-  const handleMouseMove = (e: React.MouseEvent<SVGSVGElement>) => {
-    const rect = e.currentTarget.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
+  // رویداد مشترک حرکت تعاملی (ماوس و تاچ)
+  const moveInteraction = (clientX: number, clientY: number, currentTarget: SVGSVGElement) => {
+    const rect = currentTarget.getBoundingClientRect();
+    const x = clientX - rect.left;
+    const y = clientY - rect.top;
 
     if (x < 10 || x > usableWidth || y < PLOT_TOP || y > PLOT_BOTTOM) {
       setHoverState(null);
@@ -402,20 +407,20 @@ const SingleChartPane: React.FC<SingleChartPaneProps> = ({
             {timeframe}
           </span>
           <span className="text-emerald-500 font-bold text-[11px]">
-            ${lastCandle.close.toFixed(symbol === 'XAUUSD' ? 2 : 5)}
+            ${formatPrice(lastCandle.close)}
           </span>
         </div>
 
         <div className="text-[10px] text-[var(--text-muted)] font-mono flex items-center gap-2">
           {hoverState && (
             <span className="text-cyan-400 font-bold bg-[var(--bg-surface)] px-1.5 py-0.2 rounded border border-cyan-500/30">
-              {hoverState.price.toFixed(symbol === 'XAUUSD' ? 2 : 5)}
+              {formatPrice(hoverState.price)}
             </span>
           )}
           <span>{candles.length} کندل</span>
           {activeTool === 'ruler' && (
             <span className="px-1.5 py-0.2 rounded bg-amber-500/15 text-amber-300 font-bold border border-amber-500/30 text-[9px] animate-pulse">
-              📏 خط‌کش فعال (درگ کنید)
+              📏 خط‌کش فعال (درگ یا لمس کنید)
             </span>
           )}
         </div>
@@ -433,10 +438,24 @@ const SingleChartPane: React.FC<SingleChartPaneProps> = ({
               ? 'cursor-row-resize'
               : 'cursor-crosshair'
           }`}
-          onMouseDown={handleMouseDown}
-          onMouseMove={handleMouseMove}
+          style={{ touchAction: activeTool !== 'cursor' ? 'none' : 'pan-y' }}
+          onMouseDown={(e) => startInteraction(e.clientX, e.clientY, e.currentTarget, e.shiftKey)}
+          onMouseMove={(e) => moveInteraction(e.clientX, e.clientY, e.currentTarget)}
           onMouseUp={handleMouseUp}
           onMouseLeave={handleMouseLeave}
+          onTouchStart={(e) => {
+            if (e.touches.length === 1) {
+              startInteraction(e.touches[0].clientX, e.touches[0].clientY, e.currentTarget);
+            }
+          }}
+          onTouchMove={(e) => {
+            if (e.touches.length === 1) {
+              if (activeTool !== 'cursor') e.preventDefault();
+              moveInteraction(e.touches[0].clientX, e.touches[0].clientY, e.currentTarget);
+            }
+          }}
+          onTouchEnd={handleMouseUp}
+          onTouchCancel={handleMouseLeave}
         >
           {/* خطوط پس‌زمینه شبکه قیمت */}
           {gridLines.map((g, idx) => (
@@ -457,7 +476,7 @@ const SingleChartPane: React.FC<SingleChartPaneProps> = ({
                 fontSize="9"
                 fontFamily="monospace"
               >
-                {g.price.toFixed(symbol === 'XAUUSD' ? 1 : 4)}
+                {g.price.toFixed(symbol === 'XAUUSD' ? 1 : symbol === 'USDJPY' ? 2 : 4)}
               </text>
             </g>
           ))}
@@ -711,7 +730,7 @@ const SingleChartPane: React.FC<SingleChartPaneProps> = ({
                   fontFamily="monospace"
                   fontWeight="bold"
                 >
-                  HL: {hl.price.toFixed(symbol === 'XAUUSD' ? 2 : 4)}
+                  HL: {formatPrice(hl.price)}
                 </text>
                 <g
                   onClick={(e) => removeHorizontalLine(hl.id, e)}
@@ -892,7 +911,7 @@ const SingleChartPane: React.FC<SingleChartPaneProps> = ({
                   fontFamily="monospace"
                   fontWeight="bold"
                 >
-                  Δ {isUp ? '+' : ''}${Math.abs(priceDiff).toFixed(symbol === 'XAUUSD' ? 2 : 4)}
+                  Δ {isUp ? '+' : ''}${formatPrice(Math.abs(priceDiff))}
                 </text>
 
                 {/* خط سوم کارت: مدت زمان و تعداد بارها */}
@@ -976,7 +995,7 @@ const SingleChartPane: React.FC<SingleChartPaneProps> = ({
                   fontFamily="monospace"
                   fontWeight="bold"
                 >
-                  {effectivePrice.toFixed(symbol === 'XAUUSD' ? 2 : 4)}
+                  {formatPrice(effectivePrice)}
                 </text>
 
                 {activeX !== null && (
@@ -1018,6 +1037,7 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
   const [internalCrosshairPrice, setInternalCrosshairPrice] = useState<number | null>(null);
   const [activeDrawingTool, setActiveDrawingTool] = useState<DrawingToolType>('cursor');
   const [yearlyDataMap, setYearlyDataMap] = useState<Record<string, Candle[]>>({});
+  const loadedKeysRef = useRef<Set<string>>(new Set());
 
   const { actualTheme } = useTheme();
   const isDark = actualTheme === 'dark';
@@ -1034,7 +1054,8 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
 
     requiredTfs.forEach((tf) => {
       const key = `${symbol}-${tf}`;
-      if (!yearlyDataMap[key]) {
+      if (!loadedKeysRef.current.has(key)) {
+        loadedKeysRef.current.add(key);
         loadYearlyDataset(symbol, tf)
           .then((loaded) => {
             if (loaded.length > 0) {
@@ -1042,11 +1063,12 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
             }
           })
           .catch((err) => {
+            loadedKeysRef.current.delete(key);
             console.warn(`[ChartCanvas] Could not load yearly ${tf} for ${symbol}:`, err);
           });
       }
     });
-  }, [symbol, primaryTimeframe, secondaryTimeframe, isSplitView, yearlyDataMap]);
+  }, [symbol, primaryTimeframe, secondaryTimeframe, isSplitView]);
 
   // پالت رنگ‌های هماهنگ با قالب فعال
   const themeColors = useMemo(

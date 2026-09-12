@@ -332,98 +332,104 @@ export const MultiStyleBacktestModal: React.FC<MultiStyleBacktestModalProps> = (
           </div>
 
           {/* پنل تنظیمات ردیف دوم: ریزساختار بازار، سشن‌ها و ابهام‌زدایی */}
-          <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 bg-[#0d1017] p-3.5 rounded-2xl border border-[#1d2331]">
-            {/* فیلتر سشن معاملاتی */}
-            <div className="space-y-1">
-              <label className="text-[11px] text-zinc-400 flex items-center gap-1.5">
-                <Clock className="w-3.5 h-3.5 text-cyan-400" />
-                <span>فیلتر سشن زمانی:</span>
-              </label>
-              <select
-                value={sessionFilter}
-                onChange={e => setSessionFilter(e.target.value as BacktestSessionFilter)}
-                className="w-full bg-[#151a24] border border-[#2a3344] rounded-xl px-2.5 py-1.5 text-zinc-100 text-xs font-bold"
-              >
-                <option value="ALL">همه سشن‌ها (۲۴ ساعته)</option>
-                <option value="LONDON">سشن لندن (07:00-13:00 UTC)</option>
-                <option value="LONDON_NY_OVERLAP">هم‌پوشانی طلایی لندن و NY (13:00-16:30)</option>
-                <option value="NEW_YORK">سشن نیویورک عصر (16:30-21:00 UTC)</option>
-                <option value="ASIA">سشن آسیا (00:00-07:00 UTC)</option>
-              </select>
+          <div className="space-y-3 bg-[#0d1017] p-3.5 rounded-2xl border border-[#1d2331]">
+            {/* انتخابگرهای سشن زمانی و حل ابهام درون‌کندلی */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 border-b border-[#1c2331] pb-3">
+              {/* فیلتر سشن معاملاتی */}
+              <div className="space-y-1">
+                <label className="text-[11px] text-zinc-400 flex items-center gap-1.5">
+                  <Clock className="w-3.5 h-3.5 text-cyan-400" />
+                  <span>فیلتر سشن زمانی:</span>
+                </label>
+                <select
+                  value={sessionFilter}
+                  onChange={e => setSessionFilter(e.target.value as BacktestSessionFilter)}
+                  className="w-full bg-[#151a24] border border-[#2a3344] rounded-xl px-2.5 py-1.5 text-zinc-100 text-xs font-bold"
+                >
+                  <option value="ALL">همه سشن‌ها (۲۴ ساعته)</option>
+                  <option value="LONDON">سشن لندن (07:00-13:00 UTC)</option>
+                  <option value="LONDON_NY_OVERLAP">هم‌پوشانی طلایی لندن و NY (13:00-16:30)</option>
+                  <option value="NEW_YORK">سشن نیویورک عصر (16:30-21:00 UTC)</option>
+                  <option value="ASIA">سشن آسیا (00:00-07:00 UTC)</option>
+                </select>
+              </div>
+
+              {/* مدل حل ابهام درون‌کندلی */}
+              <div className="space-y-1">
+                <label className="text-[11px] text-zinc-400">رفع ابهام برخورد SL/TP:</label>
+                <select
+                  value={intraBarModel}
+                  onChange={e => setIntraBarModel(e.target.value as 'PESSIMISTIC' | 'BAR_POLARITY')}
+                  className="w-full bg-[#151a24] border border-[#2a3344] rounded-xl px-2.5 py-1.5 text-zinc-100 text-xs font-bold"
+                >
+                  <option value="BAR_POLARITY">قطبیت بدنه کندل (Bar Polarity - واقع‌گرایانه)</option>
+                  <option value="PESSIMISTIC">سخت‌گیرانه بدبینانه (Pessimistic SL)</option>
+                </select>
+              </div>
             </div>
 
-            {/* مدل حل ابهام درون‌کندلی */}
-            <div className="space-y-1">
-              <label className="text-[11px] text-zinc-400">رفع ابهام برخورد SL/TP:</label>
-              <select
-                value={intraBarModel}
-                onChange={e => setIntraBarModel(e.target.value as 'PESSIMISTIC' | 'BAR_POLARITY')}
-                className="w-full bg-[#151a24] border border-[#2a3344] rounded-xl px-2.5 py-1.5 text-zinc-100 text-xs font-bold"
-              >
-                <option value="BAR_POLARITY">قطبیت بدنه کندل (Bar Polarity - واقع‌گرایانه)</option>
-                <option value="PESSIMISTIC">سخت‌گیرانه بدبینانه (Pessimistic SL)</option>
-              </select>
-            </div>
+            {/* ۴ تاگل محافظتی و شبیه‌سازی ریزساختار در شبکه کاملاً متوازن */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
+              {/* تاگل اسپرد متغیر پویا */}
+              <div className="flex items-center justify-between gap-2 bg-[#151a24] px-3 py-2 rounded-xl border border-[#262f40]">
+                <label className="flex items-center gap-2 cursor-pointer w-full justify-between">
+                  <span className="text-[11px] text-zinc-300 font-bold">اسپرد پویای سشن‌ها</span>
+                  <input
+                    type="checkbox"
+                    checked={useDynamicSpread}
+                    onChange={e => setUseDynamicSpread(e.target.checked)}
+                    className="rounded accent-cyan-500 w-4 h-4 cursor-pointer"
+                  />
+                </label>
+              </div>
 
-            {/* تاگل اسپرد متغیر پویا */}
-            <div className="flex items-center justify-between sm:justify-center gap-2 bg-[#151a24] px-3 py-2 rounded-xl border border-[#262f40]">
-              <label className="flex items-center gap-2 cursor-pointer w-full justify-between">
-                <span className="text-[11px] text-zinc-300 font-bold">اسپرد پویای سشن‌ها</span>
-                <input
-                  type="checkbox"
-                  checked={useDynamicSpread}
-                  onChange={e => setUseDynamicSpread(e.target.checked)}
-                  className="rounded accent-cyan-500 w-4 h-4 cursor-pointer"
-                />
-              </label>
-            </div>
+              {/* تاگل فیلتر رول‌اور شبانه */}
+              <div className="flex items-center justify-between gap-2 bg-[#151a24] px-3 py-2 rounded-xl border border-[#262f40]">
+                <label className="flex items-center gap-2 cursor-pointer w-full justify-between">
+                  <span className="text-[11px] text-zinc-300 font-bold flex items-center gap-1">
+                    <ShieldAlert className="w-3.5 h-3.5 text-amber-400" />
+                    <span>بلک‌اوت رول‌اور</span>
+                  </span>
+                  <input
+                    type="checkbox"
+                    checked={rolloverBlackout}
+                    onChange={e => setRolloverBlackout(e.target.checked)}
+                    className="rounded accent-amber-500 w-4 h-4 cursor-pointer"
+                  />
+                </label>
+              </div>
 
-            {/* تاگل فیلتر رول‌اور شبانه */}
-            <div className="flex items-center justify-between sm:justify-center gap-2 bg-[#151a24] px-3 py-2 rounded-xl border border-[#262f40]">
-              <label className="flex items-center gap-2 cursor-pointer w-full justify-between">
-                <span className="text-[11px] text-zinc-300 font-bold flex items-center gap-1">
-                  <ShieldAlert className="w-3.5 h-3.5 text-amber-400" />
-                  <span>بلک‌اوت رول‌اور شبانه</span>
-                </span>
-                <input
-                  type="checkbox"
-                  checked={rolloverBlackout}
-                  onChange={e => setRolloverBlackout(e.target.checked)}
-                  className="rounded accent-amber-500 w-4 h-4 cursor-pointer"
-                />
-              </label>
-            </div>
+              {/* تاگل فیلتر اخبار پرریسک تقویم */}
+              <div className="flex items-center justify-between gap-2 bg-[#151a24] px-3 py-2 rounded-xl border border-[#262f40]">
+                <label className="flex items-center gap-2 cursor-pointer w-full justify-between">
+                  <span className="text-[11px] text-zinc-300 font-bold flex items-center gap-1">
+                    <ShieldAlert className="w-3.5 h-3.5 text-rose-400" />
+                    <span>فیلتر اخبار ماکرو</span>
+                  </span>
+                  <input
+                    type="checkbox"
+                    checked={newsFilter}
+                    onChange={e => setNewsFilter(e.target.checked)}
+                    className="rounded accent-rose-500 w-4 h-4 cursor-pointer"
+                  />
+                </label>
+              </div>
 
-            {/* تاگل فیلتر اخبار پرریسک تقویم */}
-            <div className="flex items-center justify-between sm:justify-center gap-2 bg-[#151a24] px-3 py-2 rounded-xl border border-[#262f40]">
-              <label className="flex items-center gap-2 cursor-pointer w-full justify-between">
-                <span className="text-[11px] text-zinc-300 font-bold flex items-center gap-1">
-                  <ShieldAlert className="w-3.5 h-3.5 text-rose-400" />
-                  <span>فیلتر اخبار ماکرو (News)</span>
-                </span>
-                <input
-                  type="checkbox"
-                  checked={newsFilter}
-                  onChange={e => setNewsFilter(e.target.checked)}
-                  className="rounded accent-rose-500 w-4 h-4 cursor-pointer"
-                />
-              </label>
-            </div>
-
-            {/* تاگل ریسک تطبیقی ضد تیلت */}
-            <div className="flex items-center justify-between sm:justify-center gap-2 bg-[#151a24] px-3 py-2 rounded-xl border border-[#262f40]">
-              <label className="flex items-center gap-2 cursor-pointer w-full justify-between">
-                <span className="text-[11px] text-zinc-300 font-bold flex items-center gap-1">
-                  <Shield className="w-3.5 h-3.5 text-emerald-400" />
-                  <span>ریسک تطبیقی (ضد تیلت)</span>
-                </span>
-                <input
-                  type="checkbox"
-                  checked={adaptiveRiskScaling}
-                  onChange={e => setAdaptiveRiskScaling(e.target.checked)}
-                  className="rounded accent-emerald-500 w-4 h-4 cursor-pointer"
-                />
-              </label>
+              {/* تاگل ریسک تطبیقی ضد تیلت */}
+              <div className="flex items-center justify-between gap-2 bg-[#151a24] px-3 py-2 rounded-xl border border-[#262f40]">
+                <label className="flex items-center gap-2 cursor-pointer w-full justify-between">
+                  <span className="text-[11px] text-zinc-300 font-bold flex items-center gap-1">
+                    <Shield className="w-3.5 h-3.5 text-emerald-400" />
+                    <span>ریسک ضد تیلت</span>
+                  </span>
+                  <input
+                    type="checkbox"
+                    checked={adaptiveRiskScaling}
+                    onChange={e => setAdaptiveRiskScaling(e.target.checked)}
+                    className="rounded accent-emerald-500 w-4 h-4 cursor-pointer"
+                  />
+                </label>
+              </div>
             </div>
           </div>
 

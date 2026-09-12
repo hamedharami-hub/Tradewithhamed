@@ -17,7 +17,10 @@ export class PostTradeAnalyticsEngine {
    * محاسبه اندازه پیپ بر اساس نماد
    */
   public static getPipSize(symbol: SymbolId): number {
-    return symbol === 'XAUUSD' ? 0.1 : 0.0001;
+    if (symbol === 'XAUUSD') return 0.1;
+    if (symbol === 'USDJPY') return 0.01;
+    if (symbol === 'BTCUSD') return 1.0;
+    return 0.0001;
   }
 
   /**
@@ -28,7 +31,14 @@ export class PostTradeAnalyticsEngine {
       // برای طلا: هر ۱ لات = ۱۰۰ اونس -> ۰.۱ دلار تغییر قیمت = ۱۰ دلار در هر لات
       return volumeLots * 10.0;
     }
-    // برای یورو: هر ۱ لات = ۱۰۰,۰۰۰ واحد -> ۰.۰۰۰۱ تغییر قیمت = ۱۰ دلار در هر لات
+    if (symbol === 'USDJPY') {
+      // برای ین: هر ۱ لات = ۱۰۰,۰۰۰ واحد -> ۰.۰۱ ین تغییر قیمت = ۱۰۰۰ ین ≈ ۶.۴۵ دلار در هر لات (نرخ میانگین ۱۵۵)
+      return volumeLots * 6.45;
+    }
+    if (symbol === 'BTCUSD') {
+      return volumeLots * 1.0;
+    }
+    // برای یورو و پوند: هر ۱ لات = ۱۰۰,۰۰۰ واحد -> ۰.۰۰۰۱ تغییر قیمت = ۱۰ دلار در هر لات
     return volumeLots * 10.0;
   }
 

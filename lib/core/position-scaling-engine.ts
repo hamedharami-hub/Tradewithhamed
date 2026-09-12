@@ -26,14 +26,16 @@ export class PositionScalingEngine {
     accountEquity: number,
     config: PartialTPConfig = DEFAULT_PARTIAL_TP_CONFIG
   ): InstantOrderIntent {
-    const atr = Math.max(currentAtr, symbol === 'XAUUSD' ? 1.5 : 0.001);
+    const minAtr = symbol === 'XAUUSD' ? 1.5 : symbol === 'USDJPY' ? 0.15 : symbol === 'BTCUSD' ? 250 : 0.001;
+    const atr = Math.max(currentAtr, minAtr);
+    const priceDecimals = symbol === 'XAUUSD' || symbol === 'BTCUSD' ? 2 : symbol === 'USDJPY' ? 3 : 5;
 
     // محاسبه فاصله حد ضرر (1.2 برابر ATR)
-    const slPipsDistance = Number((atr * 1.2).toFixed(symbol === 'XAUUSD' ? 2 : 5));
+    const slPipsDistance = Number((atr * 1.2).toFixed(priceDecimals));
     const stopLossPrice =
       direction === 'BUY'
-        ? Number((currentPrice - slPipsDistance).toFixed(symbol === 'XAUUSD' ? 2 : 5))
-        : Number((currentPrice + slPipsDistance).toFixed(symbol === 'XAUUSD' ? 2 : 5));
+        ? Number((currentPrice - slPipsDistance).toFixed(priceDecimals))
+        : Number((currentPrice + slPipsDistance).toFixed(priceDecimals));
 
     const slDistance = Math.abs(currentPrice - stopLossPrice);
 
@@ -43,13 +45,13 @@ export class PositionScalingEngine {
 
     const tp1Price =
       direction === 'BUY'
-        ? Number((currentPrice + tp1Distance).toFixed(symbol === 'XAUUSD' ? 2 : 5))
-        : Number((currentPrice - tp1Distance).toFixed(symbol === 'XAUUSD' ? 2 : 5));
+        ? Number((currentPrice + tp1Distance).toFixed(priceDecimals))
+        : Number((currentPrice - tp1Distance).toFixed(priceDecimals));
 
     const tp2Price =
       direction === 'BUY'
-        ? Number((currentPrice + tp2Distance).toFixed(symbol === 'XAUUSD' ? 2 : 5))
-        : Number((currentPrice - tp2Distance).toFixed(symbol === 'XAUUSD' ? 2 : 5));
+        ? Number((currentPrice + tp2Distance).toFixed(priceDecimals))
+        : Number((currentPrice - tp2Distance).toFixed(priceDecimals));
 
     const takeProfitPrice = config.enabled ? tp2Price : tp1Price;
 
@@ -117,14 +119,16 @@ export class PositionScalingEngine {
 
       const winPips = Math.abs(tp1TargetPrice - position.entryPrice);
       const commission = Number((closeVolume * 6.0).toFixed(2));
-      const realizedPnl = Number((closeVolume * winPips * spec.contractSize - commission).toFixed(2));
+      const quoteToUsdRate = position.symbol === 'USDJPY' ? 1 / Math.max(position.entryPrice, 0.0001) : 1;
+      const realizedPnl = Number((closeVolume * winPips * spec.contractSize * quoteToUsdRate - commission).toFixed(2));
 
       // محاسبه حد ضرر جدید در نقطه ورود همراه با بافر اسپرد (Risk-Free)
       const buffer = config.breakevenBufferPips * spec.pipSize;
+      const priceDecimals = position.symbol === 'XAUUSD' || position.symbol === 'BTCUSD' ? 2 : position.symbol === 'USDJPY' ? 3 : 5;
       const newStopLoss =
         position.direction === 'BUY'
-          ? Number((position.entryPrice + buffer).toFixed(position.symbol === 'XAUUSD' ? 2 : 5))
-          : Number((position.entryPrice - buffer).toFixed(position.symbol === 'XAUUSD' ? 2 : 5));
+          ? Number((position.entryPrice + buffer).toFixed(priceDecimals))
+          : Number((position.entryPrice - buffer).toFixed(priceDecimals));
 
       return {
         actionTaken: 'PARTIAL_CLOSE_AND_BREAKEVEN',
