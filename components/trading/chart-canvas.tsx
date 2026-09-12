@@ -800,9 +800,23 @@ const SingleChartPane: React.FC<SingleChartPaneProps> = ({
             const pipsDiff = Number((priceDiff / pipSize).toFixed(1));
             const percentDiff = Number((((r.endPrice - r.startPrice) / r.startPrice) * 100).toFixed(2));
             const bars = Math.abs(r.endIdx - r.startIdx) + 1;
-            const timeMinutes = bars * (timeframe === '15M' ? 15 : timeframe === '1H' ? 60 : 5);
+            const tfMins =
+              timeframe === 'D1'
+                ? 1440
+                : timeframe === '4H'
+                ? 240
+                : timeframe === '1H'
+                ? 60
+                : timeframe === '15M'
+                ? 15
+                : timeframe === '1M'
+                ? 1
+                : 5;
+            const timeMinutes = bars * tfMins;
             const timeStr =
-              timeMinutes >= 60
+              timeframe === 'D1'
+                ? `${bars}d (${bars * 24}h)`
+                : timeMinutes >= 60
                 ? `${Math.floor(timeMinutes / 60)}h ${timeMinutes % 60}m`
                 : `${timeMinutes}m`;
 
@@ -1132,7 +1146,7 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
         <div className="flex items-center gap-2 font-mono flex-wrap">
           <span className="font-bold text-base text-[var(--text-primary)]">{symbol}</span>
           <span className="text-emerald-500 font-bold">
-            ${lastCandle.close.toFixed(symbol === 'XAUUSD' ? 2 : 5)}
+            ${lastCandle.close.toFixed(symbol === 'XAUUSD' || symbol === 'BTCUSD' ? 2 : symbol === 'USDJPY' ? 3 : 5)}
           </span>
 
           {/* انتخابگر تایم‌فریم اصلی چارت */}

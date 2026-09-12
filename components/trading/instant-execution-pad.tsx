@@ -52,6 +52,12 @@ interface InstantExecutionPadProps {
   openPositionsCount: number;
 }
 
+const getPriceDecimals = (sym: SymbolId) => {
+  if (sym === 'XAUUSD' || sym === 'BTCUSD') return 2;
+  if (sym === 'USDJPY') return 3;
+  return 5;
+};
+
 export const InstantExecutionPad: React.FC<InstantExecutionPadProps> = React.memo(({
   symbol,
   currentPrice,
@@ -84,9 +90,11 @@ export const InstantExecutionPad: React.FC<InstantExecutionPadProps> = React.mem
   }, [isConfigOpen]);
 
   const spec = SYMBOL_SPECS[symbol];
-  const atr = Math.max(currentAtr, symbol === 'XAUUSD' ? 1.5 : 0.001);
+  const minAtr = symbol === 'XAUUSD' ? 1.5 : symbol === 'USDJPY' ? 0.15 : symbol === 'BTCUSD' ? 250 : 0.001;
+  const atr = Math.max(currentAtr, minAtr);
   const slDist = atr * 1.2;
   const tpDist = slDist * 2.0;
+  const priceDecimals = getPriceDecimals(symbol);
 
   // محاسبه مستقیم با ماشین حساب ریسک قطعی
   const riskPreview = useMemo(() => {
@@ -94,12 +102,12 @@ export const InstantExecutionPad: React.FC<InstantExecutionPadProps> = React.mem
       symbol,
       direction: 'BUY',
       entryPrice: currentPrice,
-      stopLossPrice: Number((currentPrice - slDist).toFixed(symbol === 'XAUUSD' ? 2 : 5)),
-      takeProfitPrice: Number((currentPrice + tpDist).toFixed(symbol === 'XAUUSD' ? 2 : 5)),
+      stopLossPrice: Number((currentPrice - slDist).toFixed(priceDecimals)),
+      takeProfitPrice: Number((currentPrice + tpDist).toFixed(priceDecimals)),
       accountEquity,
       riskPercentage: selectedRisk,
     });
-  }, [symbol, currentPrice, slDist, tpDist, accountEquity, selectedRisk]);
+  }, [symbol, currentPrice, slDist, tpDist, accountEquity, selectedRisk, priceDecimals]);
 
   const estimatedLots = riskPreview.adjustedVolumeLots;
   const isCapitalSufficient = riskPreview.isValid && estimatedLots >= spec.minLots;
@@ -142,7 +150,7 @@ export const InstantExecutionPad: React.FC<InstantExecutionPadProps> = React.mem
           <div className="flex flex-col text-right leading-tight">
             <span className="text-xs sm:text-sm">خرید BUY</span>
             <span className="text-[10px] font-mono opacity-90">
-              {currentPrice.toFixed(symbol === 'XAUUSD' ? 2 : 5)}
+              {currentPrice.toFixed(priceDecimals)}
             </span>
           </div>
         </button>
@@ -157,7 +165,7 @@ export const InstantExecutionPad: React.FC<InstantExecutionPadProps> = React.mem
               </span>
             </div>
             <span className="text-[9px] text-zinc-500 font-mono">
-              SL: -{slDist.toFixed(symbol === 'XAUUSD' ? 1 : 4)} | TP: +{tpDist.toFixed(symbol === 'XAUUSD' ? 1 : 4)}
+              SL: -{slDist.toFixed(symbol === 'XAUUSD' ? 1 : symbol === 'USDJPY' ? 2 : 4)} | TP: +{tpDist.toFixed(symbol === 'XAUUSD' ? 1 : symbol === 'USDJPY' ? 2 : 4)}
             </span>
           </div>
 
@@ -200,7 +208,7 @@ export const InstantExecutionPad: React.FC<InstantExecutionPadProps> = React.mem
           <div className="flex flex-col text-right leading-tight">
             <span className="text-xs sm:text-sm">فروش SELL</span>
             <span className="text-[10px] font-mono opacity-90">
-              {currentPrice.toFixed(symbol === 'XAUUSD' ? 2 : 5)}
+              {currentPrice.toFixed(priceDecimals)}
             </span>
           </div>
           <TrendingDown className="w-4 h-4" />

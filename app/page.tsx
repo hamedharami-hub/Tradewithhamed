@@ -164,7 +164,7 @@ export default function TradingLabPage() {
   const currentCandlePrice = useMemo(() => {
     return (
       replayState.visibleCandles[replayState.visibleCandles.length - 1]?.close ||
-      (symbol === 'XAUUSD' ? 2650 : 1.085)
+      (symbol === 'XAUUSD' ? 2650 : symbol === 'USDJPY' ? 155.0 : symbol === 'GBPUSD' ? 1.285 : 1.085)
     );
   }, [replayState.visibleCandles, symbol]);
 
@@ -177,8 +177,8 @@ export default function TradingLabPage() {
   // مخروط صدک‌های استوکاستیک مونت‌کارلو به سمت آینده روی چارت
   const forwardMonteCarloCone: PercentileStepPoint[] | undefined = useMemo(() => {
     if (!currentCandlePrice) return undefined;
-    const targetOffset = symbol === 'XAUUSD' ? 15 : 0.003;
-    const slOffset = symbol === 'XAUUSD' ? 6 : 0.0012;
+    const targetOffset = symbol === 'XAUUSD' ? 15 : symbol === 'USDJPY' ? 1.5 : 0.003;
+    const slOffset = symbol === 'XAUUSD' ? 6 : symbol === 'USDJPY' ? 0.6 : 0.0012;
     const sim = MonteCarloSimulator.runSimulation({
       iterations: 200,
       steps: 20,
@@ -365,8 +365,16 @@ export default function TradingLabPage() {
   ) => {
     try {
       const lastCandle = replayState.visibleCandles[replayState.visibleCandles.length - 1];
-      const livePrice = lastCandle ? lastCandle.close : symbol === 'XAUUSD' ? 2050 : 1.085;
-      const liveAtr = symbol === 'XAUUSD' ? 2.5 : 0.0015;
+      const livePrice = lastCandle
+        ? lastCandle.close
+        : symbol === 'XAUUSD'
+        ? 2650
+        : symbol === 'USDJPY'
+        ? 155.0
+        : symbol === 'GBPUSD'
+        ? 1.285
+        : 1.085;
+      const liveAtr = symbol === 'XAUUSD' ? 2.5 : symbol === 'USDJPY' ? 0.35 : 0.0015;
 
       let lots = 0.01;
       let entry = livePrice;
@@ -748,15 +756,15 @@ export default function TradingLabPage() {
         initialPrice={
           replayState.activeCandidate?.entryPrice ||
           replayState.visibleCandles[replayState.visibleCandles.length - 1]?.close ||
-          (symbol === 'XAUUSD' ? 2050 : 1.085)
+          (symbol === 'XAUUSD' ? 2650 : symbol === 'USDJPY' ? 155.0 : symbol === 'GBPUSD' ? 1.285 : 1.085)
         }
         targetPrice={
           replayState.activeCandidate?.takeProfitPrice ||
-          (symbol === 'XAUUSD' ? 2062 : 1.092)
+          (symbol === 'XAUUSD' ? 2665 : symbol === 'USDJPY' ? 156.5 : symbol === 'GBPUSD' ? 1.295 : 1.092)
         }
         stopLossPrice={
           replayState.activeCandidate?.stopLossPrice ||
-          (symbol === 'XAUUSD' ? 2044 : 1.081)
+          (symbol === 'XAUUSD' ? 2642 : symbol === 'USDJPY' ? 154.2 : symbol === 'GBPUSD' ? 1.278 : 1.081)
         }
         symbol={symbol}
       />

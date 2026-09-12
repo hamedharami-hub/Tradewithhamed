@@ -241,7 +241,7 @@ export const ShareableTradeCardModal: React.FC<ShareableTradeCardModalProps> = (
       ? `1 : ${((data.takeProfitPrice && data.stopLossPrice && data.entryPrice)
           ? Math.abs((data.takeProfitPrice - data.entryPrice) / (data.entryPrice - data.stopLossPrice)).toFixed(2)
           : '2.50')}`
-      : `${netPnl >= 0 ? '+' : ''}$${Math.abs(netPnl).toFixed(2)}`;
+      : `${netPnl >= 0 ? '+' : '-'}$${Math.abs(netPnl).toFixed(2)}`;
 
     ctx.fillStyle = pnlColor;
     ctx.font = 'bold 56px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, monospace';
@@ -278,17 +278,24 @@ export const ShareableTradeCardModal: React.FC<ShareableTradeCardModalProps> = (
     const statBoxWidth = (pnlBoxWidth - (statsCols - 1) * 16) / statsCols;
     const statBoxHeight = 84;
 
+    const cardDecimals = (sym?: string) => {
+      if (sym === 'XAUUSD' || sym === 'BTCUSD') return 2;
+      if (sym === 'USDJPY') return 3;
+      return 5;
+    };
+    const pDec = cardDecimals(data.symbol);
+
     const stats = [
       {
         label: 'ENTRY PRICE',
-        value: data.entryPrice.toFixed(data.symbol === 'XAUUSD' ? 2 : 5),
+        value: data.entryPrice.toFixed(pDec),
         sub: data.volumeLots ? `${data.volumeLots} Lots` : 'Market',
         color: '#38bdf8',
       },
       {
         label: data.exitPrice ? 'EXIT PRICE' : 'TARGET (TP)',
-        value: (data.exitPrice ?? data.takeProfitPrice ?? data.entryPrice).toFixed(data.symbol === 'XAUUSD' ? 2 : 5),
-        sub: data.stopLossPrice ? `SL: ${data.stopLossPrice.toFixed(data.symbol === 'XAUUSD' ? 2 : 4)}` : '',
+        value: (data.exitPrice ?? data.takeProfitPrice ?? data.entryPrice).toFixed(pDec),
+        sub: data.stopLossPrice ? `SL: ${data.stopLossPrice.toFixed(pDec)}` : '',
         color: '#f8fafc',
       },
       {

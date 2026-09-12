@@ -50,7 +50,7 @@ export function JournalWorkbenchW5({ positions }: JournalWorkbenchW5Props = {}) 
   const [expandedTradeId, setExpandedTradeId] = useState<string | null>(null);
   const [testResults, setTestResults] = useState<W5AcceptanceTestResult[]>([]);
   const [isRunningTests, setIsRunningTests] = useState(false);
-  const [selectedFilterSymbol, setSelectedFilterSymbol] = useState<'ALL' | 'XAUUSD' | 'EURUSD'>('ALL');
+  const [selectedFilterSymbol, setSelectedFilterSymbol] = useState<'ALL' | 'XAUUSD' | 'EURUSD' | 'GBPUSD' | 'USDJPY'>('ALL');
 
   // واکشی داده‌های زنده سرور (در صورت موجود بودن)
   useEffect(() => {
@@ -250,18 +250,18 @@ export function JournalWorkbenchW5({ positions }: JournalWorkbenchW5Props = {}) 
 
           <div className="flex items-center gap-2 self-end sm:self-center">
             {/* انتخاب فیلتر نماد */}
-            <div className="flex bg-slate-800/80 border border-slate-700/60 rounded-xl p-0.5 text-xs font-mono" dir="ltr">
-              {(['ALL', 'XAUUSD', 'EURUSD'] as const).map(sym => (
+            <div className="flex bg-slate-800/80 border border-slate-700/60 rounded-xl p-0.5 text-xs font-mono overflow-x-auto max-w-[280px] sm:max-w-none" dir="ltr">
+              {(['ALL', 'XAUUSD', 'EURUSD', 'GBPUSD', 'USDJPY'] as const).map(sym => (
                 <button
                   key={sym}
                   onClick={() => setSelectedFilterSymbol(sym)}
-                  className={`px-2.5 py-1 rounded-lg transition-all ${
+                  className={`px-2 py-1 rounded-lg transition-all ${
                     selectedFilterSymbol === sym
                       ? 'bg-emerald-500/20 text-emerald-300 font-semibold border border-emerald-500/40'
                       : 'text-slate-400 hover:text-slate-200'
                   }`}
                 >
-                  {sym}
+                  {sym === 'ALL' ? 'ALL' : sym.replace('USD', '')}
                 </button>
               ))}
             </div>

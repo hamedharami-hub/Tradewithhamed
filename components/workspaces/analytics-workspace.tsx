@@ -95,6 +95,15 @@ export const AnalyticsWorkspace: React.FC<AnalyticsWorkspaceProps> = ({
           <div className="flex items-center gap-1.5">
             <button
               type="button"
+              onClick={onOpenBacktest}
+              className="px-3 py-2 rounded-xl bg-emerald-500/10 text-emerald-500 hover:bg-emerald-500/20 border border-emerald-500/30 text-xs font-bold flex items-center gap-1.5 transition-colors"
+              title="اجرای آزمایشگاه بک‌تست ۱ ساله و استراتژی‌های چندگانه"
+            >
+              <FlaskConical className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">بک‌تست چندسبکه</span>
+            </button>
+            <button
+              type="button"
               onClick={onOpenMonteCarlo}
               className="px-3 py-2 rounded-xl bg-purple-500/10 text-purple-500 hover:bg-purple-500/20 border border-purple-500/30 text-xs font-bold flex items-center gap-1.5 transition-colors"
               title="اجرای ۱۰۰۰ مسیر تصادفی مونت‌کارلو"
