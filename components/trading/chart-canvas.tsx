@@ -1142,21 +1142,23 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
       }`}
     >
       {/* نوار ابزار مستر بالای چارت: نماد، انتخابگر ابزارهای ترسیمی (خط‌کش و باکس)، سوئیچ نمای دوگانه، زوم و تمام‌صفحه */}
-      <div className="flex flex-wrap items-center justify-between mb-2.5 px-1 text-xs shrink-0 gap-2 border-b border-[var(--border-subtle)] pb-2">
-        <div className="flex items-center gap-2 font-mono flex-wrap">
-          <span className="font-bold text-base text-[var(--text-primary)]">{symbol}</span>
-          <span className="text-emerald-500 font-bold">
-            ${lastCandle.close.toFixed(symbol === 'XAUUSD' || symbol === 'BTCUSD' ? 2 : symbol === 'USDJPY' ? 3 : 5)}
-          </span>
+      <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between mb-2.5 px-1 text-xs shrink-0 gap-2 border-b border-[var(--border-subtle)] pb-2">
+        <div className="flex items-center justify-between md:justify-start gap-2 font-mono flex-wrap">
+          <div className="flex items-center gap-2">
+            <span className="font-bold text-base text-[var(--text-primary)]">{symbol}</span>
+            <span className="text-emerald-500 font-bold">
+              ${lastCandle.close.toFixed(symbol === 'XAUUSD' || symbol === 'BTCUSD' ? 2 : symbol === 'USDJPY' ? 3 : 5)}
+            </span>
+          </div>
 
           {/* انتخابگر تایم‌فریم اصلی چارت */}
-          <div className="flex items-center bg-[var(--bg-canvas)] rounded-lg p-0.5 border border-[var(--border-subtle)] text-[11px] font-mono">
+          <div className="flex items-center bg-[var(--bg-canvas)] rounded-xl p-0.5 border border-[var(--border-subtle)] text-[11px] font-mono">
             {(['5M', '15M', '1H', '4H', 'D1'] as Timeframe[]).map((tf) => (
               <button
                 key={tf}
                 type="button"
                 onClick={() => setPrimaryTimeframe(tf)}
-                className={`px-2 py-0.5 rounded transition-all ${
+                className={`px-2 py-0.5 rounded-lg transition-all ${
                   primaryTimeframe === tf
                     ? 'bg-cyan-500 text-slate-950 font-bold shadow-xs'
                     : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'
@@ -1177,7 +1179,7 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
         </div>
 
         {/* بخش ابزارهای تعاملی: پالت ابزارهای ترسیمی + سوئیچ نما + زوم + فول‌اسکرین */}
-        <div className="flex items-center gap-2 flex-wrap">
+        <div className="flex items-center justify-between md:justify-end gap-1.5 overflow-x-auto no-scrollbar">
           {/* پالت ابزارهای ترسیمی تعاملی و خط‌کش اندازه‌گیری پیپ */}
           <div className="flex items-center bg-[var(--bg-canvas)] rounded-lg p-0.5 border border-[var(--border-subtle)] text-[11px]">
             <button

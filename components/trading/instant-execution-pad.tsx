@@ -129,92 +129,61 @@ export const InstantExecutionPad: React.FC<InstantExecutionPadProps> = React.mem
   };
 
   return (
-    <div className="relative w-full" dir="rtl">
+    <div className="relative w-full" dir="rtl" ref={configRef}>
       {/* داک اصلی معلق (Floating Dock) */}
-      <div className="bg-[#0f131f]/95 backdrop-blur-xl border border-[#222a3d] rounded-2xl p-2 px-3 shadow-2xl flex flex-wrap items-center justify-between gap-2.5">
-        {/* کلید خرید ۱-کلیکی BUY */}
-        <button
-          type="button"
-          onClick={() =>
-            onExecuteInstantOrder('BUY', selectedRisk, false, partialConfig, {
-              mood: selectedMood,
-              propFirmId: selectedPropFirm,
-            })
-          }
-          className={`flex items-center gap-2.5 px-4 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-emerald-700 hover:from-emerald-500 hover:to-emerald-600 text-white font-bold transition-all shadow-md active:scale-95 ${
-            !isCapitalSufficient ? 'opacity-50 cursor-not-allowed' : ''
-          }`}
-          title={!isCapitalSufficient ? 'سرمایه برای حداقل حجم مجاز کافی نیست' : 'خرید آنی (BUY)'}
-        >
-          <TrendingUp className="w-4 h-4" />
-          <div className="flex flex-col text-right leading-tight">
-            <span className="text-xs sm:text-sm">خرید BUY</span>
-            <span className="text-[10px] font-mono opacity-90">
-              {currentPrice.toFixed(priceDecimals)}
-            </span>
-          </div>
-        </button>
-
-        {/* مرکز داک: انتخاب‌گر حجم و درصد ریسک سریع */}
-        <div className="flex items-center gap-2 bg-[#141926] px-3 py-1.5 rounded-xl border border-[#232d40]">
-          <div className="flex flex-col text-center">
+      <div className="bg-[#0f131f]/95 backdrop-blur-xl border border-[#222a3d] rounded-2xl p-2 px-3 shadow-2xl flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2">
+        {/* ردیف بالا در موبایل: کنترل حجم و ریسک + تنظیمات */}
+        <div className="flex sm:hidden items-center justify-between gap-1.5 pb-1.5 border-b border-[#1b2234]">
+          {/* مرکز داک: انتخاب‌گر حجم و درصد ریسک سریع */}
+          <div className="flex items-center gap-2 bg-[#141926] px-2.5 py-1 rounded-xl border border-[#232d40] flex-1">
             <div className="flex items-center gap-1.5 font-mono">
               <span className="text-xs font-bold text-zinc-100">{estimatedLots} Lot</span>
               <span className="text-[10px] text-cyan-400 bg-cyan-950/60 px-1.5 py-0.2 rounded border border-cyan-800">
                 {selectedRisk}% ریسک
               </span>
             </div>
-            <span className="text-[9px] text-zinc-500 font-mono">
-              SL: -{slDist.toFixed(symbol === 'XAUUSD' ? 1 : symbol === 'USDJPY' ? 2 : 4)} | TP: +{tpDist.toFixed(symbol === 'XAUUSD' ? 1 : symbol === 'USDJPY' ? 2 : 4)}
+            <span className="text-[9px] text-zinc-500 font-mono mr-auto">
+              SL: -{slDist.toFixed(symbol === 'XAUUSD' ? 1 : symbol === 'USDJPY' ? 2 : 4)}
             </span>
+            <div className="flex items-center gap-0.5 border-r border-[#263145] pr-1">
+              <button
+                type="button"
+                onClick={() => handleStepRisk(-1)}
+                className="p-1 text-zinc-400 hover:text-white rounded hover:bg-[#1f273a] transition-colors"
+                title="کاهش ریسک"
+                aria-label="کاهش ریسک"
+              >
+                <Minus className="w-3 h-3" />
+              </button>
+              <button
+                type="button"
+                onClick={() => handleStepRisk(1)}
+                className="p-1 text-zinc-400 hover:text-white rounded hover:bg-[#1f273a] transition-colors"
+                title="افزایش ریسک"
+                aria-label="افزایش ریسک"
+              >
+                <Plus className="w-3 h-3" />
+              </button>
+            </div>
           </div>
 
-          <div className="flex items-center gap-0.5 border-r border-[#263145] pr-1.5">
-            <button
-              type="button"
-              onClick={() => handleStepRisk(-1)}
-              className="p-1 text-zinc-400 hover:text-white rounded hover:bg-[#1f273a] transition-colors"
-              title="کاهش درصد ریسک"
-              aria-label="کاهش ریسک"
-            >
-              <Minus className="w-3.5 h-3.5" />
-            </button>
-            <button
-              type="button"
-              onClick={() => handleStepRisk(1)}
-              className="p-1 text-zinc-400 hover:text-white rounded hover:bg-[#1f273a] transition-colors"
-              title="افزایش درصد ریسک"
-              aria-label="افزایش ریسک"
-            >
-              <Plus className="w-3.5 h-3.5" />
-            </button>
-          </div>
+          {/* کلید تنظیمات پیشرفته در موبایل */}
+          <button
+            type="button"
+            onClick={() => setIsConfigOpen(!isConfigOpen)}
+            className={`p-2 rounded-xl border transition-colors flex items-center justify-center ${
+              isConfigOpen
+                ? 'bg-cyan-950 border-cyan-500 text-cyan-300'
+                : 'bg-[#141926] hover:bg-[#1c2336] border-[#252f44] text-zinc-400 hover:text-zinc-200'
+            }`}
+            title="تنظیمات تاکتیکی و ریسک"
+            aria-label="تنظیمات تاکتیکی"
+          >
+            <Sliders className="w-4 h-4" />
+          </button>
         </div>
 
-        {/* کلید فروش ۱-کلیکی SELL */}
-        <button
-          type="button"
-          onClick={() =>
-            onExecuteInstantOrder('SELL', selectedRisk, false, partialConfig, {
-              mood: selectedMood,
-              propFirmId: selectedPropFirm,
-            })
-          }
-          className={`flex items-center gap-2.5 px-4 py-2.5 rounded-xl bg-gradient-to-r from-rose-600 to-rose-700 hover:from-rose-500 hover:to-rose-600 text-white font-bold transition-all shadow-md active:scale-95 ${
-            !isCapitalSufficient ? 'opacity-50 cursor-not-allowed' : ''
-          }`}
-          title={!isCapitalSufficient ? 'سرمایه برای حداقل حجم مجاز کافی نیست' : 'فروش آنی (SELL)'}
-        >
-          <div className="flex flex-col text-right leading-tight">
-            <span className="text-xs sm:text-sm">فروش SELL</span>
-            <span className="text-[10px] font-mono opacity-90">
-              {currentPrice.toFixed(priceDecimals)}
-            </span>
-          </div>
-          <TrendingDown className="w-4 h-4" />
-        </button>
-
-        {/* دکمه اختصاصی اجرای فوری ستاپ هوش مصنوعی (در صورت وجود) */}
+        {/* دکمه اختصاصی اجرای فوری ستاپ هوش مصنوعی در موبایل (در صورت وجود) */}
         {activeCandidate && (
           <button
             type="button"
@@ -224,7 +193,110 @@ export const InstantExecutionPad: React.FC<InstantExecutionPadProps> = React.mem
                 propFirmId: selectedPropFirm,
               })
             }
-            className="flex items-center gap-2 px-3 py-2 rounded-xl bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-500/50 text-cyan-300 font-bold text-xs transition-all animate-pulse"
+            className="sm:hidden flex items-center justify-center gap-2 w-full py-1.5 rounded-xl bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-500/50 text-cyan-300 font-bold text-xs transition-all animate-pulse"
+            title="اجرای ستاپ هوش مصنوعی با سطوح ورود و حد ضرر محاسبه شده"
+          >
+            <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
+            <span>اجرای ستاپ {activeCandidate.direction} ({activeCandidate.entryPrice})</span>
+          </button>
+        )}
+
+        {/* ردیف اصلی دکمه‌های خرید و فروش */}
+        <div className="flex items-center gap-2 w-full sm:w-auto flex-1 justify-between">
+          {/* کلید خرید ۱-کلیکی BUY */}
+          <button
+            type="button"
+            onClick={() =>
+              onExecuteInstantOrder('BUY', selectedRisk, false, partialConfig, {
+                mood: selectedMood,
+                propFirmId: selectedPropFirm,
+              })
+            }
+            className={`flex-1 sm:flex-initial flex items-center justify-center gap-2.5 px-4 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-emerald-700 hover:from-emerald-500 hover:to-emerald-600 text-white font-bold transition-all shadow-md active:scale-95 ${
+              !isCapitalSufficient ? 'opacity-50 cursor-not-allowed' : ''
+            }`}
+            title={!isCapitalSufficient ? 'سرمایه برای حداقل حجم مجاز کافی نیست' : 'خرید آنی (BUY)'}
+          >
+            <TrendingUp className="w-4 h-4 shrink-0" />
+            <div className="flex flex-col text-right leading-tight">
+              <span className="text-xs sm:text-sm">خرید BUY</span>
+              <span className="text-[10px] font-mono opacity-90">
+                {currentPrice.toFixed(priceDecimals)}
+              </span>
+            </div>
+          </button>
+
+          {/* مرکز داک: انتخاب‌گر حجم و درصد ریسک سریع در دسکتاپ */}
+          <div className="hidden sm:flex items-center gap-2 bg-[#141926] px-3 py-1.5 rounded-xl border border-[#232d40]">
+            <div className="flex flex-col text-center">
+              <div className="flex items-center gap-1.5 font-mono">
+                <span className="text-xs font-bold text-zinc-100">{estimatedLots} Lot</span>
+                <span className="text-[10px] text-cyan-400 bg-cyan-950/60 px-1.5 py-0.2 rounded border border-cyan-800">
+                  {selectedRisk}% ریسک
+                </span>
+              </div>
+              <span className="text-[9px] text-zinc-500 font-mono">
+                SL: -{slDist.toFixed(symbol === 'XAUUSD' ? 1 : symbol === 'USDJPY' ? 2 : 4)} | TP: +{tpDist.toFixed(symbol === 'XAUUSD' ? 1 : symbol === 'USDJPY' ? 2 : 4)}
+              </span>
+            </div>
+
+            <div className="flex items-center gap-0.5 border-r border-[#263145] pr-1.5">
+              <button
+                type="button"
+                onClick={() => handleStepRisk(-1)}
+                className="p-1 text-zinc-400 hover:text-white rounded hover:bg-[#1f273a] transition-colors"
+                title="کاهش درصد ریسک"
+                aria-label="کاهش ریسک"
+              >
+                <Minus className="w-3.5 h-3.5" />
+              </button>
+              <button
+                type="button"
+                onClick={() => handleStepRisk(1)}
+                className="p-1 text-zinc-400 hover:text-white rounded hover:bg-[#1f273a] transition-colors"
+                title="افزایش درصد ریسک"
+                aria-label="افزایش ریسک"
+              >
+                <Plus className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </div>
+
+          {/* کلید فروش ۱-کلیکی SELL */}
+          <button
+            type="button"
+            onClick={() =>
+              onExecuteInstantOrder('SELL', selectedRisk, false, partialConfig, {
+                mood: selectedMood,
+                propFirmId: selectedPropFirm,
+              })
+            }
+            className={`flex-1 sm:flex-initial flex items-center justify-center gap-2.5 px-4 py-2.5 rounded-xl bg-gradient-to-r from-rose-600 to-rose-700 hover:from-rose-500 hover:to-rose-600 text-white font-bold transition-all shadow-md active:scale-95 ${
+              !isCapitalSufficient ? 'opacity-50 cursor-not-allowed' : ''
+            }`}
+            title={!isCapitalSufficient ? 'سرمایه برای حداقل حجم مجاز کافی نیست' : 'فروش آنی (SELL)'}
+          >
+            <div className="flex flex-col text-right leading-tight">
+              <span className="text-xs sm:text-sm">فروش SELL</span>
+              <span className="text-[10px] font-mono opacity-90">
+                {currentPrice.toFixed(priceDecimals)}
+              </span>
+            </div>
+            <TrendingDown className="w-4 h-4 shrink-0" />
+          </button>
+        </div>
+
+        {/* دکمه اختصاصی اجرای فوری ستاپ هوش مصنوعی در دسکتاپ (در صورت وجود) */}
+        {activeCandidate && (
+          <button
+            type="button"
+            onClick={() =>
+              onExecuteInstantOrder(activeCandidate.direction, selectedRisk, true, partialConfig, {
+                mood: selectedMood,
+                propFirmId: selectedPropFirm,
+              })
+            }
+            className="hidden sm:flex items-center gap-2 px-3 py-2 rounded-xl bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-500/50 text-cyan-300 font-bold text-xs transition-all animate-pulse"
             title="اجرای ستاپ هوش مصنوعی با سطوح ورود و حد ضرر محاسبه شده"
           >
             <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
@@ -232,8 +304,8 @@ export const InstantExecutionPad: React.FC<InstantExecutionPadProps> = React.mem
           </button>
         )}
 
-        {/* کلید تنظیمات پیشرفته و خروج اضطراری */}
-        <div className="relative" ref={configRef}>
+        {/* کلید تنظیمات پیشرفته در دسکتاپ */}
+        <div className="hidden sm:block relative">
           <button
             type="button"
             onClick={() => setIsConfigOpen(!isConfigOpen)}
@@ -247,10 +319,12 @@ export const InstantExecutionPad: React.FC<InstantExecutionPadProps> = React.mem
           >
             <Sliders className="w-4 h-4" />
           </button>
+        </div>
+      </div>
 
-          {/* پاپ‌اور تنظیمات تاکتیکی (رو به بالا) */}
-          {isConfigOpen && (
-            <div className="absolute bottom-14 left-0 z-50 w-72 sm:w-80 bg-[#121622]/95 backdrop-blur-xl border border-[#252f44] rounded-2xl p-4 shadow-2xl space-y-3 font-sans text-xs">
+      {/* پاپ‌اور تنظیمات تاکتیکی (رو به بالا) */}
+      {isConfigOpen && (
+        <div className="fixed inset-x-3 bottom-20 sm:absolute sm:bottom-14 sm:left-0 z-50 w-auto sm:w-80 bg-[#121622]/95 backdrop-blur-xl border border-[#252f44] rounded-2xl p-4 shadow-2xl space-y-3 font-sans text-xs max-h-[75vh] overflow-y-auto">
               <div className="flex items-center justify-between border-b border-[#21283a] pb-2">
                 <span className="font-bold text-zinc-100">تنظیمات تاکتیکی و ریسک</span>
                 <button
@@ -393,9 +467,7 @@ export const InstantExecutionPad: React.FC<InstantExecutionPadProps> = React.mem
             </div>
           )}
         </div>
-      </div>
-    </div>
-  );
-});
+      );
+    });
 
 InstantExecutionPad.displayName = 'InstantExecutionPad';

@@ -144,8 +144,8 @@ export const LiveMicrostructureTicker: React.FC<LiveMicrostructureTickerProps> =
   return (
     <div className="w-full bg-[#0d111a]/80 border border-[#1e2536] rounded-xl px-3 py-1.5 text-xs select-none transition-all shadow-xs font-sans" dir="rtl">
       {/* نوار تک‌خطی جمع‌وجور و آرامش‌بخش */}
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2 sm:gap-3 overflow-x-auto no-scrollbar py-0.5 max-w-full shrink">
           {/* چیپ ۱: سشن و کیل‌زون */}
           <div className="flex items-center gap-1.5">
             <Clock className="w-3.5 h-3.5 text-cyan-400" />

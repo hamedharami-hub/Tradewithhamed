@@ -153,79 +153,34 @@ export const TradeWorkspace: React.FC<TradeWorkspaceProps> = ({
       {/* ردیف کنترل‌های بالای چارت (در حالت ذن برای خلوتی کامل پنهان می‌شوند) */}
       {!isZenMode && (
         <div className="space-y-2">
-          {/* نوار تک‌سطری ریپلی، نمادها و نشست */}
-          <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-2">
-            <div className="flex-1 min-w-0">
-              <SymbolReplayToolbar
-                symbol={symbol}
-                onSymbolChange={onSymbolChange}
-                isSessionActive={isSessionActive}
-                onToggleSession={onToggleSession}
-                sessionSeconds={sessionSeconds}
-                currentStepIndex={replayState.currentStepIndex}
-                totalSteps={replayState.totalSteps}
-                isPlaying={isPlaying}
-                onTogglePlay={onTogglePlay}
-                speedMs={speedMs}
-                onChangeSpeed={onChangeSpeed}
-                onStepForward={onStepForward}
-                onReset={onResetReplay}
-                onOpenExportModal={onOpenExportModal}
-                onOpenAIModal={onOpenAIModal}
-                onOpenMultiAgentModal={onOpenMultiAgentModal}
-                onOpenBacktest={onOpenBacktest}
-                activeModelNameFa={activeModelNameFa}
-                activeTradingStyleBadgeFa={activeTradingStyleBadgeFa}
-                activeStyleFilter={replayState.activeStyleFilter}
-                onChangeStyleFilter={onChangeStyleFilter}
-              />
-            </div>
-
-            {/* دکمه‌های کنترل سریع: کشوی هوش مصنوعی، آزمایشگاه بک‌تست و حالت ذن */}
-            <div className="flex items-center gap-1.5 shrink-0 justify-end">
-              {/* دکمه ورود به آزمایشگاه جامع بک‌تست */}
-              <button
-                type="button"
-                onClick={onOpenBacktest}
-                className="px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 border transition-all shadow-xs bg-amber-500/15 hover:bg-amber-500/25 border-amber-500/40 text-amber-300"
-                title="آزمایشگاه جامع بک‌تست استراتژی‌های معاملاتی و شبیه‌سازی"
-              >
-                <FlaskConical className="w-3.5 h-3.5 text-amber-400" />
-                <span>آزمایشگاه بک‌تست 🧪</span>
-              </button>
-
-              {/* دکمه کشوی ستاپ و هوش مصنوعی */}
-              <button
-                type="button"
-                onClick={() => setIsAIDrawerOpen(true)}
-                className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-2 border transition-all shadow-xs ${
-                  replayState.activeCandidate
-                    ? 'bg-gradient-to-r from-cyan-600 to-blue-600 text-white border-cyan-400 animate-pulse'
-                    : 'bg-[#121622] hover:bg-[#1a2030] border-[#222a3d] text-cyan-400'
-                }`}
-                title="مشاهده ستاپ و تحلیل هوش مصنوعی"
-              >
-                <Sparkles className="w-3.5 h-3.5" />
-                <span>
-                  {replayState.activeCandidate ? 'ستاپ فعال هوش مصنوعی' : 'تحلیل ستاپ و هوش مصنوعی'}
-                </span>
-                {replayState.activeCandidate && (
-                  <span className="w-2 h-2 rounded-full bg-white animate-ping" />
-                )}
-              </button>
-
-              {/* کلید حالت تمرکز ذن (Zen Mode) */}
-              <button
-                type="button"
-                onClick={() => setIsZenMode(true)}
-                className="p-2 rounded-xl bg-[#121622] hover:bg-[#1a2030] border border-[#222a3d] text-zinc-400 hover:text-zinc-100 transition-colors"
-                title="حالت تمرکز ذن (پنهان‌سازی همه ابزارها برای خلوتی ذهن)"
-                aria-label="حالت تمرکز ذن"
-              >
-                <Eye className="w-4 h-4 text-emerald-400" />
-              </button>
-            </div>
-          </div>
+          {/* نوار یکپارچه ریپلی، نمادها، ستاپ هوش مصنوعی، بک‌تست و ابزارها */}
+          <SymbolReplayToolbar
+            symbol={symbol}
+            onSymbolChange={onSymbolChange}
+            isSessionActive={isSessionActive}
+            onToggleSession={onToggleSession}
+            sessionSeconds={sessionSeconds}
+            currentStepIndex={replayState.currentStepIndex}
+            totalSteps={replayState.totalSteps}
+            isPlaying={isPlaying}
+            onTogglePlay={onTogglePlay}
+            speedMs={speedMs}
+            onChangeSpeed={onChangeSpeed}
+            onStepForward={onStepForward}
+            onReset={onResetReplay}
+            onOpenExportModal={onOpenExportModal}
+            onOpenAIModal={onOpenAIModal}
+            onOpenMultiAgentModal={onOpenMultiAgentModal}
+            onOpenBacktest={onOpenBacktest}
+            onOpenAIDrawer={() => setIsAIDrawerOpen(true)}
+            hasActiveCandidate={!!replayState.activeCandidate}
+            onToggleZen={() => setIsZenMode(true)}
+            isZenMode={isZenMode}
+            activeModelNameFa={activeModelNameFa}
+            activeTradingStyleBadgeFa={activeTradingStyleBadgeFa}
+            activeStyleFilter={replayState.activeStyleFilter}
+            onChangeStyleFilter={onChangeStyleFilter}
+          />
 
           {/* نوار وضعیت ریزساختار تک‌سطری و آرامش‌بخش */}
           <LiveMicrostructureTicker

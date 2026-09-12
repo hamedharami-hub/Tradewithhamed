@@ -137,19 +137,19 @@ export const Header: React.FC<HeaderProps> = ({
         </div>
 
         {/* ۲. آمار مالی آرامش‌بخش و متمرکز (Center Financial Pill) */}
-        <div className="flex items-center gap-2 sm:gap-4 text-xs">
-          <div className="flex items-center gap-2 sm:gap-3 bg-[#111622] px-2.5 sm:px-3 py-1 rounded-xl border border-[#202738]">
-            <div className="flex items-center gap-1.5 font-mono">
-              <span className="text-[10px] text-zinc-400">موجودی:</span>
-              <span className="font-bold text-zinc-200">
-                ${balance.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+        <div className="flex items-center gap-1.5 sm:gap-3 text-xs">
+          <div className="flex items-center gap-1.5 sm:gap-3 bg-[#111622] px-2 sm:px-3 py-1 rounded-xl border border-[#202738]">
+            <div className="flex items-center gap-1 font-mono">
+              <span className="text-[10px] text-zinc-400 hidden sm:inline">موجودی:</span>
+              <span className="font-bold text-zinc-200 text-[11px] sm:text-xs">
+                ${balance.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}
               </span>
             </div>
             <span className="text-zinc-600">|</span>
-            <div className="flex items-center gap-1.5 font-mono">
-              <span className="text-[10px] text-zinc-400">اکوئیتی:</span>
-              <span className={`font-bold ${equity >= balance ? 'text-emerald-400' : 'text-amber-400'}`}>
-                ${equity.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+            <div className="flex items-center gap-1 font-mono">
+              <span className="text-[10px] text-zinc-400 hidden sm:inline">اکوئیتی:</span>
+              <span className={`font-bold text-[11px] sm:text-xs ${equity >= balance ? 'text-emerald-400' : 'text-amber-400'}`}>
+                ${equity.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}
               </span>
             </div>
           </div>
