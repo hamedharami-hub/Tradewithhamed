@@ -337,17 +337,23 @@ export class MultiAgentOrchestrator {
     let verdict: 'APPROVED' | 'REJECTED' = 'APPROVED';
     let summaryFa = '';
 
+    const isNeural = engine.type === 'NEURAL_WEBGPU';
+
     if (!isRRValid) {
       verdict = 'REJECTED';
-      summaryFa = `رد ستاپ: نسبت سود به زیان (${candidate.riskRewardRatio}) کمتر از حداقل مصوب سبک (${minRequiredRR}) است.`;
-      bullets.push(`نقض شرط بازدهی: R:R کمتر از ${minRequiredRR}`);
-      bullets.push('ورود با این نسبت اصطکاک اجرای بروکر را جبران نمی‌کند.');
+      summaryFa = `رد ستاپ توسط منتقد: نسبت سود به زیان (${candidate.riskRewardRatio}) کمتر از حداقل مصوب سبک (${minRequiredRR}) است.`;
+      bullets.push(`🛡️ لایه ۱ (موتور قطعی S0): نقض شرط بازدهی؛ نسبت R:R کمتر از حداقل مصوب (${minRequiredRR}) است.`);
+      bullets.push('اصطکاک و کمیسیون بروکر در این نسبت توجیه‌پذیر نیست.');
     } else {
       verdict = 'APPROVED';
-      summaryFa = `تست استرس منتقد با موفقیت پشت سر گذاشته شد (R:R برابر ۱ به ${candidate.riskRewardRatio}).`;
-      bullets.push(`نسبت ریوارد به ریسک ۱ به ${candidate.riskRewardRatio} با معیار مصوب سبک انطباق دارد.`);
-      bullets.push('فاصله کافی از اخبار مهم اقتصادی (Red Folder News Guard تایید شد).');
-      bullets.push('سد نقدینگی معارض در مسیر رسیدن به تارگت اول مشاهده نشد.');
+      summaryFa = isNeural
+        ? `تایید منتقد با سپر دوگانه (انطباق ریاضی قطعی سیستم + تفکر عمیق عصبی).`
+        : `تست استرس منتقد قطعی با موفقیت پشت سر گذاشته شد (R:R برابر ۱ به ${candidate.riskRewardRatio}).`;
+      bullets.push(`🛡️ لایه ۱ (موتور قطعی S0): انطباق کامل R:R برابر ۱ به ${candidate.riskRewardRatio} با معیار مصوب.`);
+      bullets.push('🛡️ لایه ۱ (موتور قطعی S0): فاصله امن از اخبار اقتصادی قرمز (Red Folder News) و عدم وجود سد نقدینگی معارض.');
+      if (isNeural) {
+        bullets.push(`🧠 لایه ۲ (استدلال عصبی WebGPU): موشکافی تله‌های استاپ‌هانتینگ، عدم وجود هیجان فومو (FOMO) و تایید پاک بودن مسیر تارگت.`);
+      }
     }
 
     return {

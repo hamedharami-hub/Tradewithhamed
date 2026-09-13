@@ -263,6 +263,16 @@ export const MultiAgentOrchestratorModal: React.FC<MultiAgentOrchestratorModalPr
                           </span>
                         </div>
                       </div>
+
+                      {/* سپر دوگانه (تضمین همزمانی هوش قطعی با هوش عصبی) */}
+                      {selectedOption.type === 'NEURAL_WEBGPU' && (
+                        <div className="mt-2.5 px-2.5 py-1.5 rounded-lg bg-cyan-950/30 border border-cyan-800/40 text-[10px] text-cyan-300 flex items-center gap-1.5">
+                          <ShieldCheck className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
+                          <span>
+                            <strong>حالت سپر دوگانه (Dual Guard):</strong> هوش محاسباتی قطعی سیستم (S0) هم‌زمان در لایه اول فعال است؛ در صورت کوچک‌ترین تضاد محاسباتی در نسبت R:R یا حد ضرر، معامله وتو می‌شود.
+                          </span>
+                        </div>
+                      )}
                     </div>
                   );
                 })}

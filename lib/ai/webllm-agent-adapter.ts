@@ -12,8 +12,12 @@ const AGENT_MODEL_MAP: Record<string, string> = {
   'qwen3.5-4b-analyst': 'qwen3.5-4b-mlc',
   'qwen3-1.7b-analyst': 'qwen3-1.7b-mlc',
   'deepseek-r1-7b-critic': 'deepseek-r1-distill-qwen-7b-mlc',
+  'deepseek-r1-14b-critic': 'deepseek-r1-distill-qwen-14b-mlc',
   'phi-4-mini-critic': 'phi-4-mini-instruct-mlc',
   'qwen3.5-4b-critic': 'qwen3.5-4b-mlc',
+  'chrome-gemini-nano-critic': 'chrome-gemini-nano',
+  'llama-3.2-3b-critic': 'llama-3.2-3b-instruct-mlc',
+  'qwen2.5-7b-critic': 'qwen2.5-7b-instruct-mlc',
 };
 
 export function modelIdForAgentEngine(engineId: string): string | null {
