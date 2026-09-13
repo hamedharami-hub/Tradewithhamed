@@ -13,7 +13,13 @@ import {
 } from 'lucide-react';
 import { RAGPlaybookWorkbench } from '@/components/trading/rag-playbook-workbench';
 import { MultiTimeframeSyncView } from '@/components/trading/multi-timeframe-sync-view';
-import { MultiAgentConfiguration } from '@/lib/contracts/multi-agent-system';
+import {
+  MultiAgentConfiguration,
+  AGENT_ROLES_INFO,
+  AGENT_ENGINE_OPTIONS,
+  TRADING_STYLES,
+  AgentRole,
+} from '@/lib/contracts/multi-agent-system';
 import { SymbolId, Candle } from '@/lib/contracts/market';
 import { MultiTimeframeLevel } from '@/lib/contracts/monte-carlo';
 
@@ -119,84 +125,116 @@ export const AIHubWorkspace: React.FC<AIHubWorkspaceProps> = ({
 
       {activeSection === 'agents' && (
         <div className="space-y-4">
-          <div className="bg-[var(--bg-surface)] p-6 rounded-2xl border border-[var(--border-subtle)] space-y-5">
+          <div className="bg-[var(--bg-surface)] p-5 rounded-2xl border border-[var(--border-subtle)] space-y-4">
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 border-b border-[var(--border-subtle)] pb-4">
               <div>
                 <h3 className="text-sm font-bold text-[var(--text-primary)] flex items-center gap-2">
                   <Sparkles className="w-4 h-4 text-cyan-500" />
-                  شورای ۴ ایجنت هوشمند اختصاصی حامد
+                  شورای ۴ ایجنت هوشمند هماهنگ (Alpha Council Pipeline)
                 </h3>
                 <p className="text-xs text-[var(--text-muted)] mt-0.5">
-                  ارزیابی چندجانبه هر ستاپ معاملاتی بر مبنای ۴ سبک معامله با حدنصاب رأی‌گیری
+                  خط‌لوله ۴ ایجنت تخصصی برای پایش، تحلیل، نقد ریسک و داوری نهایی بر پایه سبک معاملاتی اسمارت‌مانی
                 </p>
               </div>
 
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
                 <button
                   type="button"
                   onClick={onOpenAIModal}
                   className="px-3 py-1.5 rounded-xl bg-[var(--bg-canvas)] hover:bg-[var(--bg-surface-raised)] border border-[var(--border-subtle)] text-xs flex items-center gap-1.5 transition-colors text-[var(--text-secondary)]"
                 >
                   <Cpu className="w-3.5 h-3.5 text-cyan-500" />
-                  <span>مدل آفلاین:</span>
+                  <span>مدل عصبی فعال:</span>
                   <span className="font-mono font-bold text-cyan-500">{selectedModelName}</span>
                 </button>
 
                 <button
                   type="button"
                   onClick={onOpenMultiAgentModal}
-                  className="px-3 py-1.5 rounded-xl bg-cyan-500 text-slate-900 font-bold text-xs flex items-center gap-1.5 hover:bg-cyan-400 transition-colors shadow-sm"
+                  className="px-3.5 py-1.5 rounded-xl bg-cyan-500 text-slate-900 font-bold text-xs flex items-center gap-1.5 hover:bg-cyan-400 transition-colors shadow-sm"
                 >
                   <Sliders className="w-3.5 h-3.5" />
-                  <span>پیکربندی اوزان شورا</span>
+                  <span>اتاق فرمان ۴ ایجنت</span>
                 </button>
               </div>
             </div>
 
-            {/* کارت‌های نمایش ۴ ایجنت */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
-              {[
-                {
-                  id: 'trend_following',
-                  nameFa: 'ایجنت تعقیب روند',
-                  styleEn: 'Trend Following',
-                  descFa: 'تشخیص ساختار BOS، سوگیری جهت‌دار و همگرایی میانگین‌های متحرک',
-                  color: 'border-emerald-500/40 text-emerald-500 bg-emerald-500/5',
-                },
-                {
-                  id: 'mean_reversion',
-                  nameFa: 'ایجنت بازگشت به میانگین',
-                  styleEn: 'Mean Reversion',
-                  descFa: 'سنجش بیش‌خرید/بیش‌فروش، دایورجنس‌ها و انحرافات مقطعی از ارزش منصفانه',
-                  color: 'border-amber-500/40 text-amber-500 bg-amber-500/5',
-                },
-                {
-                  id: 'breakout',
-                  nameFa: 'ایجنت شکست و شتاب',
-                  styleEn: 'Breakout Hunter',
-                  descFa: 'رصد انباشت نقدینگی، شکست الگوها و ورود پس از جذب سفارشات متوقف',
-                  color: 'border-purple-500/40 text-purple-500 bg-purple-500/5',
-                },
-                {
-                  id: 'range_trading',
-                  nameFa: 'ایجنت معامله در رِنج',
-                  styleEn: 'Range Bound',
-                  descFa: 'معامله در سقف و کف کانال‌های متراکم در فازهای فاقد روند',
-                  color: 'border-cyan-500/40 text-cyan-500 bg-cyan-500/5',
-                },
-              ].map((agent) => (
-                <div
-                  key={agent.id}
-                  className={`p-4 rounded-xl border ${agent.color} space-y-2`}
-                >
-                  <div className="flex items-center justify-between">
-                    <span className="font-bold text-xs text-[var(--text-primary)]">{agent.nameFa}</span>
-                    <CheckCircle2 className="w-4 h-4 opacity-70" />
+            {/* نشانگر سبک معاملاتی فعال شورا */}
+            {(() => {
+              const activeStyle = TRADING_STYLES.find(s => s.id === multiAgentConfig.activeTradingStyle) || TRADING_STYLES[0];
+              return (
+                <div className="p-3 bg-cyan-950/20 border border-cyan-800/30 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
+                  <div className="flex items-center gap-2">
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-[#1c222e] border border-[#2d3545] text-cyan-300">
+                      {activeStyle.badgeFa}
+                    </span>
+                    <span className="font-bold text-zinc-100">{activeStyle.nameFa}</span>
+                    <span className="text-zinc-400 text-[11px] hidden md:inline">— {activeStyle.descriptionFa}</span>
                   </div>
-                  <div className="text-[10px] font-mono text-[var(--text-muted)]">{agent.styleEn}</div>
-                  <p className="text-[11px] text-[var(--text-secondary)] leading-relaxed">{agent.descFa}</p>
+                  <div className="flex items-center gap-2 text-zinc-300 font-mono text-[11px] shrink-0">
+                    <span>حداقل R:R مصوب:</span>
+                    <strong className="text-amber-400">1:{activeStyle.minimumRR}</strong>
+                  </div>
                 </div>
-              ))}
+              );
+            })()}
+
+            {/* کارت‌های زنده و هماهنگ ۴ ایجنت خط‌لوله */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
+              {(['SCANNER', 'ANALYST', 'CRITIC', 'JUDGE'] as AgentRole[]).map((role, idx) => {
+                const info = AGENT_ROLES_INFO[role];
+                const engineId =
+                  role === 'SCANNER' ? multiAgentConfig.scannerEngineId :
+                  role === 'ANALYST' ? multiAgentConfig.analystEngineId :
+                  role === 'CRITIC' ? multiAgentConfig.criticEngineId :
+                  multiAgentConfig.judgeEngineId;
+                const engine =
+                  AGENT_ENGINE_OPTIONS.find(e => e.id === engineId) ||
+                  AGENT_ENGINE_OPTIONS.find(e => e.role === role)!;
+                const isNeural = engine.type === 'NEURAL_WEBGPU';
+
+                return (
+                  <div
+                    key={role}
+                    onClick={onOpenMultiAgentModal}
+                    className="p-4 rounded-xl border border-[#262c3a] bg-[#161a22] hover:border-cyan-600/70 transition-all cursor-pointer space-y-2.5 shadow-sm group"
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <span className="w-5 h-5 rounded-full bg-[#1c222e] border border-[#2f3747] text-cyan-400 font-mono text-[11px] flex items-center justify-center font-bold">
+                          {idx + 1}
+                        </span>
+                        <span className="font-bold text-xs text-zinc-100">{info.nameFa}</span>
+                      </div>
+                      <span className={`text-[9px] font-mono px-1.5 py-0.5 rounded border ${
+                        isNeural
+                          ? 'bg-purple-950/60 border-purple-800/60 text-purple-300'
+                          : 'bg-emerald-950/60 border-emerald-800/60 text-emerald-300'
+                      }`}>
+                        {isNeural ? 'WebGPU عصبی' : 'محاسباتی قطعی'}
+                      </span>
+                    </div>
+
+                    <div className="p-2.5 rounded-lg bg-[#0e1117] border border-[#202634] space-y-1">
+                      <div className="text-[10px] text-zinc-400">موتور فعال:</div>
+                      <div className="text-xs font-bold text-cyan-300 truncate" title={engine.nameFa}>
+                        {engine.nameFa}
+                      </div>
+                    </div>
+
+                    <p className="text-[11px] text-zinc-400 leading-relaxed line-clamp-2">
+                      {info.missionFa}
+                    </p>
+
+                    <div className="flex items-center justify-between text-[10px] text-zinc-500 pt-2 border-t border-[#1f2533]">
+                      <span>تأخیر: <strong className="text-cyan-400 font-mono">~{engine.latencyMs}ms</strong></span>
+                      <span className="text-cyan-400 group-hover:underline flex items-center gap-0.5">
+                        تنظیم موتور ⚙️
+                      </span>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           </div>
         </div>
