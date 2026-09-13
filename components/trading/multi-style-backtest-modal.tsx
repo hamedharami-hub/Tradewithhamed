@@ -19,6 +19,7 @@ import {
   TIME_HORIZONS,
   YearDatasetId,
   BacktestTimeframe,
+  type LoadedYearlyDataset,
 } from '@/lib/core/yearly-data-loader';
 import {
   X,
@@ -59,16 +60,19 @@ export const MultiStyleBacktestModal: React.FC<MultiStyleBacktestModalProps> = (
   const [datasetWarnings, setDatasetWarnings] = useState<string[]>([]);
   const [datasetIsSynthetic, setDatasetIsSynthetic] = useState(false);
   const [loadedDataKey, setLoadedDataKey] = useState<string>('');
+  const [loadedDataset, setLoadedDataset] = useState<LoadedYearlyDataset | null>(null);
+  const [datasetLoadError, setDatasetLoadError] = useState('');
 
   const currentDataKey = `${selectedSymbol}-${backtestTimeframe}-${timeHorizon}-${selectedYear}`;
   const isLoadingData = timeHorizon !== 'REPLAY_WINDOW' && loadedDataKey !== currentDataKey;
+  const hasDatasetLoadError = timeHorizon !== 'REPLAY_WINDOW' && loadedDataKey === currentDataKey && datasetLoadError.length > 0;
 
   const activeCandles = useMemo(() => {
     if (timeHorizon === 'REPLAY_WINDOW') {
       return candles;
     }
-    return yearlyCandles.length > 0 ? yearlyCandles : candles;
-  }, [timeHorizon, candles, yearlyCandles]);
+    return loadedDataKey === currentDataKey ? yearlyCandles : [];
+  }, [timeHorizon, candles, currentDataKey, loadedDataKey, yearlyCandles]);
 
   const dateSpanInfo = useMemo(() => {
     if (activeCandles.length === 0) return '';
@@ -105,6 +109,8 @@ export const MultiStyleBacktestModal: React.FC<MultiStyleBacktestModalProps> = (
         setDatasetNotice(`${loaded.provenance.labelFa} — ${loaded.coverage.labelFa}`);
         setDatasetWarnings([...loaded.provenance.warnings, ...loaded.quality.warnings]);
         setDatasetIsSynthetic(loaded.provenance.isSynthetic);
+        setLoadedDataset(loaded);
+        setDatasetLoadError('');
         setLoadedDataKey(currentDataKey);
       })
       .catch((err) => {
@@ -113,6 +119,8 @@ export const MultiStyleBacktestModal: React.FC<MultiStyleBacktestModalProps> = (
           setDatasetNotice(err instanceof Error ? err.message : 'دریافت دیتاست ناموفق بود.');
           setDatasetWarnings([]);
           setDatasetIsSynthetic(false);
+          setLoadedDataset(null);
+          setDatasetLoadError(err instanceof Error ? err.message : 'دریافت دیتاست ناموفق بود.');
           setLoadedDataKey(currentDataKey);
         }
       });
@@ -127,6 +135,7 @@ export const MultiStyleBacktestModal: React.FC<MultiStyleBacktestModalProps> = (
     try {
         const res = await runInWorker(activeCandles, {
           symbol: selectedSymbol,
+          timeframe: backtestTimeframe,
           style,
           minAlphaConsensusScore: minCouncilScore,
           minMonteCarloTpProbability: minMcProb,
@@ -139,7 +148,20 @@ export const MultiStyleBacktestModal: React.FC<MultiStyleBacktestModalProps> = (
           newsFilter,
           adaptiveRiskScaling,
         });
-        setReport(res);
+        setReport({
+          ...res,
+          datasetContext: timeHorizon === 'REPLAY_WINDOW'
+            ? {
+                mode: 'REPLAY', symbol: selectedSymbol, timeframe: backtestTimeframe, horizon: timeHorizon,
+                sourceLabelFa: 'پنجرهٔ جاری ریپلی', dateRangeFa: dateSpanInfo, candleCount: activeCandles.length,
+                warnings: ['این اجرا فقط پنجرهٔ ریپلی است و معادل بک‌تست سالانهٔ تاریخی نیست.'], isSynthetic: false,
+              }
+            : {
+                mode: 'HISTORICAL', symbol: selectedSymbol, timeframe: backtestTimeframe, year: selectedYear, horizon: timeHorizon,
+                sourceLabelFa: loadedDataset?.provenance.labelFa ?? datasetNotice, dateRangeFa: dateSpanInfo, candleCount: activeCandles.length,
+                warnings: datasetWarnings, isSynthetic: loadedDataset?.provenance.isSynthetic ?? false,
+              },
+        });
     } catch (error) {
       setDatasetNotice(error instanceof Error ? error.message : 'بک‌تست ناموفق بود.');
     } finally { setIsRunning(false); }
@@ -201,8 +223,9 @@ export const MultiStyleBacktestModal: React.FC<MultiStyleBacktestModalProps> = (
                 )}
               </div>
             </div>
-            {datasetNotice && <p className={`text-[11px] rounded-lg px-2.5 py-2 ${datasetIsSynthetic ? 'bg-amber-950/40 text-amber-200 border border-amber-900/60' : 'bg-slate-900 text-slate-300 border border-slate-700'}`}>{datasetNotice}</p>}
-            {datasetWarnings.length > 0 && <ul className="text-[10px] text-amber-300 space-y-1 list-disc pr-4">{datasetWarnings.slice(0, 3).map(warning => <li key={warning}>{warning}</li>)}</ul>}
+            {loadedDataKey === currentDataKey && datasetNotice && <p className={`text-[11px] rounded-lg px-2.5 py-2 ${datasetIsSynthetic ? 'bg-amber-950/40 text-amber-200 border border-amber-900/60' : 'bg-slate-900 text-slate-300 border border-slate-700'}`}>{datasetNotice}</p>}
+            {hasDatasetLoadError && <p role="alert" className="text-[11px] rounded-lg px-2.5 py-2 bg-rose-950/40 text-rose-200 border border-rose-900/60">دیتاست تاریخی انتخاب‌شده قابل اجرا نیست؛ به پنجرهٔ ریپلی برگردید یا انتخاب دیگری انجام دهید.</p>}
+            {loadedDataKey === currentDataKey && datasetWarnings.length > 0 && <ul className="text-[10px] text-amber-300 space-y-1 list-disc pr-4">{datasetWarnings.slice(0, 3).map(warning => <li key={warning}>{warning}</li>)}</ul>}
 
             <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
               {/* نماد مورد آزمایش */}
@@ -266,8 +289,8 @@ export const MultiStyleBacktestModal: React.FC<MultiStyleBacktestModalProps> = (
               {/* تایم‌فریم محاسباتی */}
               <div className="space-y-1">
                 <label className="text-[11px] text-zinc-400">تایم‌فریم کندل‌ها:</label>
-                <div className="grid grid-cols-6 gap-0.5">
-                  {(['1M', '5M', '15M', '1H', '4H', 'D1'] as const).map(tf => (
+                <div className="grid grid-cols-7 gap-0.5">
+                  {(['1M', '5M', '15M', '1H', '4H', 'D1', 'W1'] as const).map(tf => (
                     <button
                       key={tf}
                       type="button"
@@ -483,7 +506,7 @@ export const MultiStyleBacktestModal: React.FC<MultiStyleBacktestModalProps> = (
             <button
               type="button"
               onClick={handleRunBacktest}
-              disabled={isRunning || isLoadingData || activeCandles.length === 0}
+              disabled={isRunning || isLoadingData || hasDatasetLoadError || activeCandles.length === 0}
               className="w-full sm:w-auto px-6 py-2.5 rounded-xl font-bold bg-gradient-to-r from-purple-600 to-cyan-600 hover:from-purple-500 hover:to-cyan-500 text-white flex items-center justify-center gap-2 shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {isRunning ? (
@@ -509,6 +532,12 @@ export const MultiStyleBacktestModal: React.FC<MultiStyleBacktestModalProps> = (
           {/* نتایج بک‌تست */}
           {report && (
             <div className="space-y-4 pt-2">
+              {report.datasetContext && (
+                <div className={`rounded-xl border px-3 py-2 text-[11px] ${report.datasetContext.mode === 'REPLAY' || report.datasetContext.isSynthetic ? 'border-amber-800 bg-amber-950/30 text-amber-100' : 'border-cyan-800 bg-cyan-950/25 text-cyan-100'}`}>
+                  <strong>دادهٔ اجراشده:</strong> {report.datasetContext.sourceLabelFa} — {report.datasetContext.dateRangeFa} — {report.datasetContext.candleCount.toLocaleString('fa-IR')} کندل ({report.datasetContext.timeframe})
+                  {report.datasetContext.warnings.length > 0 && <span className="block mt-1 text-amber-200">{report.datasetContext.warnings[0]}</span>}
+                </div>
+              )}
               {/* کارت‌های شاخص‌های کلیدی عملکرد */}
               <div className="grid grid-cols-2 sm:grid-cols-6 gap-2 text-center">
                 <div className="bg-[#0e121a] p-2.5 rounded-xl border border-[#1e2535]">

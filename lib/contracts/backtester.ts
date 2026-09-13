@@ -112,6 +112,19 @@ export interface EquityCurvePoint {
   drawdownPercent: number;
 }
 
+export interface BacktestDatasetContext {
+  mode: 'HISTORICAL' | 'REPLAY';
+  symbol: SymbolId;
+  timeframe: Timeframe;
+  year?: string;
+  horizon: string;
+  sourceLabelFa: string;
+  dateRangeFa: string;
+  candleCount: number;
+  warnings: string[];
+  isSynthetic: boolean;
+}
+
 export interface BacktestReport {
   config: BacktestConfig;
   summary: BacktestSummaryMetrics;
@@ -127,4 +140,5 @@ export interface BacktestReport {
   };
   equityMonteCarlo?: EquityMonteCarloResult;
   trades: BacktestTrade[];
+  datasetContext?: BacktestDatasetContext;
 }
