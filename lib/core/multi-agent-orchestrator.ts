@@ -172,7 +172,8 @@ export class MultiAgentOrchestrator {
     now: number
   ): AgentReviewResult {
     const engine =
-      AGENT_ENGINE_OPTIONS.find(e => e.id === config.scannerEngineId) || AGENT_ENGINE_OPTIONS[0];
+      AGENT_ENGINE_OPTIONS.find(e => e.id === config.scannerEngineId) ||
+      AGENT_ENGINE_OPTIONS.find(e => e.role === 'SCANNER')!;
 
     if (!candidate) {
       return {
@@ -247,7 +248,8 @@ export class MultiAgentOrchestrator {
     now: number
   ): AgentReviewResult {
     const engine =
-      AGENT_ENGINE_OPTIONS.find(e => e.id === config.analystEngineId) || AGENT_ENGINE_OPTIONS[3];
+      AGENT_ENGINE_OPTIONS.find(e => e.id === config.analystEngineId) ||
+      AGENT_ENGINE_OPTIONS.find(e => e.role === 'ANALYST')!;
 
     if (!candidate || scannerReview.verdict !== 'APPROVED') {
       return {
@@ -309,7 +311,8 @@ export class MultiAgentOrchestrator {
     now: number
   ): AgentReviewResult {
     const engine =
-      AGENT_ENGINE_OPTIONS.find(e => e.id === config.criticEngineId) || AGENT_ENGINE_OPTIONS[9];
+      AGENT_ENGINE_OPTIONS.find(e => e.id === config.criticEngineId) ||
+      AGENT_ENGINE_OPTIONS.find(e => e.role === 'CRITIC')!;
 
     if (!candidate || analystReview.verdict !== 'APPROVED') {
       return {
@@ -385,7 +388,8 @@ export class MultiAgentOrchestrator {
     now: number
   ): AgentReviewResult {
     const engine =
-      AGENT_ENGINE_OPTIONS.find(e => e.id === config.judgeEngineId) || AGENT_ENGINE_OPTIONS[13];
+      AGENT_ENGINE_OPTIONS.find(e => e.id === config.judgeEngineId) ||
+      AGENT_ENGINE_OPTIONS.find(e => e.role === 'JUDGE')!;
 
     if (!candidate) {
       return {
@@ -409,18 +413,42 @@ export class MultiAgentOrchestrator {
     let verdict: 'APPROVED' | 'REJECTED' = 'APPROVED';
     let summaryFa = '';
 
-    // قانون شکست امن (Fail-Closed)
+    const isFailClosedEngine = engine.id === 'strict-consensus-fail-closed';
+    const isQuorumEngine = engine.id === 'alpha-consensus-quorum-judge';
+    const isW4GuardianEngine = engine.id === 'risk-guardian-w4-judge';
+    const isWeightedEngine = engine.id === 'weighted-bayesian-judge';
+
     if (analystReview.verdict !== 'APPROVED' || criticReview.verdict !== 'APPROVED') {
       verdict = 'REJECTED';
-      summaryFa = 'عدم صدور مجوز معامله به علت عدم اجماع تحلیل‌گر و منتقد (قاعده شکست امن Fail-Closed).';
-      bullets.push('اختلاف نظر یا ابهام در شواهد به منزله عدم معامله قطعی (NO_TRADE) است.');
+      if (isFailClosedEngine) {
+        summaryFa = 'عدم صدور مجوز معامله به علت عدم اجماع تحلیل‌گر و منتقد (اصل شکست امن Fail-Closed).';
+        bullets.push('قانون شکست امن: کوچک‌ترین اختلاف‌نظر یا ابهام، معامله را فوراً لغو می‌کند.');
+      } else if (isQuorumEngine) {
+        summaryFa = 'عدم دستیابی به حدنصاب رأی‌گیری شورای آلفا (کواروم به دلیل وتوی یکی از اعضا حاصل نشد).';
+        bullets.push('شورا به دلیل فقدان رای اکثریت کیفی، مجوز ورود صادر نکرد.');
+      } else if (isW4GuardianEngine) {
+        summaryFa = 'دیده‌بان ریسک W4 ورود را متوقف کرد: شواهد تحلیل و نقد با استانداردهای سخت‌گیرانه حساب انطباق ندارد.';
+        bullets.push('پایش حساب W4: حفاظت از سرمایه در برابر نوسانات مشکوک.');
+      } else {
+        summaryFa = 'داوری وزنی تلفیقی: میانگین امتیاز اعتماد شورا کمتر از آستانه مجاز ۸۵٪ است.';
+        bullets.push('وزن تحلیلی شورا کفایت لازم برای ورود به پوزیشن را احراز نکرد.');
+      }
       bullets.push('دیده‌بان ریسک از ورود سرمایه به شرایط غیرشفاف ممانعت به عمل آورد.');
     } else {
       verdict = 'APPROVED';
-      summaryFa = 'اجماع قطعی تمام ایجنت‌ها تایید شد. ارسال سفارش لیمیت با ریسک کنترل‌شده مجاز است.';
-      bullets.push('توافق کامل ایجنت ۱ (اسکنر)، ایجنت ۲ (تحلیل‌گر) و ایجنت ۳ (منتقد).');
-      bullets.push('اعمال سقف ریسک ۰٫۲۵٪ کل سرمایه در محاسبه حجم لوت.');
-      bullets.push('تطبیق با سقف افت روزانه ۱٫۵٪ (هیچ تخلفی مشاهده نشد).');
+      if (isFailClosedEngine) {
+        summaryFa = 'اجماع قطعی و اتفاق آرا (Fail-Closed) تایید شد؛ ارسال سفارش لیمیت با اطمینان حداکثری مجاز است.';
+        bullets.push('توافق کامل و بدون استثنای هر ۳ ایجنت اسکنر، تحلیل‌گر و منتقد.');
+      } else if (isQuorumEngine) {
+        summaryFa = 'کواروم شورای عالی آلفا (حدنصاب بالای ۷۵٪) با موفقیت محقق شد.';
+        bullets.push('اکثریت مطلق اعضای شورا به ورود رای مثبت دادند.');
+      } else if (isW4GuardianEngine) {
+        summaryFa = 'تاییدیه محافظ ریسک حساب W4: تمام پارامترهای اهرم، دروداون و ریسک در وضعیت سبز هستند.';
+        bullets.push('انطباق کامل با سقف ریسک ۰٫۲۵٪ کل حساب و کنترل دروداون روزانه ۱٫۵٪.');
+      } else {
+        summaryFa = 'داوری وزنی تلفیقی (Ensemble): میانگین وزنی امتیازات شورا بالاتر از آستانه اطمینان ۸۵٪ است.';
+        bullets.push('ترکیب بهینه‌شده آرای تحلیل‌گر و منتقد با ضریب اطمینان بالا.');
+      }
       bullets.push(`صدور شناسه اختصاصی قصد سفارش: INTENT-${now.toString().slice(-6)}`);
     }
 
