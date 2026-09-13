@@ -12,7 +12,7 @@ import { MultiTimeframeLevel, PercentileStepPoint } from '@/lib/contracts/monte-
 import { useTheme } from '@/context/theme-context';
 import { DataWorkbench } from '@/lib/core/data-workbench';
 import { DriftMonitor } from '@/lib/core/drift-monitor';
-import { loadYearlyDataset } from '@/lib/core/yearly-data-loader';
+import { loadYearlyDataset, type LoadedYearlyDataset } from '@/lib/core/yearly-data-loader';
 import {
   Maximize2,
   Minimize2,
@@ -26,6 +26,8 @@ import {
   Trash2,
   BoxSelect,
   FlaskConical,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react';
 
 export type DrawingToolType = 'cursor' | 'ruler' | 'horizontal' | 'rectangle';
@@ -1033,34 +1035,28 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
   const [primaryTimeframe, setPrimaryTimeframe] = useState<Timeframe>('5M');
   const [secondaryTimeframe, setSecondaryTimeframe] = useState<Timeframe>('15M');
   const [visibleCandleCount, setVisibleCandleCount] = useState(100);
+  const [historyOffset, setHistoryOffset] = useState(0);
   const [isExpanded, setIsExpanded] = useState(false);
   const [internalCrosshairPrice, setInternalCrosshairPrice] = useState<number | null>(null);
   const [activeDrawingTool, setActiveDrawingTool] = useState<DrawingToolType>('cursor');
-  const [yearlyDataMap, setYearlyDataMap] = useState<Record<string, Candle[]>>({});
+  const [yearlyDataMap, setYearlyDataMap] = useState<Record<string, LoadedYearlyDataset>>({});
   const loadedKeysRef = useRef<Set<string>>(new Set());
 
   const { actualTheme } = useTheme();
   const isDark = actualTheme === 'dark';
 
-  // بارگذاری داده‌های ۱ ساله برای تایم‌فریم‌های ماکرو (D1, 4H, 1H)
+  // تاریخچهٔ پژوهشی ۲۰۲۴ برای همهٔ تایم‌فریم‌ها فقط هنگام انتخاب آن‌ها بار می‌شود.
   useEffect(() => {
-    const requiredTfs: Array<'1H' | '4H' | 'D1'> = [];
-    if (['1H', '4H', 'D1'].includes(primaryTimeframe)) {
-      requiredTfs.push(primaryTimeframe as '1H' | '4H' | 'D1');
-    }
-    if (isSplitView && ['1H', '4H', 'D1'].includes(secondaryTimeframe)) {
-      requiredTfs.push(secondaryTimeframe as '1H' | '4H' | 'D1');
-    }
+    const requiredTfs: Timeframe[] = [primaryTimeframe];
+    if (isSplitView) requiredTfs.push(secondaryTimeframe);
 
     requiredTfs.forEach((tf) => {
       const key = `${symbol}-${tf}`;
       if (!loadedKeysRef.current.has(key)) {
         loadedKeysRef.current.add(key);
-        loadYearlyDataset(symbol, tf)
+        loadYearlyDataset(symbol, tf, '2024')
           .then((loaded) => {
-            if (loaded.candles.length > 0) {
-              setYearlyDataMap((prev) => ({ ...prev, [key]: loaded.candles }));
-            }
+            if (loaded.candles.length > 0) setYearlyDataMap((prev) => ({ ...prev, [key]: loaded }));
           })
           .catch((err) => {
             loadedKeysRef.current.delete(key);
@@ -1069,6 +1065,8 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
       }
     });
   }, [symbol, primaryTimeframe, secondaryTimeframe, isSplitView]);
+
+  useEffect(() => { setHistoryOffset(0); }, [symbol, primaryTimeframe]);
 
   // پالت رنگ‌های هماهنگ با قالب فعال
   const themeColors = useMemo(
@@ -1094,40 +1092,30 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
   );
 
   // کندل‌های نمایان چارت اولیه بر اساس تایم‌فریم انتخابی
-  const activePrimaryCandles = useMemo(() => {
-    if (primaryTimeframe === '5M') {
-      return candles.slice(-Math.max(1, Math.min(visibleCandleCount, candles.length)));
-    }
-    if (primaryTimeframe === '15M') {
-      const agg = DataWorkbench.aggregateCandles(candles, '15M');
-      return agg.slice(-Math.max(1, Math.min(visibleCandleCount, agg.length)));
-    }
+  const fullPrimaryCandles = useMemo(() => {
     const key = `${symbol}-${primaryTimeframe}`;
     const dataset = yearlyDataMap[key];
-    if (dataset && dataset.length > 0) {
-      const maxCount = primaryTimeframe === 'D1' ? 365 : Math.min(dataset.length, visibleCandleCount * 2);
-      return dataset.slice(-maxCount);
-    }
+    if (dataset && dataset.candles.length > 0) return dataset.candles;
+    if (primaryTimeframe === '5M') return candles;
     const agg = DataWorkbench.aggregateCandles(candles, primaryTimeframe);
     return agg.length > 0 ? agg : candles;
-  }, [candles, primaryTimeframe, symbol, yearlyDataMap, visibleCandleCount]);
+  }, [candles, primaryTimeframe, symbol, yearlyDataMap]);
+
+  const activePrimaryCandles = useMemo(() => {
+    const end = Math.max(0, fullPrimaryCandles.length - historyOffset);
+    const start = Math.max(0, end - visibleCandleCount);
+    return fullPrimaryCandles.slice(start, end);
+  }, [fullPrimaryCandles, historyOffset, visibleCandleCount]);
 
   // تولید کندل‌های کلان چارت دوم
   const activeSecondaryCandles = useMemo(() => {
     if (!isSplitView) return [];
-    if (secondaryTimeframe === '15M') {
-      const agg = DataWorkbench.aggregateCandles(candles, '15M');
-      return agg.slice(-Math.min(100, agg.length));
-    }
     const key = `${symbol}-${secondaryTimeframe}`;
     const dataset = yearlyDataMap[key];
-    if (dataset && dataset.length > 0) {
-      const maxCount = secondaryTimeframe === 'D1' ? 365 : Math.min(dataset.length, 150);
-      return dataset.slice(-maxCount);
-    }
+    if (dataset && dataset.candles.length > 0) return dataset.candles.slice(-Math.min(visibleCandleCount, dataset.candles.length));
     const agg = DataWorkbench.aggregateCandles(candles, secondaryTimeframe);
-    return agg.slice(-Math.min(100, agg.length));
-  }, [isSplitView, candles, secondaryTimeframe, symbol, yearlyDataMap]);
+    return agg.slice(-Math.min(visibleCandleCount, agg.length));
+  }, [isSplitView, candles, secondaryTimeframe, symbol, yearlyDataMap, visibleCandleCount]);
 
   // مدیریت کراس‌هیر مشترک دوسویه
   const handleCrosshairUpdate = useCallback(
@@ -1141,6 +1129,7 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
   );
 
   const activeCrosshairPrice = crosshairPrice !== null ? crosshairPrice : internalCrosshairPrice;
+  const primaryDataset = yearlyDataMap[`${symbol}-${primaryTimeframe}`];
 
   const CHART_TOTAL_HEIGHT = isExpanded ? 640 : isSplitView ? 340 : 360;
 
@@ -1175,7 +1164,7 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
 
           {/* انتخابگر تایم‌فریم اصلی چارت */}
           <div className="flex items-center bg-[var(--bg-canvas)] rounded-xl p-0.5 border border-[var(--border-subtle)] text-[11px] font-mono">
-            {(['5M', '15M', '1H', '4H', 'D1'] as Timeframe[]).map((tf) => (
+            {(['1M', '5M', '15M', '1H', '4H', 'D1', 'W1'] as Timeframe[]).map((tf) => (
               <button
                 key={tf}
                 type="button"
@@ -1185,7 +1174,7 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
                     ? 'bg-cyan-500 text-slate-950 font-bold shadow-xs'
                     : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'
                 }`}
-                title={tf === 'D1' ? 'تایم‌فریم روزانه - پوشش ۱ ساله کامل' : `تایم‌فریم ${tf}`}
+                title={`تایم‌فریم تاریخی ${tf}، در صورت وجود دادهٔ معتبر`}
               >
                 {tf}
               </button>
@@ -1195,8 +1184,13 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
           {/* برچسب وضعیت بستر */}
           <div className="hidden lg:flex items-center gap-1 text-[10px] font-sans">
             <span className="px-1.5 py-0.5 rounded bg-[var(--bg-canvas)] border border-[var(--border-subtle)] text-[var(--text-muted)]">
-              بستر: {primaryTimeframe === 'D1' ? 'ماکرو ۱ ساله' : 'H1/4H'} ({activeCandidate ? (activeCandidate.direction === 'BUY' ? 'صعودی' : 'نزولی') : 'خنثی'})
+              تاریخچهٔ ۲۰۲۴: {activePrimaryCandles.length.toLocaleString('fa-IR')} از {fullPrimaryCandles.length.toLocaleString('fa-IR')} کندل ({primaryTimeframe})
             </span>
+            {primaryDataset && (
+              <span className={`px-1.5 py-0.5 rounded border ${primaryDataset.provenance.isSynthetic ? 'text-amber-400 border-amber-800 bg-amber-950/30' : 'text-cyan-400 border-cyan-800 bg-cyan-950/30'}`}>
+                {primaryDataset.coverage.labelFa}
+              </span>
+            )}
           </div>
         </div>
 
@@ -1301,7 +1295,7 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
           {/* در صورت فعال بودن نمای دوگانه: انتخابگر تایم‌فریم ثانویه */}
           {isSplitView && (
             <div className="flex items-center bg-[var(--bg-canvas)] rounded-lg p-0.5 border border-[var(--border-subtle)] text-[11px] font-mono">
-              {(['15M', '1H', '4H', 'D1'] as Timeframe[]).map((tf) => (
+              {(['1M', '5M', '15M', '1H', '4H', 'D1', 'W1'] as Timeframe[]).map((tf) => (
                 <button
                   key={tf}
                   type="button"
@@ -1311,13 +1305,37 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
                       ? 'bg-cyan-500/20 text-cyan-400 font-bold border border-cyan-500/30'
                       : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'
                   }`}
-                  title={tf === 'D1' ? 'چارت دوم روزانه ۱ ساله کامل' : `تایم‌فریم ${tf}`}
+                  title={`تایم‌فریم ${tf}`}
                 >
                   {tf}
                 </button>
               ))}
             </div>
           )}
+
+          {/* پیمایش پنجرهٔ تاریخچه بدون رندر همهٔ کندل‌ها */}
+          <div className="flex items-center gap-1 border-r border-[var(--border-subtle)] pr-2">
+            <button
+              type="button"
+              onClick={() => setHistoryOffset(offset => Math.min(Math.max(0, fullPrimaryCandles.length - activePrimaryCandles.length), offset + Math.max(1, Math.floor(visibleCandleCount * 0.8))))}
+              disabled={historyOffset >= fullPrimaryCandles.length - activePrimaryCandles.length}
+              className="p-1 rounded hover:bg-[var(--bg-surface-raised)] disabled:opacity-40"
+              title="نمایش کندل‌های قدیمی‌تر"
+              aria-label="نمایش کندل‌های قدیمی‌تر"
+            >
+              <ChevronRight className="w-3.5 h-3.5" />
+            </button>
+            <button
+              type="button"
+              onClick={() => setHistoryOffset(offset => Math.max(0, offset - Math.max(1, Math.floor(visibleCandleCount * 0.8))))}
+              disabled={historyOffset === 0}
+              className="p-1 rounded hover:bg-[var(--bg-surface-raised)] disabled:opacity-40"
+              title="نمایش کندل‌های جدیدتر"
+              aria-label="نمایش کندل‌های جدیدتر"
+            >
+              <ChevronLeft className="w-3.5 h-3.5" />
+            </button>
+          </div>
 
           {/* دکمه اختصاصی ورود به آزمایشگاه بک‌تست تاریخی */}
           {onOpenBacktest && (
@@ -1346,8 +1364,8 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
             </button>
             <button
               type="button"
-              onClick={() => setVisibleCandleCount((count) => Math.min(candles.length * 3, Math.ceil(count * 1.5)))}
-              disabled={activePrimaryCandles.length <= 10}
+              onClick={() => setVisibleCandleCount((count) => Math.min(fullPrimaryCandles.length, Math.ceil(count * 1.5)))}
+              disabled={activePrimaryCandles.length >= fullPrimaryCandles.length}
               className="p-1 rounded hover:bg-[var(--bg-surface-raised)] disabled:opacity-40"
               title="کوچک‌نمایی کندل‌ها"
               aria-label="کوچک‌نمایی نمودار"

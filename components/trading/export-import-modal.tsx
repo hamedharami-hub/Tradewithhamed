@@ -46,7 +46,7 @@ export function ExportImportModal({
 
     setImportStatus({
       success: true,
-      message: 'فایل پشتیبان JSON با موفقیت دانلود شد.',
+      message: 'دانلود فایل پشتیبان v2.0 به مرورگر سپرده شد. این فایل فقط وضعیت ریپلی محلی را نگه می‌دارد.',
     });
   };
 
@@ -65,7 +65,7 @@ export function ExportImportModal({
         PersistenceStorage.saveToLocal(validation.data.state);
         setImportStatus({
           success: true,
-          message: `وضعیت با موفقیت بازیابی شد: نماد ${validation.data.state.symbol}، گام ریپلی ${validation.data.state.currentStepIndex}`,
+          message: `وضعیت ریپلی بازیابی شد: نماد ${validation.data.state.symbol}، گام ${validation.data.state.currentStepIndex}${validation.migratedFromV1 ? ' (فایل v1 سازگار شد)' : ''}.`,
         });
       } else {
         setImportStatus({
@@ -74,7 +74,9 @@ export function ExportImportModal({
         });
       }
     };
+    reader.onerror = () => setImportStatus({ success: false, message: 'خواندن فایل پشتیبان ناموفق بود.' });
     reader.readAsText(file);
+    e.target.value = '';
   };
 
   // پاک‌سازی وضعیت ذخیره‌شده محلی
@@ -94,7 +96,7 @@ export function ExportImportModal({
           <div className="flex items-center gap-2">
             <Database className="w-5 h-5 text-cyan-400" />
             <h3 className="font-bold text-zinc-100 text-sm">
-              پشتیبان‌گیری و بازیابی داده‌ها (Export / Import JSON v1.0)
+              پشتیبان‌گیری ریپلی محلی (Export / Import JSON v2.0)
             </h3>
           </div>
           <button
@@ -106,8 +108,7 @@ export function ExportImportModal({
         </div>
 
         <p className="text-xs text-zinc-400 leading-relaxed">
-          شما می‌توانید وضعیت جاری تحلیل، گام ریپلی، و تنظیمات شبیه‌ساز را به صورت فایل JSON استاندارد
-          استخراج کرده و در جلسات آینده یا دستگاه دیگر بدون اتلاف داده بازیابی کنید.
+          این فایل نماد، گام ریپلی و نمای موجودی حساب آزمایشی را نگه می‌دارد. سفارش‌های بروکر، توکن‌های ورود و وزن مدل‌های AI عمداً در آن قرار نمی‌گیرند.
         </p>
 
         {/* بازخورد عملیات */}
@@ -142,7 +143,7 @@ export function ExportImportModal({
               <Download className="w-4 h-4 text-cyan-400" />
             </div>
             <p className="text-[11px] text-zinc-500">
-              دانلود وضعیت فعلی شبیه‌ساز با اعتبارسنجی اسکیما v1.0
+              دانلود وضعیت ریپلی با اعتبارسنجی اسکیما v2.0
             </p>
           </button>
 

@@ -136,6 +136,11 @@ export const OfflineAIManagerModal: React.FC<OfflineAIManagerModalProps> = ({
       return;
     }
 
+    const readiness = await BrowserOfflineAIManager.getDownloadReadiness(model.id);
+    if (!readiness.canStart) {
+      setActionMessage(`دانلود آغاز نشد: ${readiness.reasonFa}`);
+      return;
+    }
     const consent = confirm(
       `درخواست تایید دانلود فایل‌های مدل:\n` +
       `مدل: ${model.name}\n` +
@@ -671,7 +676,7 @@ export const OfflineAIManagerModal: React.FC<OfflineAIManagerModalProps> = ({
                           </div>
                           <div className="flex items-center justify-between text-[10px] text-zinc-400 font-mono">
                             <span>
-                              {downloadProgress.downloadedMB} MB از {downloadProgress.totalMB} MB
+                              حدود {downloadProgress.downloadedMB} MB از {downloadProgress.totalMB} MB
                             </span>
                             <span>سرعت: {downloadProgress.speedMBs} MB/s</span>
                           </div>

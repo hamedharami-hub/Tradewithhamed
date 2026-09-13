@@ -1,131 +1,72 @@
 import { SymbolId } from '../contracts/market';
 
-export interface AppExportPayloadV1 {
-  schemaVersion: 'v1.0';
-  exportedAt: number;
-  environment: 'demo';
-  app: 'Hamed Trading Lab';
-  state: {
-    symbol: SymbolId;
-    currentStepIndex: number;
-    accountBalance: number;
-    accountEquity: number;
-    sessionNotes?: string;
-  };
+export interface BackupState {
+  symbol: SymbolId;
+  currentStepIndex: number;
+  accountBalance: number;
+  accountEquity: number;
+  sessionNotes?: string;
 }
 
-const STORAGE_KEY = 'hamed_trading_lab_state_v1';
+export interface AppExportPayloadV1 { schemaVersion: 'v1.0'; exportedAt: number; environment: 'demo'; app: 'Hamed Trading Lab'; state: BackupState; }
+export interface AppExportPayloadV2 {
+  schemaVersion: 'v2.0'; exportedAt: number; environment: 'demo'; app: 'Hamed Trading Lab'; backupKind: 'LOCAL_REPLAY_STATE';
+  includes: Array<'symbol' | 'replayPosition' | 'displayedAccountSnapshot'>;
+  excludes: Array<'brokerOrders' | 'brokerTokens' | 'aiModelWeights'>;
+  state: BackupState;
+}
+export type AppExportPayload = AppExportPayloadV1 | AppExportPayloadV2;
+const STORAGE_KEY = 'hamed_trading_lab_state_v2';
+const VALID_SYMBOLS: SymbolId[] = ['XAUUSD', 'EURUSD', 'GBPUSD', 'USDJPY'];
+
+function validState(value: unknown): value is BackupState {
+  if (!value || typeof value !== 'object') return false;
+  const state = value as Partial<BackupState>;
+  return VALID_SYMBOLS.includes(state.symbol as SymbolId)
+    && typeof state.currentStepIndex === 'number' && Number.isInteger(state.currentStepIndex) && state.currentStepIndex >= 0
+    && typeof state.accountBalance === 'number' && Number.isFinite(state.accountBalance) && state.accountBalance >= 0
+    && typeof state.accountEquity === 'number' && Number.isFinite(state.accountEquity) && state.accountEquity >= 0
+    && (state.sessionNotes === undefined || typeof state.sessionNotes === 'string');
+}
 
 export class PersistenceStorage {
-  /**
-   * استخراج وضعیت جاری به ساختار استاندارد JSON با اسکیما v1.0
-   */
-  public static exportState(state: AppExportPayloadV1['state']): string {
-    const payload: AppExportPayloadV1 = {
-      schemaVersion: 'v1.0',
-      exportedAt: Date.now(),
-      environment: 'demo',
-      app: 'Hamed Trading Lab',
-      state,
+  public static exportState(state: BackupState): string {
+    const payload: AppExportPayloadV2 = {
+      schemaVersion: 'v2.0', exportedAt: Date.now(), environment: 'demo', app: 'Hamed Trading Lab', backupKind: 'LOCAL_REPLAY_STATE',
+      includes: ['symbol', 'replayPosition', 'displayedAccountSnapshot'], excludes: ['brokerOrders', 'brokerTokens', 'aiModelWeights'], state,
     };
     return JSON.stringify(payload, null, 2);
   }
 
-  /**
-   * اعتبارسنجی دقیق و بارگذاری فایل JSON ورودی (Schema Validation)
-   */
-  public static validateAndImport(jsonString: string): {
-    valid: boolean;
-    data?: AppExportPayloadV1;
-    error?: string;
-  } {
+  public static validateAndImport(jsonString: string): { valid: boolean; data?: AppExportPayload; error?: string; migratedFromV1?: boolean } {
     try {
-      const parsed = JSON.parse(jsonString) as Partial<AppExportPayloadV1>;
-
-      if (!parsed || typeof parsed !== 'object') {
-        return { valid: false, error: 'فرمت فایل JSON نامعتبر است.' };
-      }
-
-      if (parsed.schemaVersion !== 'v1.0') {
-        return {
-          valid: false,
-          error: `نسخه اسکیما نامعتبر است: ${parsed.schemaVersion || 'نامشخص'}. نسخه مجاز: v1.0`,
-        };
-      }
-
-      if (parsed.app !== 'Hamed Trading Lab') {
-        return { valid: false, error: 'فایل پشتیبان متعلق به سامانه Hamed Trading Lab نیست.' };
-      }
-
-      if (!parsed.state || typeof parsed.state !== 'object') {
-        return { valid: false, error: 'بخش وضعیت (state) در فایل پشتیبان وجود ندارد.' };
-      }
-
-      const { symbol, currentStepIndex } = parsed.state;
-      if (symbol !== 'XAUUSD' && symbol !== 'EURUSD') {
-        return { valid: false, error: `نماد پشتیبان نامعتبر است: ${symbol}` };
-      }
-
-      if (typeof currentStepIndex !== 'number' || currentStepIndex < 0) {
-        return { valid: false, error: 'گام ریپلی نامعتبر است.' };
-      }
-
-      return {
-        valid: true,
-        data: parsed as AppExportPayloadV1,
-      };
-    } catch (err) {
-      return {
-        valid: false,
-        error: `خطا در پارس کردن فایل JSON: ${(err as Error).message}`,
-      };
-    }
+      const parsed = JSON.parse(jsonString) as Partial<AppExportPayload>;
+      if (!parsed || typeof parsed !== 'object') return { valid: false, error: 'فرمت فایل JSON نامعتبر است.' };
+      if (parsed.app !== 'Hamed Trading Lab') return { valid: false, error: 'فایل پشتیبان متعلق به سامانه Hamed Trading Lab نیست.' };
+      if (!validState(parsed.state)) return { valid: false, error: 'نماد، گام ریپلی یا مقادیر حساب در فایل پشتیبان نامعتبر است.' };
+      if (parsed.schemaVersion === 'v1.0') return { valid: true, data: parsed as AppExportPayloadV1, migratedFromV1: true };
+      if (parsed.schemaVersion !== 'v2.0' || parsed.backupKind !== 'LOCAL_REPLAY_STATE') return { valid: false, error: `نسخه یا نوع پشتیبان پشتیبانی نمی‌شود: ${parsed.schemaVersion || 'نامشخص'}.` };
+      return { valid: true, data: parsed as AppExportPayloadV2 };
+    } catch (error) { return { valid: false, error: `خطا در خواندن JSON: ${(error as Error).message}` }; }
   }
 
-  /**
-   * ذخیره خودکار در حافظه محلی مرورگر (Local Storage)
-   */
-  public static saveToLocal(state: AppExportPayloadV1['state']): boolean {
+  public static saveToLocal(state: BackupState): boolean {
     if (typeof window === 'undefined') return false;
-    try {
-      const payload: AppExportPayloadV1 = {
-        schemaVersion: 'v1.0',
-        exportedAt: Date.now(),
-        environment: 'demo',
-        app: 'Hamed Trading Lab',
-        state,
-      };
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
-      return true;
-    } catch {
-      return false;
-    }
+    try { localStorage.setItem(STORAGE_KEY, this.exportState(state)); return true; } catch { return false; }
   }
 
-  /**
-   * بازیابی از حافظه محلی مرورگر
-   */
-  public static loadFromLocal(): AppExportPayloadV1['state'] | null {
+  public static loadFromLocal(): BackupState | null {
     if (typeof window === 'undefined') return null;
     try {
-      const raw = localStorage.getItem(STORAGE_KEY);
+      const raw = localStorage.getItem(STORAGE_KEY) || localStorage.getItem('hamed_trading_lab_state_v1');
       if (!raw) return null;
-      const res = this.validateAndImport(raw);
-      return res.valid && res.data ? res.data.state : null;
-    } catch {
-      return null;
-    }
+      const result = this.validateAndImport(raw);
+      return result.valid && result.data ? result.data.state : null;
+    } catch { return null; }
   }
 
-  /**
-   * پاک‌سازی حافظه محلی
-   */
   public static clearLocal(): void {
     if (typeof window === 'undefined') return;
-    try {
-      localStorage.removeItem(STORAGE_KEY);
-    } catch {
-      // نادیده گرفتن
-    }
+    try { localStorage.removeItem(STORAGE_KEY); localStorage.removeItem('hamed_trading_lab_state_v1'); } catch { /* optional browser storage */ }
   }
 }

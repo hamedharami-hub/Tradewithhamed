@@ -364,6 +364,12 @@ export interface ProgressReportPayload {
   text: string;
 }
 
+export interface ModelDownloadReadiness {
+  canStart: boolean;
+  reasonFa: string;
+  availableStorageMB: number;
+}
+
 interface InferenceOptions {
   systemPrompt?: string;
   maxTokens?: number;
@@ -463,7 +469,22 @@ export class BrowserOfflineAIManager {
     } catch { return false; }
   }
 
-  private static useFastMirror: boolean = true;
+  static async getDownloadReadiness(modelId: string): Promise<ModelDownloadReadiness> {
+    const model = PLAN_V4_MODELS.find(item => item.id === modelId);
+    if (!model) return { canStart: false, reasonFa: 'مدل در فهرست برنامه وجود ندارد.', availableStorageMB: 0 };
+    if (model.runtime === 'Core-Deterministic') return { canStart: true, reasonFa: 'این موتور نیازی به دانلود ندارد.', availableStorageMB: 0 };
+    if (model.runtime === 'Chrome-Builtin') return { canStart: false, reasonFa: 'Chrome Prompt API در این نسخه پیاده‌سازی نشده است.', availableStorageMB: 0 };
+    if (!(await this.isModelSupported(modelId))) return { canStart: false, reasonFa: 'artifact این مدل در registry نسخهٔ نصب‌شدهٔ WebLLM وجود ندارد.', availableStorageMB: 0 };
+    const hardware = await this.probeHardware();
+    if (!hardware.hasWebGPU) return { canStart: false, reasonFa: 'WebGPU در این مرورگر یا دستگاه فعال نیست.', availableStorageMB: 0 };
+    const availableStorageMB = Math.max(0, hardware.estimatedStorageQuotaMB - hardware.estimatedStorageUsageMB);
+    if (hardware.estimatedStorageQuotaMB > 0 && availableStorageMB < Math.ceil(model.downloadSizeMB * 1.2)) {
+      return { canStart: false, reasonFa: `فضای cache کافی نیست: حدود ${availableStorageMB}MB آزاد است، اما حداقل ${Math.ceil(model.downloadSizeMB * 1.2)}MB لازم است.`, availableStorageMB };
+    }
+    return { canStart: true, reasonFa: 'آمادهٔ دانلود و بارگذاری است؛ نتیجهٔ نهایی به شبکه و GPU دستگاه وابسته است.', availableStorageMB };
+  }
+
+  private static useFastMirror: boolean = false;
 
   static setUseFastMirror(enabled: boolean): void {
     this.useFastMirror = enabled;
@@ -489,6 +510,8 @@ export class BrowserOfflineAIManager {
     }
     if (model.runtime === 'Chrome-Builtin') return { success: false, messageFa: 'Chrome Prompt API در این نسخه پیاده‌سازی نشده و قابل انتخاب نیست.' };
     if (typeof window === 'undefined') return { success: false, messageFa: 'محیط اجرای مرورگر در دسترس نیست.' };
+    const readiness = await this.getDownloadReadiness(modelId);
+    if (!readiness.canStart) return { success: false, messageFa: readiness.reasonFa };
     if (this.activeEngine && this.currentResidentModelId === modelId) return { success: true, messageFa: `مدل ${model.name} از قبل در حافظه اجراست.` };
     const operationId = this.beginOperation('LOADING');
     try {
@@ -548,7 +571,7 @@ export class BrowserOfflineAIManager {
 
       let friendlyMsg = `خطا در بارگذاری مدل: ${rawError}`;
       if (rawError.includes('Failed to fetch') || rawError.includes('NetworkError') || rawError.includes('fetch failed')) {
-        friendlyMsg = 'خطای اتصال شبکه حین دانلود وزن‌های مدل (محدودیت یا نوسان اینترنت بین‌الملل). راهکار پیشنهادی: سوئیچ به «موتور قطعی ریاضی S0 (۰ مگابایت)» را از بالای پنجره انتخاب کنید تا بدون نیاز به حتی ۱ مگابایت دانلود، تحلیل فوری اجرا شود.';
+        friendlyMsg = `دانلود یا دسترسی به artifact ناموفق بود (${this.getUseFastMirror() ? 'mirror' : 'Hugging Face مستقیم'}). اتصال شبکه و تنظیم mirror را بررسی و دوباره تلاش کنید.`;
       } else if (rawError.includes('QuotaExceededError')) {
         friendlyMsg = 'حافظه کش مرورگر پر شده است. لطفاً کش مدل‌های قبلی را حذف کنید تا فضا آزاد شود.';
       }
