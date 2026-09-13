@@ -10,8 +10,8 @@ export async function runDatasetValidatorTests() {
   const weeklyGold = await loadYearlyDataset('XAUUSD', 'W1', '2024');
   return [
     { name: 'Dataset validator rejects invalid OHLC', passed: quality.quality.rejectedBars === 1, details: `${quality.quality.rejectedBars} invalid bars rejected` },
-    { name: '2025 intraday provenance is explicit', passed: loaded.provenance.isSynthetic && loaded.provenance.isBrokerMatched === false, details: loaded.provenance.labelFa },
-    { name: 'Partial 2025 M1 coverage is not presented as full year', passed: loaded.coverage.coversRequestedYear === false && loaded.coverage.coveredDays < 360, details: loaded.coverage.labelFa },
-    { name: 'Weekly gold is explicitly derived from daily data when no W1 CSV exists', passed: weeklyGold.candles.length > 40 && weeklyGold.provenance.warnings.some(warning => warning.includes('W1')), details: weeklyGold.provenance.labelFa },
+    { name: '2025 intraday provenance identifies non-synthetic historical data', passed: loaded.provenance.isSynthetic === false && loaded.provenance.isBrokerMatched === false, details: loaded.provenance.labelFa },
+    { name: '2025 M1 coverage spans the full requested year', passed: loaded.coverage.coversRequestedYear && loaded.coverage.coveredDays >= 360, details: loaded.coverage.labelFa },
+    { name: 'Weekly gold historical dataset is available across 2024', passed: weeklyGold.candles.length > 40 && weeklyGold.coverage.coveredDays > 350, details: weeklyGold.provenance.labelFa },
   ];
 }

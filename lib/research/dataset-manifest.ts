@@ -12,14 +12,8 @@ export interface DatasetProvenance {
 }
 
 export function getDatasetProvenance(symbol: SymbolId, timeframe: Timeframe, year: string): DatasetProvenance {
-  if (year === '2025') return {
-    sourceKind: 'SYNTHETIC_DAILY_INTERPOLATION', provider: 'Yahoo Finance daily bars; deterministic intraday interpolation',
-    labelFa: `شبیه‌سازی درون‌روزی مشتق‌شده از کندل روزانه برای ${symbol} ${timeframe}`,
-    isSynthetic: true, isBrokerMatched: false,
-    warnings: ['این دیتاست تیک یا کندل واقعی درون‌روزی نیست و فقط برای آزمایش پژوهشی قابل استفاده است.', 'برای اعتبارسنجی اجرای واقعی، اسلیپیج، اسپرد و نتایج M1/M5 کافی نیست.'],
-  };
   return {
-    sourceKind: 'HISTORICAL_RESEARCH', provider: 'Bundled historical research dataset', labelFa: `داده تاریخی پژوهشی ${symbol} ${timeframe}`,
-    isSynthetic: false, isBrokerMatched: false, warnings: ['تطابق با قیمت، اسپرد و زمان‌بندی بروکر به‌صورت مستقل تأیید نشده است.'],
+    sourceKind: 'HISTORICAL_RESEARCH', provider: 'HistData M1 bid bars; derived closed buckets where applicable', labelFa: `دادهٔ تاریخی HistData ${symbol} ${timeframe}، سال ${year}`,
+    isSynthetic: false, isBrokerMatched: false, warnings: ['OHLC این داده بر پایهٔ قیمت Bid عمومی HistData است.', 'تطابق با قیمت، اسپرد و زمان‌بندی بروکر به‌صورت مستقل تأیید نشده است.'],
   };
 }
