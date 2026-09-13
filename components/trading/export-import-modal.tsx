@@ -27,6 +27,11 @@ export function ExportImportModal({
     success?: boolean;
     message?: string;
   } | null>(null);
+  const [pendingRestore, setPendingRestore] = useState<{
+    state: AppExportPayloadV1['state'];
+    filename: string;
+    migratedFromV1: boolean;
+  } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   if (!isOpen) return null;
@@ -38,7 +43,7 @@ export function ExportImportModal({
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `hamed-trading-lab-backup-v1.0-${Date.now()}.json`;
+    a.download = `hamed-trading-lab-backup-v2.0-${Date.now()}.json`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -54,20 +59,31 @@ export function ExportImportModal({
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    if (file.size > 1_000_000) {
+      setPendingRestore(null);
+      setImportStatus({ success: false, message: 'فایل پشتیبان بزرگ‌تر از حد مجاز ۱ مگابایت است.' });
+      e.target.value = '';
+      return;
+    }
 
     const reader = new FileReader();
     reader.onload = event => {
-      const content = event.target?.result as string;
+      const content = event.target?.result;
+      if (typeof content !== 'string') {
+        setPendingRestore(null);
+        setImportStatus({ success: false, message: 'محتوای فایل پشتیبان قابل خواندن نیست.' });
+        return;
+      }
       const validation = PersistenceStorage.validateAndImport(content);
 
       if (validation.valid && validation.data) {
-        onStateRestored(validation.data.state);
-        PersistenceStorage.saveToLocal(validation.data.state);
+        setPendingRestore({ state: validation.data.state, filename: file.name, migratedFromV1: Boolean(validation.migratedFromV1) });
         setImportStatus({
           success: true,
-          message: `وضعیت ریپلی بازیابی شد: نماد ${validation.data.state.symbol}، گام ${validation.data.state.currentStepIndex}${validation.migratedFromV1 ? ' (فایل v1 سازگار شد)' : ''}.`,
+          message: 'فایل معتبر است؛ پیش‌نمایش را بررسی و سپس بازیابی را تأیید کنید.',
         });
       } else {
+        setPendingRestore(null);
         setImportStatus({
           success: false,
           message: validation.error || 'اعتبارسنجی فایل پشتیبان با شکست مواجه شد.',
@@ -77,6 +93,17 @@ export function ExportImportModal({
     reader.onerror = () => setImportStatus({ success: false, message: 'خواندن فایل پشتیبان ناموفق بود.' });
     reader.readAsText(file);
     e.target.value = '';
+  };
+
+  const handleApplyRestore = () => {
+    if (!pendingRestore) return;
+    onStateRestored(pendingRestore.state);
+    const wasSaved = PersistenceStorage.saveToLocal(pendingRestore.state);
+    setImportStatus({
+      success: true,
+      message: `وضعیت ریپلی بازیابی شد: نماد ${pendingRestore.state.symbol}، گام ${pendingRestore.state.currentStepIndex}${pendingRestore.migratedFromV1 ? ' (فایل v1 سازگار شد)' : ''}${wasSaved ? '؛ نسخهٔ محلی هم به‌روز شد.' : '؛ ذخیرهٔ محلی مرورگر در دسترس نبود.'}`,
+    });
+    setPendingRestore(null);
   };
 
   // پاک‌سازی وضعیت ذخیره‌شده محلی
@@ -108,7 +135,7 @@ export function ExportImportModal({
         </div>
 
         <p className="text-xs text-zinc-400 leading-relaxed">
-          این فایل نماد، گام ریپلی و نمای موجودی حساب آزمایشی را نگه می‌دارد. سفارش‌های بروکر، توکن‌های ورود و وزن مدل‌های AI عمداً در آن قرار نمی‌گیرند.
+          این فایل نماد و گام ریپلی را بازیابی می‌کند. نمای موجودی حساب آزمایشی فقط برای مرجع در فایل نگه‌داری می‌شود و به حساب بروکر بازگردانی نمی‌شود. سفارش‌های بروکر، توکن‌های ورود و وزن مدل‌های AI عمداً در آن قرار نمی‌گیرند.
         </p>
 
         {/* بازخورد عملیات */}
@@ -126,6 +153,24 @@ export function ExportImportModal({
               <AlertTriangle className="w-4 h-4 shrink-0 text-rose-400" />
             )}
             <span>{importStatus.message}</span>
+          </div>
+        )}
+
+        {pendingRestore && (
+          <div className="rounded-xl border border-cyan-800/80 bg-cyan-950/30 p-3 space-y-2 text-xs text-cyan-100">
+            <div className="flex items-center justify-between gap-3">
+              <strong>پیش‌نمایش بازیابی</strong>
+              <span className="text-[10px] text-cyan-300 truncate" title={pendingRestore.filename}>{pendingRestore.filename}</span>
+            </div>
+            <div className="grid grid-cols-2 gap-2 text-[11px]">
+              <span>نماد: <strong dir="ltr">{pendingRestore.state.symbol}</strong></span>
+              <span>گام ریپلی: <strong>{pendingRestore.state.currentStepIndex}</strong></span>
+              <span>موجودی مرجع: <strong>${pendingRestore.state.accountBalance.toLocaleString('en-US')}</strong></span>
+              <span>اکوئیتی مرجع: <strong>${pendingRestore.state.accountEquity.toLocaleString('en-US')}</strong></span>
+            </div>
+            <button type="button" onClick={handleApplyRestore} className="w-full rounded-lg bg-cyan-600 px-3 py-2 font-bold text-white hover:bg-cyan-500">
+              تأیید و بازیابی ریپلی
+            </button>
           </div>
         )}
 
