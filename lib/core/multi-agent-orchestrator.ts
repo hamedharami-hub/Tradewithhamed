@@ -270,8 +270,8 @@ export class MultiAgentOrchestrator {
     const isNeural = engine.type === 'NEURAL_WEBGPU';
     const confidence = isNeural ? 0.92 : 0.88;
     const bullets: string[] = [
-      `هم‌راستایی بستر کلان (Context 1H/4H) با جهت ${candidate.direction} تایید می‌شود.`,
-      `درجه ابهام (Uncertainty): پایین (حداکثر ۱۲٪ به دلیل شفافیت در سوییپ سشن).`,
+      `هم‌راستایی بستر کلان (Context ساختار HTF متناسب با تایم‌فریم ترید) با جهت ${candidate.direction} تایید می‌شود.`,
+      `درجه ابهام (Uncertainty): پایین (حداکثر ۱۲٪ به دلیل شفافیت در سوییپ نقدینگی).`,
       `سناریوی ابطال تحلیلی: نفوذ قیمت به پشت سطح حد ضرر (${candidate.stopLossPrice}).`,
     ];
 

@@ -84,7 +84,7 @@ export const AGENT_ROLES_INFO: Record<AgentRole, AgentInfo> = {
     role: 'ANALYST',
     nameEn: 'Context & Trend Analyst Agent',
     nameFa: 'ایجنت ۲: تحلیل‌گر بستر و جهت روند',
-    missionFa: 'بررسی هم‌راستایی روند تایم بالاتر (4H/1H)، سنجش مومنتوم، ارزیابی عدم قطعیت و صدور رأی تایید با درصد اطمینان.',
+    missionFa: 'بررسی هم‌راستایی روند در تایم‌فریم ساختار کلان (HTF متناسب با تایم معامله: M15/H1/H4)، سنجش مومنتوم، ارزیابی عدم قطعیت و صدور رأی تایید با درصد اطمینان.',
     decisionOutputsFa: 'تایید ورود (TRADE) یا رد (NO_TRADE) با درصد اطمینان',
   },
   CRITIC: {
