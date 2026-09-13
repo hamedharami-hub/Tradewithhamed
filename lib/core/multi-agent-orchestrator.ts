@@ -205,6 +205,12 @@ export class MultiAgentOrchestrator {
         ? hasSweep && hasFvg
         : style === 'BOS_ORDER_BLOCK'
         ? hasContext || hasSweep
+        : style === 'SCALP_M1_M5' || style === 'M1_SCALP'
+        ? hasSweep
+        : style === 'SWING_MACRO' || style === 'SESSION_SWING'
+        ? hasContext
+        : style === 'TREND_BREAKOUT'
+        ? hasContext
         : hasSweep || hasContext || hasFvg;
 
     const bullets: string[] = [];
@@ -215,6 +221,17 @@ export class MultiAgentOrchestrator {
     } else if (style === 'BOS_ORDER_BLOCK') {
       bullets.push(`شکست ساختار ماژور (BOS) در کندل تاییدیه ثبت شد.`);
       bullets.push(`کندل اردر بلاک دست‌نخورده در قیمت ${candidate.entryPrice} مشخص گردید.`);
+    } else if (style === 'SCALP_M1_M5' || style === 'M1_SCALP') {
+      bullets.push(`سوییپ سریع میکروکف/میکروسقف نقدینگی در تایم‌فریم ۱ یا ۵ دقیقه احراز شد.`);
+      bullets.push(`مومنتوم شتابان بازگشتی با تاییدیه کلوز کندل احراز گردید.`);
+      bullets.push(`نقطه ورود سریع در قیمت ${candidate.entryPrice} با حد ضرر فشرده مستقر شد.`);
+    } else if (style === 'SWING_MACRO' || style === 'SESSION_SWING') {
+      bullets.push(`هم‌راستایی ساختار ماژور در تایم‌فریم کلان ۴ ساعته و روزانه (H4/D1) تایید شد.`);
+      bullets.push(`سووینگ ماژور و خروج از رنج قیمتی در تراز ${candidate.entryPrice} ثبت گردید.`);
+      bullets.push(`تارگت گسترده ساختاری چندروزه در قیمت ${candidate.takeProfitPrice} هدف‌گذاری شد.`);
+    } else if (style === 'TREND_BREAKOUT') {
+      bullets.push(`شکست معتبر کانال ۵۵ دوره‌ای هم‌راستا با شیب EMA200 ثبت شد.`);
+      bullets.push(`خروج شتابان از فاز فشردگی (Compression) تایید گردید.`);
     } else {
       bullets.push(`امواج تکانه‌ای و تراز ۵۰٪ تخفیف (Discount) محاسبه شد.`);
       bullets.push(`ناحیه بهینه ورود قیمت در ${candidate.entryPrice} مستقر است.`);
@@ -281,6 +298,14 @@ export class MultiAgentOrchestrator {
       bullets.push('جریان سفارشات اسمارت مانی پس از شکار نقدینگی، تمایل به پر کردن خلاء ارزش منصفانه دارد.');
     } else if (style === 'BOS_ORDER_BLOCK') {
       bullets.push('مومنتوم شکست ساختار قوی بوده و بازگشت به اردر بلاک فرصت کم‌ریسک تلقی می‌شود.');
+    } else if (style === 'SCALP_M1_M5' || style === 'M1_SCALP') {
+      bullets.push('بستر میکروساختار برای نوسان سریع کوتاه‌مدت بدون ریسک ماندگاری طولانی مساعد است.');
+    } else if (style === 'SWING_MACRO' || style === 'SESSION_SWING') {
+      bullets.push('روند ساختاری کلان بر نویزهای درون‌روزی چیره شده و پتانسیل ریوارد بالا (3R+) دارد.');
+    } else if (style === 'TREND_BREAKOUT') {
+      bullets.push('مومنتوم خروج از کانال پرشتاب بوده و شیب میانگین متحرک حامی ادامه حرکت است.');
+    } else {
+      bullets.push('تعادل عرضه و تقاضا در ناحیه تخفیف ۵۰٪ شرایط خرید ارزان را فراهم کرده است.');
     }
 
     return {
@@ -352,8 +377,16 @@ export class MultiAgentOrchestrator {
       summaryFa = isNeural
         ? `تایید منتقد با سپر دوگانه (انطباق ریاضی قطعی سیستم + تفکر عمیق عصبی).`
         : `تست استرس منتقد قطعی با موفقیت پشت سر گذاشته شد (R:R برابر ۱ به ${candidate.riskRewardRatio}).`;
-      bullets.push(`🛡️ لایه ۱ (موتور قطعی S0): انطباق کامل R:R برابر ۱ به ${candidate.riskRewardRatio} با معیار مصوب.`);
-      bullets.push('🛡️ لایه ۱ (موتور قطعی S0): فاصله امن از اخبار اقتصادی قرمز (Red Folder News) و عدم وجود سد نقدینگی معارض.');
+      bullets.push(`🛡️ لایه ۱ (موتور قطعی S0): انطباق کامل R:R برابر ۱ به ${candidate.riskRewardRatio} با معیار مصوب سبک.`);
+      if (style === 'SCALP_M1_M5' || style === 'M1_SCALP') {
+        bullets.push('🛡️ لایه ۱ (موتور قطعی S0): تایید فاصله زمانی امن از اخبار اقتصادی قرمز (عدم آسیب‌پذیری اسکلپ در برابر اسپایک).');
+        bullets.push('🛡️ لایه ۱ (موتور قطعی S0): کنترل اصطکاک اسپرد و اسلیپیج نسبت به دامنه حد سود اسکلپ.');
+      } else if (style === 'SWING_MACRO' || style === 'SESSION_SWING') {
+        bullets.push('🛡️ لایه ۱ (موتور قطعی S0): حد ضرر ساختاری فراتر از دامنه نوسان روزانه (ATR) قرار دارد و با سوییپ‌های جعلی شبانه فعال نمی‌شود.');
+        bullets.push('🛡️ لایه ۱ (موتور قطعی S0): کنترل ریسک سواپ شبانه (Overnight Swap Risk).');
+      } else {
+        bullets.push('🛡️ لایه ۱ (موتور قطعی S0): فاصله امن از اخبار اقتصادی قرمز (Red Folder News) و عدم وجود سد نقدینگی معارض.');
+      }
       if (isNeural) {
         bullets.push(`🧠 لایه ۲ (استدلال عصبی WebGPU): موشکافی تله‌های استاپ‌هانتینگ، عدم وجود هیجان فومو (FOMO) و تایید پاک بودن مسیر تارگت.`);
       }

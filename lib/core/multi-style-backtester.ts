@@ -283,16 +283,18 @@ export class MultiStyleBacktester {
 
         if (candidate) {
           const matchedStyleId = candidate.style === 'SCALP_M1_M5'
-            ? 'M1_SCALP'
+            ? 'SCALP_M1_M5'
             : candidate.style === 'SWING_MACRO'
-            ? 'SESSION_SWING'
+            ? 'SWING_MACRO'
+            : candidate.style === 'TREND_BREAKOUT'
+            ? 'TREND_BREAKOUT'
             : candidate.evidenceIds?.fvgId
             ? 'S0_SWEEP_FVG'
             : 'BOS_ORDER_BLOCK';
 
           const councilRes = MultiAgentOrchestrator.evaluateCandidate(candidate, {
             ...DEFAULT_MULTI_AGENT_CONFIG,
-            activeTradingStyle: matchedStyleId as any,
+            activeTradingStyle: matchedStyleId,
             judgeEngineId: 'alpha-consensus-quorum-judge',
           });
 

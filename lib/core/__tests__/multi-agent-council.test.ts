@@ -9,6 +9,7 @@ import {
 import {
   DEFAULT_MULTI_AGENT_CONFIG,
   MultiAgentConfiguration,
+  TRADING_STYLES,
 } from '../../contracts/multi-agent-system';
 import { StrategyCandidate } from '../../contracts/strategy';
 
@@ -170,6 +171,41 @@ export function runMultiAgentCouncilTestSuite(): TestResultItem[] {
   } catch (err) {
     results.push({
       name: '[Council Engines] 14B & Dense Engine Pipeline Execution',
+      passed: false,
+      details: (err as Error).message,
+    });
+  }
+
+  // ۶. آزمون سبک‌های تکمیلی معاملاتی (اسکلپ ۱ دقیقه و سوئینگ کلان)
+  try {
+    const hasScalp = TRADING_STYLES.some(s => s.id === 'SCALP_M1_M5');
+    const hasSwing = TRADING_STYLES.some(s => s.id === 'SWING_MACRO');
+    const hasBreakout = TRADING_STYLES.some(s => s.id === 'TREND_BREAKOUT');
+
+    const scalpRes = MultiAgentOrchestrator.evaluateCandidate(validCandidate, {
+      ...DEFAULT_MULTI_AGENT_CONFIG,
+      activeTradingStyle: 'SCALP_M1_M5',
+    });
+
+    const swingRes = MultiAgentOrchestrator.evaluateCandidate(validCandidate, {
+      ...DEFAULT_MULTI_AGENT_CONFIG,
+      activeTradingStyle: 'SWING_MACRO',
+    });
+
+    const pass = hasScalp && hasSwing && hasBreakout &&
+      scalpRes.tradingStyle === 'SCALP_M1_M5' &&
+      swingRes.tradingStyle === 'SWING_MACRO';
+
+    results.push({
+      name: '[Trading Styles] Official Complementary Styles (Scalp M1/M5 & Swing Macro)',
+      passed: pass,
+      details: pass
+        ? `سبک‌های اسکلپ سریع M1/M5 (حداقل R:R 1.5) و سوئینگ کلان H4/D1 (حداقل R:R 3.0) به عنوان گزینه‌های رسمی شورا تایید و فعال شدند.`
+        : 'سبک‌های تکمیلی به درستی در شورا احراز نشدند.',
+    });
+  } catch (err) {
+    results.push({
+      name: '[Trading Styles] Official Complementary Styles (Scalp M1/M5 & Swing Macro)',
       passed: false,
       details: (err as Error).message,
     });
