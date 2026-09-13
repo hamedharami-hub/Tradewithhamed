@@ -47,6 +47,8 @@ export interface BrowserAIModelRecord {
   isExperimental: boolean;
   isBuiltIn: boolean;
   artifactRevision: string;
+  /** Exact artifact size used to reject truncated LiteRT CacheStorage entries. */
+  artifactBytes?: number;
   modelUrl: string;
   densityTier: 'ULTRA_DENSE' | 'HIGH_DENSE' | 'BALANCED' | 'HEAVY_POWER' | 'ZERO_WEIGHT';
   densityBadgeFa: string;
@@ -328,6 +330,28 @@ export const PLAN_V4_MODELS: BrowserAIModelRecord[] = [
     recommendedDevices: ['SNAPDRAGON_PC', 'MOBILE_16GB', 'TABLET'],
   },
   {
+    id: 'gemma-4-e4b-litert',
+    mlcModelId: '',
+    name: 'Gemma 4 E4B (آزمایش LiteRT-LM Web)',
+    family: 'Gemma',
+    version: 'Gemma-4-E4B-it-web',
+    params: '۴.۵B مؤثر (۸B با embedding)',
+    quantization: 'int4 .litertlm Web',
+    runtime: 'LiteRT-LM-Web',
+    downloadSizeMB: 2969,
+    estimatedVRAMMB: 3300,
+    descriptionFa: 'مسیر آزمایشی Gemma با runtime مستقل LiteRT-LM Web. فقط متن را پردازش می‌کند و در Worker اجرا نمی‌شود. مدل WebLLM مقیم فقط پس از کامل‌شدن artifact و پیش از ساخت Engine LiteRT از GPU تخلیه می‌شود. خروجی advisory پس از اعتبارسنجی JSON پذیرفته می‌شود.',
+    targetDeviceFa: 'دسکتاپ یا تبلت مجهز به WebGPU؛ سازگاری و حافظه روی هر دستگاه باید جداگانه آزمون شود.',
+    isExperimental: true,
+    isBuiltIn: false,
+    artifactRevision: 'gemma-4-e4b-it-web-litertlm@2eee7ac325f20eb8c9ac1d0e972f7c84663062da',
+    artifactBytes: 2_969_059_328,
+    modelUrl: 'https://huggingface.co/litert-community/gemma-4-E4B-it-litert-lm/resolve/2eee7ac325f20eb8c9ac1d0e972f7c84663062da/gemma-4-E4B-it-web.litertlm',
+    densityTier: 'HEAVY_POWER',
+    densityBadgeFa: 'آزمایش مستقل LiteRT (۲٫۹۷GB)',
+    recommendedDevices: ['SNAPDRAGON_PC', 'TABLET'],
+  },
+  {
     id: 'qwen3-1.7b-mlc',
     mlcModelId: 'Qwen3-1.7B-q4f16_1-MLC',
     name: 'Qwen3-1.7B (مسیر بازگشت پایدار Fallback)',
@@ -355,6 +379,21 @@ export type OfflineAIModel = BrowserAIModelRecord;
 
 const STORAGE_SELECTED_MODEL = 'hamed_v4_selected_model_id';
 const STORAGE_OFFLINE_VERIFIED = 'hamed_v4_offline_verified_map';
+const LITERT_MODEL_CACHE_NAME = 'hamed-trading-litert-model-v1';
+const LITERT_WASM_BASE_URL = 'https://cdn.jsdelivr.net/npm/@litert-lm/core@0.17.0/wasm';
+const LITERT_ARTIFACT_BYTES_HEADER = 'X-TradeWithHamed-Artifact-Bytes';
+const LITERT_ARTIFACT_REVISION_HEADER = 'X-TradeWithHamed-Artifact-Revision';
+
+type LiteRTRuntimeModule = {
+  Engine: {
+    create: (settings: {
+      model: ReadableStream<Uint8Array>;
+      mainExecutorSettings?: { maxNumTokens?: number };
+    }) => Promise<any>;
+  };
+  getOrLoadGlobalLiteRtLm: (path?: string) => Promise<unknown>;
+  unloadLiteRtLm: () => void;
+};
 
 export interface ProgressReportPayload {
   percent: number;
@@ -378,8 +417,12 @@ interface InferenceOptions {
 export class BrowserOfflineAIManager {
   private static activeEngine: any = null;
   private static activeWorker: Worker | null = null;
+  private static activeLiteRTEngine: any = null;
+  private static activeLiteRTConversation: any = null;
+  private static activeLiteRTRuntime: LiteRTRuntimeModule | null = null;
   private static currentResidentModelId: string | null = null;
   private static abortController: AbortController | null = null;
+  private static loadAbortController: AbortController | null = null;
   private static runtimeState: OfflineRuntimeState = 'IDLE';
   private static activeOperationId: number | null = null;
   private static operationCounter = 0;
@@ -447,6 +490,12 @@ export class BrowserOfflineAIManager {
     if (!model) return false;
     if (model.runtime === 'Core-Deterministic') return true;
     if (model.runtime === 'Chrome-Builtin') return false;
+    if (model.runtime === 'LiteRT-LM-Web') {
+      return typeof window !== 'undefined' &&
+        typeof navigator !== 'undefined' &&
+        Boolean((navigator as any).gpu) &&
+        typeof caches !== 'undefined';
+    }
     try {
       const webllm = await import('@mlc-ai/web-llm');
       return webllm.prebuiltAppConfig.model_list.some(item => item.model_id === model.mlcModelId);
@@ -459,6 +508,16 @@ export class BrowserOfflineAIManager {
     if (model.runtime === 'Core-Deterministic') return true;
     if (model.runtime === 'Chrome-Builtin') return false;
     if (typeof window === 'undefined' || !(await this.isModelSupported(modelId))) return false;
+    if (model.runtime === 'LiteRT-LM-Web') {
+      try {
+        const cache = await caches.open(LITERT_MODEL_CACHE_NAME);
+        await this.removeLiteRTArtifacts(cache, model, true);
+        const cached = await cache.match(model.modelUrl);
+        if (this.isValidLiteRTCachedArtifact(cached, model)) return true;
+        if (cached) await cache.delete(model.modelUrl);
+        return false;
+      } catch { return false; }
+    }
     try {
       const webllm = await import('@mlc-ai/web-llm');
       if (await webllm.hasModelInCache(model.mlcModelId)) return true;
@@ -474,14 +533,22 @@ export class BrowserOfflineAIManager {
     if (!model) return { canStart: false, reasonFa: 'مدل در فهرست برنامه وجود ندارد.', availableStorageMB: 0 };
     if (model.runtime === 'Core-Deterministic') return { canStart: true, reasonFa: 'این موتور نیازی به دانلود ندارد.', availableStorageMB: 0 };
     if (model.runtime === 'Chrome-Builtin') return { canStart: false, reasonFa: 'Chrome Prompt API در این نسخه پیاده‌سازی نشده است.', availableStorageMB: 0 };
-    if (!(await this.isModelSupported(modelId))) return { canStart: false, reasonFa: 'artifact این مدل در registry نسخهٔ نصب‌شدهٔ WebLLM وجود ندارد.', availableStorageMB: 0 };
+    if (!(await this.isModelSupported(modelId))) {
+      const reasonFa = model.runtime === 'LiteRT-LM-Web'
+        ? 'LiteRT-LM Web به WebGPU و CacheStorage در یک زمینهٔ امن مرورگر نیاز دارد.'
+        : 'artifact این مدل در registry نسخهٔ نصب‌شدهٔ WebLLM وجود ندارد.';
+      return { canStart: false, reasonFa, availableStorageMB: 0 };
+    }
     const hardware = await this.probeHardware();
     if (!hardware.hasWebGPU) return { canStart: false, reasonFa: 'WebGPU در این مرورگر یا دستگاه فعال نیست.', availableStorageMB: 0 };
     const availableStorageMB = Math.max(0, hardware.estimatedStorageQuotaMB - hardware.estimatedStorageUsageMB);
     if (hardware.estimatedStorageQuotaMB > 0 && availableStorageMB < Math.ceil(model.downloadSizeMB * 1.2)) {
       return { canStart: false, reasonFa: `فضای cache کافی نیست: حدود ${availableStorageMB}MB آزاد است، اما حداقل ${Math.ceil(model.downloadSizeMB * 1.2)}MB لازم است.`, availableStorageMB };
     }
-    return { canStart: true, reasonFa: 'آمادهٔ دانلود و بارگذاری است؛ نتیجهٔ نهایی به شبکه و GPU دستگاه وابسته است.', availableStorageMB };
+    const reasonFa = model.runtime === 'LiteRT-LM-Web'
+      ? 'آمادهٔ دریافت artifact و runtime LiteRT-LM است؛ سازگاری نهایی به شبکه، GPU و quota مرورگر بستگی دارد.'
+      : 'آمادهٔ دانلود و بارگذاری است؛ نتیجهٔ نهایی به شبکه و GPU دستگاه وابسته است.';
+    return { canStart: true, reasonFa, availableStorageMB };
   }
 
   private static useFastMirror: boolean = false;
@@ -512,7 +579,8 @@ export class BrowserOfflineAIManager {
     if (typeof window === 'undefined') return { success: false, messageFa: 'محیط اجرای مرورگر در دسترس نیست.' };
     const readiness = await this.getDownloadReadiness(modelId);
     if (!readiness.canStart) return { success: false, messageFa: readiness.reasonFa };
-    if (this.activeEngine && this.currentResidentModelId === modelId) return { success: true, messageFa: `مدل ${model.name} از قبل در حافظه اجراست.` };
+    if ((this.activeEngine || this.activeLiteRTEngine) && this.currentResidentModelId === modelId) return { success: true, messageFa: `مدل ${model.name} از قبل در حافظه اجراست.` };
+    if (model.runtime === 'LiteRT-LM-Web') return this.loadLiteRTModelToMemory(model, onProgress);
     const operationId = this.beginOperation('LOADING');
     try {
       const webllm = await import('@mlc-ai/web-llm');
@@ -579,6 +647,190 @@ export class BrowserOfflineAIManager {
     } finally { this.finishOperation(operationId); }
   }
 
+  private static async loadLiteRTModelToMemory(model: BrowserAIModelRecord, onProgress?: (progress: ProgressReportPayload) => void): Promise<{ success: boolean; messageFa: string }> {
+    const operationId = this.beginOperation('LOADING');
+    const startedAt = performance.now();
+    const loadAbortController = new AbortController();
+    this.loadAbortController = loadAbortController;
+    let replacedResidentRuntime = false;
+    let warmedLiteRTRuntime: LiteRTRuntimeModule | null = null;
+    try {
+      const probe = await this.probeHardware();
+      if (!probe.hasWebGPU) throw new Error('WEBGPU_UNAVAILABLE: اجرای Gemma LiteRT بدون WebGPU مجاز نیست.');
+      onProgress?.({ percent: 0, downloadedMB: 0, totalMB: model.downloadSizeMB, speedMBs: 0, text: 'در حال آماده‌سازی runtime LiteRT-LM و بررسی CacheStorage...' });
+      const prepared = await this.prepareLiteRTModelStream(model, startedAt, loadAbortController.signal, onProgress);
+      this.throwIfLiteRTLoadCancelled(loadAbortController.signal);
+      // Cancellation only applies while receiving the artifact. From this point
+      // the cache is complete and an Engine.create() cancellation would leave the
+      // resident-model switch ambiguous, so the UI must stop offering it.
+      if (this.loadAbortController === loadAbortController) this.loadAbortController = null;
+      const litert = await import('@litert-lm/core') as unknown as LiteRTRuntimeModule;
+      await litert.getOrLoadGlobalLiteRtLm(LITERT_WASM_BASE_URL);
+      warmedLiteRTRuntime = litert;
+      this.assertOperation(operationId);
+      this.throwIfLiteRTLoadCancelled(loadAbortController.signal);
+      onProgress?.({ percent: 100, downloadedMB: model.downloadSizeMB, totalMB: model.downloadSizeMB, speedMBs: 0, text: 'runtime LiteRT-LM آماده است؛ مدل Gemma در WebGPU بارگذاری می‌شود...' });
+      // The cached artifact and LiteRT runtime are now ready. Preserve the old resident
+      // model until this point so a failed or cancelled download never evicts it.
+      await this.disposeActiveEngine();
+      replacedResidentRuntime = true;
+      this.activeLiteRTRuntime = litert;
+      const engine = await litert.Engine.create({
+        model: prepared.stream,
+        mainExecutorSettings: { maxNumTokens: 4096 },
+      });
+      this.assertOperation(operationId);
+      this.activeLiteRTEngine = engine;
+      this.currentResidentModelId = model.id;
+      this.setSelectedModelId(model.id);
+      return {
+        success: true,
+        messageFa: `مدل ${model.name} با LiteRT-LM در WebGPU بارگذاری و artifact آن در CacheStorage ذخیره شد. آزمون آفلاین کامل LiteRT فقط پس از بررسی جداگانهٔ runtime روی همان دستگاه معتبر است.`,
+      };
+    } catch (error) {
+      const rawError = error instanceof Error ? error.message : 'LITERT_MODEL_LOAD_FAILED';
+      this.lastError = rawError;
+      const cancelled = loadAbortController.signal.aborted || rawError.includes('LITERT_MODEL_DOWNLOAD_CANCELLED');
+      if (replacedResidentRuntime) await this.disposeActiveEngine();
+      else if (warmedLiteRTRuntime) {
+        try { warmedLiteRTRuntime.unloadLiteRtLm(); } catch { /* best effort cleanup of a warm runtime */ }
+      }
+      if (cancelled) {
+        return { success: false, messageFa: 'دریافت artifact Gemma لغو شد؛ مدل قبلی در حافظه GPU بدون تغییر باقی ماند.' };
+      }
+      let messageFa = `خطا در بارگذاری LiteRT: ${rawError}`;
+      if (rawError.includes('Failed to fetch') || rawError.includes('NetworkError') || rawError.includes('fetch failed')) {
+        messageFa = 'دریافت Gemma یا runtime LiteRT ناموفق بود. اتصال شبکه، دسترسی به Hugging Face و jsDelivr، و WebGPU دستگاه را بررسی کنید.';
+      } else if (rawError.includes('QuotaExceededError') || rawError.includes('LITERT_CACHE_WRITE_FAILED')) {
+        messageFa = 'فضای CacheStorage برای نگه‌داری artifact Gemma کافی نبود؛ قبل از اجرای مجدد فضای مرورگر را آزاد کنید.';
+      }
+      return { success: false, messageFa };
+    } finally {
+      if (this.loadAbortController === loadAbortController) this.loadAbortController = null;
+      this.finishOperation(operationId);
+    }
+  }
+
+  static cancelModelLoad(): boolean {
+    if (!this.loadAbortController || this.loadAbortController.signal.aborted) return false;
+    this.loadAbortController.abort();
+    return true;
+  }
+
+  private static throwIfLiteRTLoadCancelled(signal: AbortSignal): void {
+    if (signal.aborted) throw new Error('LITERT_MODEL_DOWNLOAD_CANCELLED');
+  }
+
+  private static async prepareLiteRTModelStream(model: BrowserAIModelRecord, startedAt: number, signal: AbortSignal, onProgress?: (progress: ProgressReportPayload) => void): Promise<{ stream: ReadableStream<Uint8Array> }> {
+    const cache = await caches.open(LITERT_MODEL_CACHE_NAME);
+    await this.removeLiteRTArtifacts(cache, model, true);
+    const cached = await cache.match(model.modelUrl);
+    if (this.isValidLiteRTCachedArtifact(cached, model)) {
+      onProgress?.({ percent: 100, downloadedMB: model.downloadSizeMB, totalMB: model.downloadSizeMB, speedMBs: 0, text: 'artifact Gemma از CacheStorage محلی خوانده می‌شود...' });
+      const cachedBody = cached.body;
+      if (cachedBody) return { stream: cachedBody };
+    }
+    if (cached) await cache.delete(model.modelUrl);
+    this.throwIfLiteRTLoadCancelled(signal);
+
+    onProgress?.({ percent: 0, downloadedMB: 0, totalMB: model.downloadSizeMB, speedMBs: 0, text: 'در حال دریافت artifact Gemma از مخزن عمومی...' });
+    try {
+      const response = await fetch(model.modelUrl, { cache: 'no-store', credentials: 'omit', signal });
+      if (!response.ok || !response.body) throw new Error(`LITERT_MODEL_FETCH_FAILED: HTTP ${response.status}`);
+      const contentLength = Number(response.headers.get('content-length'));
+      const expectedBytes = model.artifactBytes || (Number.isFinite(contentLength) && contentLength > 0 ? contentLength : 0);
+      if (!Number.isFinite(expectedBytes) || expectedBytes <= 0) throw new Error('LITERT_ARTIFACT_SIZE_UNKNOWN');
+      if (Number.isFinite(contentLength) && contentLength > 0 && contentLength !== expectedBytes) {
+        throw new Error(`LITERT_ARTIFACT_SIZE_MISMATCH: expected ${expectedBytes}, received header ${contentLength}`);
+      }
+      const cachedHeaders = new Headers(response.headers);
+      cachedHeaders.set(LITERT_ARTIFACT_BYTES_HEADER, String(expectedBytes));
+      cachedHeaders.set(LITERT_ARTIFACT_REVISION_HEADER, model.artifactRevision);
+      await cache.put(model.modelUrl, new Response(
+        this.createProgressStream(response.body, expectedBytes, model.downloadSizeMB, startedAt, signal, onProgress),
+        { status: response.status, statusText: response.statusText, headers: cachedHeaders },
+      ));
+      this.throwIfLiteRTLoadCancelled(signal);
+    } catch (error) {
+      await cache.delete(model.modelUrl);
+      throw new Error(`LITERT_CACHE_WRITE_FAILED: ${error instanceof Error ? error.message : String(error)}`);
+    }
+    const stored = await cache.match(model.modelUrl);
+    if (!this.isValidLiteRTCachedArtifact(stored, model)) {
+      await cache.delete(model.modelUrl);
+      throw new Error('LITERT_CACHE_WRITE_FAILED: artifact ذخیره‌شده معتبر یا قابل خواندن نیست.');
+    }
+    const storedBody = stored.body;
+    if (!storedBody) {
+      await cache.delete(model.modelUrl);
+      throw new Error('LITERT_CACHE_WRITE_FAILED: artifact ذخیره‌شده قابل خواندن نیست.');
+    }
+    return { stream: storedBody };
+  }
+
+  private static createProgressStream(source: ReadableStream<Uint8Array>, expectedBytes: number, totalMB: number, startedAt: number, signal: AbortSignal, onProgress?: (progress: ProgressReportPayload) => void): ReadableStream<Uint8Array> {
+    const reader = source.getReader();
+    let receivedBytes = 0;
+    return new ReadableStream<Uint8Array>({
+      async pull(controller) {
+        if (signal.aborted) {
+          await reader.cancel('LITERT_MODEL_DOWNLOAD_CANCELLED');
+          controller.error(new Error('LITERT_MODEL_DOWNLOAD_CANCELLED'));
+          return;
+        }
+        const next = await reader.read();
+        if (signal.aborted) {
+          await reader.cancel('LITERT_MODEL_DOWNLOAD_CANCELLED');
+          controller.error(new Error('LITERT_MODEL_DOWNLOAD_CANCELLED'));
+          return;
+        }
+        if (next.done) {
+          if (receivedBytes !== expectedBytes) {
+            controller.error(new Error(`LITERT_ARTIFACT_SIZE_MISMATCH: expected ${expectedBytes}, received ${receivedBytes}`));
+            return;
+          }
+          onProgress?.({ percent: 100, downloadedMB: totalMB, totalMB, speedMBs: Number((totalMB / Math.max(0.1, (performance.now() - startedAt) / 1000)).toFixed(1)), text: 'دریافت artifact کامل شد؛ در حال اعتبارسنجی و ساخت منابع WebGPU...' });
+          controller.close();
+          return;
+        }
+        receivedBytes += next.value.byteLength;
+        const elapsedSec = Math.max(0.1, (performance.now() - startedAt) / 1000);
+        const downloadedMB = Math.min(totalMB, (receivedBytes / expectedBytes) * totalMB);
+        onProgress?.({
+          percent: Math.min(99, Math.round((receivedBytes / expectedBytes) * 100)),
+          downloadedMB: Number(downloadedMB.toFixed(1)),
+          totalMB,
+          speedMBs: Number((downloadedMB / elapsedSec).toFixed(1)),
+          text: 'در حال دریافت و ذخیرهٔ artifact Gemma در CacheStorage...',
+        });
+        controller.enqueue(next.value);
+      },
+      async cancel(reason) { await reader.cancel(reason); },
+    });
+  }
+
+  private static isValidLiteRTCachedArtifact(response: Response | undefined, model: BrowserAIModelRecord): response is Response {
+    if (!response?.ok || !response.body || !model.artifactBytes) return false;
+    return Number(response.headers.get(LITERT_ARTIFACT_BYTES_HEADER)) === model.artifactBytes &&
+      response.headers.get(LITERT_ARTIFACT_REVISION_HEADER) === model.artifactRevision;
+  }
+
+  private static async removeLiteRTArtifacts(cache: Cache, model: BrowserAIModelRecord, keepCurrent: boolean): Promise<boolean> {
+    const modelUrl = new URL(model.modelUrl);
+    const resolveIndex = modelUrl.pathname.indexOf('/resolve/');
+    const repositoryPath = resolveIndex >= 0 ? modelUrl.pathname.slice(0, resolveIndex + 1) : modelUrl.pathname;
+    const requests = await cache.keys();
+    let deleted = false;
+    for (const request of requests) {
+      const candidate = new URL(request.url);
+      const belongsToRepository = candidate.origin === modelUrl.origin && candidate.pathname.startsWith(repositoryPath);
+      if (belongsToRepository && (!keepCurrent || request.url !== model.modelUrl)) {
+        deleted = (await cache.delete(request)) || deleted;
+      }
+    }
+    return deleted;
+  }
+
   static async unloadModelFromMemory(): Promise<{ success: boolean; messageFa: string }> {
     const operationId = this.beginOperation('UNLOADING');
     const current = this.currentResidentModelId;
@@ -590,10 +842,16 @@ export class BrowserOfflineAIManager {
 
   static async deleteModel(modelId: string): Promise<boolean> {
     const model = PLAN_V4_MODELS.find(item => item.id === modelId);
-    if (!model || model.runtime !== 'WebLLM-WebGPU') return false;
+    if (!model || (model.runtime !== 'WebLLM-WebGPU' && model.runtime !== 'LiteRT-LM-Web')) return false;
     const operationId = this.beginOperation('DELETING');
     try {
       if (this.currentResidentModelId === modelId) await this.disposeActiveEngine();
+      if (model.runtime === 'LiteRT-LM-Web') {
+        const cache = await caches.open(LITERT_MODEL_CACHE_NAME);
+        const deleted = await this.removeLiteRTArtifacts(cache, model, false);
+        this.removeOfflineVerification(modelId);
+        return deleted;
+      }
       const webllm = await import('@mlc-ai/web-llm');
       await webllm.deleteModelAllInfoInCache(model.mlcModelId);
       const fallbackId = model.mlcModelId.replace('q4f16_1', 'q4f32_1');
@@ -644,6 +902,7 @@ export class BrowserOfflineAIManager {
       onToken?.(text);
       return { text, latencyMs: Number((performance.now() - startedAt).toFixed(1)), ttftMs: 0, chunksPerSec: 0, isOfflineVerified: this.isOfflineVerified(modelId) };
     }
+    if (model.runtime === 'LiteRT-LM-Web') return this.runLiteRTInferenceTest(model, customQuestion, symbol, currentPrice, onToken, options);
     if (!this.activeEngine || this.currentResidentModelId !== modelId) {
       const loaded = await this.loadModelToMemory(modelId);
       if (!loaded.success) throw new Error(loaded.messageFa);
@@ -678,6 +937,75 @@ export class BrowserOfflineAIManager {
     }
   }
 
+  private static async runLiteRTInferenceTest(model: BrowserAIModelRecord, customQuestion: string, symbol: string, currentPrice: number, onToken?: (text: string) => void, options: InferenceOptions = {}): Promise<{ text: string; latencyMs: number; ttftMs: number; chunksPerSec: number; isOfflineVerified: boolean }> {
+    if (!this.activeLiteRTEngine || this.currentResidentModelId !== model.id) {
+      const loaded = await this.loadModelToMemory(model.id);
+      if (!loaded.success) throw new Error(loaded.messageFa);
+    }
+    const operationId = this.beginOperation('GENERATING');
+    const startedAt = performance.now();
+    const abortController = new AbortController();
+    this.abortController = abortController;
+    let conversation: any = null;
+    try {
+      const systemPrompt = options.systemPrompt || `You are an educational market-analysis assistant. State clearly when evidence is insufficient. Never authorize or execute an order. Respond concisely in English. Symbol: ${symbol}; price: ${currentPrice}.`;
+      conversation = await this.activeLiteRTEngine.createConversation({
+        preface: { messages: [{ role: 'system', content: systemPrompt }] },
+        sessionConfig: { maxOutputTokens: Math.min(512, Math.max(1, options.maxTokens || 384)), samplerParams: { temperature: 0.1 } },
+      });
+      this.activeLiteRTConversation = conversation;
+      const reader = conversation.sendMessageStreaming({ role: 'user', content: customQuestion.trim() || 'Evidence is insufficient. Review the situation.' }).getReader();
+      let text = '';
+      let chunkCount = 0;
+      let ttftMs = 0;
+      let wasStopped = false;
+      try {
+        while (true) {
+          if (abortController.signal.aborted) {
+            wasStopped = true;
+            conversation.cancel();
+            break;
+          }
+          const next = await reader.read();
+          if (next.done) break;
+          const delta = this.extractLiteRTText(next.value);
+          if (!delta) continue;
+          if (chunkCount === 0) ttftMs = Number((performance.now() - startedAt).toFixed(1));
+          chunkCount += 1;
+          text += delta;
+          onToken?.(text);
+        }
+      } catch (error) {
+        if (abortController.signal.aborted) wasStopped = true;
+        else throw error;
+      } finally { reader.releaseLock(); }
+      if (wasStopped) {
+        text += '\n[تولید پاسخ متوقف شد.]';
+        onToken?.(text);
+      }
+      const latencyMs = Number((performance.now() - startedAt).toFixed(1));
+      return { text, latencyMs, ttftMs: ttftMs || latencyMs, chunksPerSec: chunkCount > 0 ? Number(((chunkCount / latencyMs) * 1000).toFixed(1)) : 0, isOfflineVerified: false };
+    } catch (error) {
+      this.lastError = error instanceof Error ? error.message : 'LITERT_INFERENCE_FAILED';
+      throw new Error(`خطا در استنتاج LiteRT: ${this.lastError}`);
+    } finally {
+      if (this.activeLiteRTConversation === conversation) this.activeLiteRTConversation = null;
+      try { conversation?.cancel(); } catch { /* cancellation is best effort */ }
+      try { await conversation?.delete?.(); } catch { /* conversation cleanup is best effort */ }
+      this.abortController = null;
+      this.finishOperation(operationId);
+    }
+  }
+
+  private static extractLiteRTText(message: any): string {
+    const content = message?.content;
+    if (typeof content === 'string') return content;
+    if (!Array.isArray(content)) return '';
+    return content
+      .map(part => typeof part?.text === 'string' ? part.text : '')
+      .join('');
+  }
+
   static async evaluateCandidateAdvisory(modelId: string, evidence: DeterministicMarketEvidence, customSystemPrompt?: string, customUserPrompt?: string): Promise<StructuredCandidateAdvisory> {
     const model = PLAN_V4_MODELS.find(item => item.id === modelId);
     if (!model) throw new Error('مدل انتخاب‌شده نامعتبر است.');
@@ -689,7 +1017,7 @@ export class BrowserOfflineAIManager {
     return {
       modelId,
       modelRevision: model.artifactRevision,
-      source: 'WEBLLM_WEBGPU',
+      source: model.runtime === 'LiteRT-LM-Web' ? 'LITERT_LM_WEB' : 'WEBLLM_WEBGPU',
       verdict: parsed.verdict,
       confidence: parsed.confidence,
       rationaleFa: parsed.rationaleFa,
@@ -701,6 +1029,10 @@ export class BrowserOfflineAIManager {
   }
 
   static async verifyCachedModelOffline(modelId: string, probeText = 'پاسخ کوتاه بده: آماده'): Promise<{ verified: boolean; messageFa: string }> {
+    const model = PLAN_V4_MODELS.find(item => item.id === modelId);
+    if (model?.runtime === 'LiteRT-LM-Web') {
+      return { verified: false, messageFa: 'artifact Gemma در CacheStorage نگه‌داری می‌شود، اما runtime LiteRT هنوز از مسیر CDN بارگذاری می‌شود؛ بنابراین تأیید آفلاین کامل این مدل در این نسخه عمداً فعال نیست.' };
+    }
     if (typeof navigator === 'undefined' || navigator.onLine) return { verified: false, messageFa: 'برای تأیید آفلاین، ابتدا شبکه را قطع کنید و دوباره آزمون را اجرا کنید.' };
     if (!(await this.isModelDownloaded(modelId))) return { verified: false, messageFa: 'فایل کامل مدل در cache محلی یافت نشد.' };
     try {
@@ -710,7 +1042,10 @@ export class BrowserOfflineAIManager {
     } catch (error) { return { verified: false, messageFa: `آزمون آفلاین ناموفق بود: ${(error as Error).message}` }; }
   }
 
-  static stopInference(): void { this.abortController?.abort(); }
+  static stopInference(): void {
+    this.abortController?.abort();
+    try { this.activeLiteRTConversation?.cancel?.(); } catch { /* cancellation is best effort */ }
+  }
 
   static isOfflineVerified(modelId: string): boolean {
     if (typeof window === 'undefined') return false;
@@ -768,9 +1103,19 @@ export class BrowserOfflineAIManager {
   private static async disposeActiveEngine(): Promise<void> {
     const engine = this.activeEngine;
     const worker = this.activeWorker;
+    const liteRTEngine = this.activeLiteRTEngine;
+    const liteRTConversation = this.activeLiteRTConversation;
+    const liteRTRuntime = this.activeLiteRTRuntime;
     this.activeEngine = null;
     this.activeWorker = null;
+    this.activeLiteRTEngine = null;
+    this.activeLiteRTConversation = null;
+    this.activeLiteRTRuntime = null;
     this.currentResidentModelId = null;
+    try { liteRTConversation?.cancel?.(); } catch { /* best effort */ }
+    try { await liteRTConversation?.delete?.(); } catch { /* best effort */ }
+    try { await liteRTEngine?.delete?.(); } catch { /* best effort */ }
+    try { liteRTRuntime?.unloadLiteRtLm(); } catch { /* LiteRT cannot unload while its WASM is still loading */ }
     try { if (engine?.unload) await engine.unload(); } finally { worker?.terminate(); }
   }
 

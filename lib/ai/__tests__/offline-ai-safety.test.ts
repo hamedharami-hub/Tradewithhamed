@@ -1,7 +1,8 @@
-import { BrowserOfflineAIManager } from '../browser-offline-ai';
+import { BrowserOfflineAIManager, PLAN_V4_MODELS } from '../browser-offline-ai';
 import { AnalystCriticPipeline } from '../../core/analyst-critic';
 import type { StrategyCandidate } from '../../contracts/strategy';
 import { getOnlineProviderSettings } from '../advisory-provider';
+import { modelIdForAgentEngine } from '../webllm-agent-adapter';
 
 export interface OfflineAISafetyTestResult { name: string; passed: boolean; details: string; }
 
@@ -19,6 +20,9 @@ export async function runOfflineAISafetyTests(): Promise<OfflineAISafetyTestResu
   const smallestSupported = await BrowserOfflineAIManager.isModelSupported('smollm2-360m-mlc');
   const runtime = BrowserOfflineAIManager.getRuntimeStatus();
   const synchronousNeural = AnalystCriticPipeline.runShadowPipeline(candidate, 'qwen3.5-0.8b-mlc');
+  const synchronousLiteRT = AnalystCriticPipeline.runShadowPipeline(candidate, 'gemma-4-e4b-litert');
+  const gemma = PLAN_V4_MODELS.find(model => model.id === 'gemma-4-e4b-litert');
+  const gemmaAgentModelId = modelIdForAgentEngine('gemma-4-e4b-analyst');
   const openai = getOnlineProviderSettings('ONLINE', {});
   const gemini = getOnlineProviderSettings('GEMINI', {});
   const xai = getOnlineProviderSettings('XAI', {});
@@ -52,6 +56,20 @@ export async function runOfflineAISafetyTests(): Promise<OfflineAISafetyTestResu
       name: '[Offline AI] Synchronous neural profile fails closed instead of fabricating inference',
       passed: synchronousNeural.passed === false && synchronousNeural.reasonCode === 'NEURAL_ASYNC_REQUIRED',
       details: `passed=${synchronousNeural.passed}; reason=${synchronousNeural.reasonCode}`,
+    },
+    {
+      name: '[Offline AI] Gemma E4B pins the real LiteRT artifact bytes and never replaces it with a fake E2B entry',
+      passed: gemma?.runtime === 'LiteRT-LM-Web'
+        && gemma.downloadSizeMB === 2969
+        && gemma.artifactBytes === 2969059328
+        && gemma.modelUrl === 'https://huggingface.co/litert-community/gemma-4-E4B-it-litert-lm/resolve/2eee7ac325f20eb8c9ac1d0e972f7c84663062da/gemma-4-E4B-it-web.litertlm'
+        && !PLAN_V4_MODELS.some(model => /gemma.*e2b/i.test(`${model.id} ${model.name}`)),
+      details: `runtime=${gemma?.runtime}; downloadMB=${gemma?.downloadSizeMB}; artifactBytes=${gemma?.artifactBytes}; url=${gemma?.modelUrl}; hasE2B=${PLAN_V4_MODELS.some(model => /gemma.*e2b/i.test(`${model.id} ${model.name}`))}`,
+    },
+    {
+      name: '[Offline AI] Gemma LiteRT remains async and fail-closed until it is resident',
+      passed: synchronousLiteRT.passed === false && synchronousLiteRT.reasonCode === 'NEURAL_ASYNC_REQUIRED' && gemmaAgentModelId === 'gemma-4-e4b-litert',
+      details: `passed=${synchronousLiteRT.passed}; reason=${synchronousLiteRT.reasonCode}; mapped=${gemmaAgentModelId}`,
     },
     {
       name: '[Offline AI] Online providers are opt-in and remain unconfigured without keys',

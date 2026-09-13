@@ -1,5 +1,5 @@
 import { StrategyCandidate } from '../contracts/strategy';
-import { evaluateLoadedWebLLMAgent } from '../ai/webllm-agent-adapter';
+import { evaluateLoadedLocalAIAgent } from '../ai/webllm-agent-adapter';
 
 export type OfflineAIProfileId =
   | 'local-offline-s0-v1'
@@ -9,7 +9,7 @@ export type OfflineAIProfileId =
   | 'qwen3.5-2b-mlc'
   | 'qwen3.5-4b-mlc'
   | 'qwen3-1.7b-mlc'
-  | 'gemma-4-e2b-litert'
+  | 'gemma-4-e4b-litert'
   | 'phi-4-mini-instruct-mlc'
   | 'deepseek-r1-distill-qwen-7b-mlc'
   | 'llama-3.2-3b-instruct-mlc'
@@ -20,7 +20,7 @@ export interface OfflineAIProfile {
   name: string;
   nameFa: string;
   descriptionFa: string;
-  type: 'HEURISTIC_DETERMINISTIC' | 'DEEP_CRITIC' | 'ENSEMBLE' | 'WEBLLM_WEBGPU';
+  type: 'HEURISTIC_DETERMINISTIC' | 'DEEP_CRITIC' | 'ENSEMBLE' | 'WEBLLM_WEBGPU' | 'LITERT_LM_WEB';
   latencyMs: number;
   hardwareReqFa: string;
   featuresFa: string[];
@@ -125,16 +125,17 @@ export const OFFLINE_AI_PROFILES: OfflineAIProfile[] = [
     ],
   },
   {
-    id: 'gemma-4-e2b-litert',
-    name: 'Gemma 4 E2B Web (Experimental LiteRT)',
-    nameFa: 'مدل Gemma 4 E2B (آزمایشگاهی با LiteRT-LM Web)',
-    descriptionFa: 'مدل پیش‌نمایش متنی با وب‌جی‌پی‌یو تحت نظر آزمایشگاه مقایسه مدل‌ها.',
-    type: 'WEBLLM_WEBGPU',
-    latencyMs: 38,
-    hardwareReqFa: 'پشتیبانی از فرمت web.litertlm و شیدرهای f16',
+    id: 'gemma-4-e4b-litert',
+    name: 'Gemma 4 E4B Web (Experimental LiteRT)',
+    nameFa: 'Gemma 4 E4B آزمایشگاهی با LiteRT-LM Web',
+    descriptionFa: 'مقایسهٔ آزمایشی Gemma با runtime مستقل LiteRT-LM؛ خروجی فقط advisory است و پیش از پذیرش، JSON آن fail-closed اعتبارسنجی می‌شود.',
+    type: 'LITERT_LM_WEB',
+    latencyMs: 0,
+    hardwareReqFa: 'حدود ۲٫۹۷GB دانلود، WebGPU و CacheStorage؛ runtime جداگانه LiteRT-LM',
     featuresFa: [
-      'پشت پرچم آزمایشی (Feature Flag)',
-      'سنجش کارایی نسبت به Qwen',
+      'مسیر مستقل از WebLLM و بدون Worker اختصاصی',
+      'مقایسهٔ کیفیت و حافظه با Qwen3.5-4B',
+      'بدون مجوز سفارش یا اجرای خودکار',
     ],
   },
 
@@ -276,7 +277,7 @@ export class AnalystCriticPipeline {
 
     try {
       // مسیر همگام اجازه ندارد اجرای مدل عصبی را جعل کند.
-      if (activeProfile.type === 'WEBLLM_WEBGPU') {
+      if (activeProfile.type === 'WEBLLM_WEBGPU' || activeProfile.type === 'LITERT_LM_WEB') {
         return {
           passed: false,
           activeProfile,
@@ -369,7 +370,7 @@ export class AnalystCriticPipeline {
     profileId: OfflineAIProfileId = 'local-offline-s0-v1'
   ): Promise<ShadowAnalysisPipelineResult> {
     const profile = OFFLINE_AI_PROFILES.find(item => item.id === profileId) || OFFLINE_AI_PROFILES[0];
-    if (profile.type !== 'WEBLLM_WEBGPU') return this.runShadowPipeline(candidate, profile.id);
+    if (profile.type !== 'WEBLLM_WEBGPU' && profile.type !== 'LITERT_LM_WEB') return this.runShadowPipeline(candidate, profile.id);
     const engineIdByProfile: Partial<Record<OfflineAIProfileId, string>> = {
       'qwen3.5-0.8b-mlc': 'qwen3.5-0.8b-analyst',
       'qwen3.5-2b-mlc': 'qwen3.5-2b-analyst',
@@ -379,10 +380,11 @@ export class AnalystCriticPipeline {
       'deepseek-r1-distill-qwen-7b-mlc': 'deepseek-r1-7b-critic',
       'llama-3.2-3b-instruct-mlc': 'llama-3.2-3b-scanner',
       'qwen2.5-7b-instruct-mlc': 'qwen2.5-7b-analyst',
+      'gemma-4-e4b-litert': 'gemma-4-e4b-analyst',
     };
     const now = Date.now();
     try {
-      const advice = await evaluateLoadedWebLLMAgent(engineIdByProfile[profile.id] || 'unmapped', candidate);
+      const advice = await evaluateLoadedLocalAIAgent(engineIdByProfile[profile.id] || 'unmapped', candidate);
       const tradeApproved = advice.verdict === 'TRADE' && advice.riskFlags.length === 0;
       const analyst: AIAnalystReview = {
         role: 'ANALYST',

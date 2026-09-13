@@ -3,7 +3,7 @@
   "version": "4.0.0",
   "generatedDate": "2026-09-07T21:49:00Z",
   "manifestAuthor": "Hamed Trading Lab Architecture Authority",
-  "runtimeEngine": "WebLLM / WebGPU",
+  "runtimeEngine": "WebLLM / LiteRT-LM Web / WebGPU",
   "models": [
     {
       "id": "qwen3.5-0.8b-mlc",
@@ -86,18 +86,22 @@
       "defaultFor": []
     },
     {
-      "id": "gemma-4-e2b-litert",
-      "modelId": "Gemma-4-E2B-web-litertlm",
-      "name": "Gemma 4 E2B (LiteRT-LM Web Preview)",
+      "id": "gemma-4-e4b-litert",
+      "modelId": "Gemma-4-E4B-it-web-litertlm",
+      "name": "Gemma 4 E4B (LiteRT-LM Web Experimental)",
       "family": "gemma4",
-      "parameters": "2.0B",
+      "parameters": "4.5B effective / 8B with embeddings",
       "quantization": "int4_web",
-      "downloadSizeMB": 2010,
-      "estimatedVRAM_MB": 3100,
+      "downloadSizeMB": 2969,
+      "artifactBytes": 2969059328,
+      "estimatedVRAM_MB": 3300,
       "contextWindow": 4096,
-      "recommendedDevice": "research_preview_flag",
-      "modelUrl": "https://huggingface.co/google/gemma-4-e2b-it-web",
-      "wasmLibUrl": "litert-lm-early-preview",
+      "artifactNativeContextWindow": 32000,
+      "recommendedDevice": "experimental_webgpu_desktop_or_tablet",
+      "modelUrl": "https://huggingface.co/litert-community/gemma-4-E4B-it-litert-lm/resolve/2eee7ac325f20eb8c9ac1d0e972f7c84663062da/gemma-4-E4B-it-web.litertlm",
+      "artifactRevision": "2eee7ac325f20eb8c9ac1d0e972f7c84663062da",
+      "wasmLibUrl": "https://cdn.jsdelivr.net/npm/@litert-lm/core@0.17.0/wasm",
+      "offlineColdStartStatus": "unverified_runtime_cdn",
       "supportedRoles": ["Research_Comparison"],
       "defaultFor": []
     }

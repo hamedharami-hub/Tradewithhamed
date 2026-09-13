@@ -24,9 +24,9 @@ Product:
 - Models must download, persist and infer INSIDE the browser.
 - No Ollama, LM Studio, Termux, localhost inference server, extension,
   required native app, or hidden cloud AI fallback.
-- WebLLM/WebGPU first; compare LiteRT-LM Web Gemma later behind a flag.
-- Run one generative model at a time in a dedicated Worker.
-- Local AI and cached-data research must work after offline cold reopen.
+- WebLLM/WebGPU first; compare only the flagged, exact LiteRT-LM Web Gemma 4 E4B artifact later.
+- WebLLM runs in a dedicated Worker; LiteRT-LM Web follows its documented runtime, but only one generative model may be resident at a time.
+- Local AI and cached-data research must work after offline cold reopen for supported WebLLM artifacts. LiteRT E4B remains experimental and must not be marked cold-offline verified while its runtime depends on a CDN.
 - Do not promise background execution after browser suspension/termination.
 - Implement BACKTEST/PAPER_REPLAY, PAPER_LIVE, BROKER_DEMO and a
   separately gated manual BROKER_LIVE path. Never mix their ledgers.
@@ -226,10 +226,14 @@ Implement W3 without replacing the existing architecture.
 Use the model benchmark protocol in v4.0 sections 4 and 10.
 
 Compare supported exact artifacts for Qwen3.5 0.8B/2B/4B and a Qwen3 fallback.
-Add lazy-loaded LiteRT-LM Web for Gemma 4 E2B, then optionally E4B if capacity
-allows. Use the -web.litertlm artifacts documented for the JS API;
+Add lazy-loaded LiteRT-LM Web only for the experimental Gemma 4 E4B comparison.
+Use the exact -web.litertlm artifact documented for the JS API;
 do not use Android/native/NPU files or promise unsupported modalities.
 Treat the LiteRT-LM JS API as Early Preview.
+For Gemma E4B, pin the artifact revision and exact byte count, declare the
+application context as 4096, and list 32K only as the artifact's native
+capacity. Do not add a fake Gemma E2B registry entry or present 32K as the
+configured product context.
 
 Build the fixed 120-case evaluation corpus with explicit labels and a holdout.
 Measure Persian comprehension, snapshot grounding, schemas, abstention,

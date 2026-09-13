@@ -56,7 +56,7 @@ const PROFILE_BY_MODEL: Record<string, OfflineAIProfileId> = {
   'deepseek-r1-distill-qwen-7b-mlc': 'deepseek-r1-distill-qwen-7b-mlc',
   'llama-3.2-3b-instruct-mlc': 'llama-3.2-3b-instruct-mlc',
   'qwen2.5-7b-instruct-mlc': 'qwen2.5-7b-instruct-mlc',
-  'gemma-4-e2b-litert': 'gemma-4-e2b-litert',
+  'gemma-4-e4b-litert': 'gemma-4-e4b-litert',
 };
 
 export default function TradingLabPage() {
@@ -136,7 +136,7 @@ export default function TradingLabPage() {
       return () => { active = false; };
     }
     const profile = OFFLINE_AI_PROFILES.find(item => item.id === aiProfileId);
-    if (profile?.type !== 'WEBLLM_WEBGPU') {
+    if (profile?.type !== 'WEBLLM_WEBGPU' && profile?.type !== 'LITERT_LM_WEB') {
       const deterministicResult = AnalystCriticPipeline.runShadowPipeline(candidate, aiProfileId);
       queueMicrotask(() => { if (active) setShadowAnalysis(deterministicResult); });
       return () => { active = false; };

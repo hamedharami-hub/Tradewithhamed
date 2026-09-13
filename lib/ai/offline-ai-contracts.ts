@@ -23,7 +23,7 @@ export type AdvisoryVerdict = 'TRADE' | 'NO_TRADE' | 'REVIEW_REQUIRED';
 export interface StructuredCandidateAdvisory {
   modelId: string;
   modelRevision: string;
-  source: 'DETERMINISTIC' | 'WEBLLM_WEBGPU' | 'ONLINE_API' | 'HYBRID_COMPARE';
+  source: 'DETERMINISTIC' | 'WEBLLM_WEBGPU' | 'LITERT_LM_WEB' | 'ONLINE_API' | 'HYBRID_COMPARE';
   verdict: AdvisoryVerdict;
   confidence: number;
   rationaleFa: string;

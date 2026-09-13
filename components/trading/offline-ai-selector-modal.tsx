@@ -57,6 +57,7 @@ export const OfflineAISelectorModal: React.FC<OfflineAISelectorModalProps> = ({
       case 'ENSEMBLE':
         return <Layers className="w-4 h-4 text-cyan-400" />;
       case 'WEBLLM_WEBGPU':
+      case 'LITERT_LM_WEB':
         return <Cpu className="w-4 h-4 text-cyan-400" />;
       default:
         return <Bot className="w-4 h-4 text-zinc-400" />;

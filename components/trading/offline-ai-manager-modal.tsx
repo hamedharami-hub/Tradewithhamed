@@ -1,7 +1,7 @@
 // components/trading/offline-ai-manager-modal.tsx
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   PLAN_V4_MODELS,
   BrowserAIModelRecord,
@@ -76,12 +76,39 @@ export const OfflineAIManagerModal: React.FC<OfflineAIManagerModalProps> = ({
   const [actionMessage, setActionMessage] = useState<string | null>(null);
   const [filterTier, setFilterTier] = useState<'ALL' | 'ULTRA_DENSE' | 'HEAVY_POWER' | 'MOBILE_TABLET' | 'ZERO_WEIGHT'>('ALL');
   const [useFastMirror, setUseFastMirror] = useState<boolean>(() => BrowserOfflineAIManager.getUseFastMirror());
+  const cancelledLiteRTLoadRef = useRef<string | null>(null);
+  const selectedModel = PLAN_V4_MODELS.find((model) => model.id === selectedModelId);
+  const downloadingModel = PLAN_V4_MODELS.find((model) => model.id === downloadingModelId);
+  const isLiteRTMirrorInapplicable = selectedModel?.runtime === 'LiteRT-LM-Web'
+    || downloadingModel?.runtime === 'LiteRT-LM-Web';
 
   const handleToggleFastMirror = () => {
+    if (isLiteRTMirrorInapplicable) {
+      setActionMessage('میرور کمکی فقط برای مدل‌های WebLLM است؛ artifact پین‌شده LiteRT مستقیماً دریافت می‌شود.');
+      return;
+    }
     const next = !useFastMirror;
     setUseFastMirror(next);
     BrowserOfflineAIManager.setUseFastMirror(next);
     setActionMessage(next ? 'میرور پرسرعت کمکی (hf-mirror.com) فعال شد.' : 'دانلود مستقیم از مخزن اصلی هاگینگ‌فیس فعال شد.');
+  };
+
+  const handleCancelLiteRTDownload = () => {
+    if (!downloadingModel || downloadingModel.runtime !== 'LiteRT-LM-Web') return;
+    const wasCancelled = BrowserOfflineAIManager.cancelModelLoad();
+    if (!wasCancelled) {
+      setActionMessage('دریافت artifact تمام شده و بارگذاری WebGPU قابل لغو ایمن نیست.');
+      return;
+    }
+    cancelledLiteRTLoadRef.current = downloadingModel.id;
+    setActionMessage('درخواست لغو دانلود LiteRT ارسال شد؛ مدل مقیم قبلی تا پایان لغو در حافظه می‌ماند.');
+  };
+
+  const handleClose = () => {
+    if (downloadingModel?.runtime === 'LiteRT-LM-Web') {
+      handleCancelLiteRTDownload();
+    }
+    onClose();
   };
 
   // به‌روزرسانی وضعیت و سنجش سخت‌افزار
@@ -141,16 +168,23 @@ export const OfflineAIManagerModal: React.FC<OfflineAIManagerModalProps> = ({
       setActionMessage(`دانلود آغاز نشد: ${readiness.reasonFa}`);
       return;
     }
+    const liteRTNotice = model.runtime === 'LiteRT-LM-Web'
+      ? '\nاین مسیر آزمایشی است: علاوه بر artifact مدل، runtime LiteRT-LM در اجرای نخست از CDN دریافت می‌شود. فایل مدل در CacheStorage برنامه نگه‌داری می‌شود، اما تأیید آفلاین کامل هنوز فعال نیست.\n'
+      : '';
     const consent = confirm(
       `درخواست تایید دانلود فایل‌های مدل:\n` +
       `مدل: ${model.name}\n` +
       `حجم تقریبی فایل‌ها: حدود ${model.downloadSizeMB} مگابایت\n` +
-      `محل ذخیره: CacheStorage مرورگر (کاملاً محلی بدون دخالت سرور)\n\n` +
+      `محل ذخیره: CacheStorage مرورگر برای artifact مدل\n` +
+      liteRTNotice + '\n' +
       `آیا با شروع دانلود و بارگذاری این مدل در حافظه WebGPU موافقید؟`
     );
     if (!consent) return;
 
     try {
+      if (model.runtime === 'LiteRT-LM-Web') {
+        cancelledLiteRTLoadRef.current = null;
+      }
       setDownloadingModelId(model.id);
       setDownloadProgress({
         percent: 0,
@@ -165,6 +199,10 @@ export const OfflineAIManagerModal: React.FC<OfflineAIManagerModalProps> = ({
       });
 
       await refreshStatus();
+      if (cancelledLiteRTLoadRef.current === model.id) {
+        setActionMessage('دانلود LiteRT لغو شد؛ مدل مقیم قبلی بدون تغییر باقی ماند.');
+        return;
+      }
       if (loadRes.success) {
         onSelectModel(model.id);
         setActionMessage(loadRes.messageFa);
@@ -172,15 +210,22 @@ export const OfflineAIManagerModal: React.FC<OfflineAIManagerModalProps> = ({
         alert(loadRes.messageFa);
       }
     } catch (err) {
+      if (cancelledLiteRTLoadRef.current === model.id) {
+        setActionMessage('دانلود LiteRT لغو شد؛ مدل مقیم قبلی بدون تغییر باقی ماند.');
+        return;
+      }
       alert(`خطا در فرآیند بارگذاری: ${(err as Error).message}`);
     } finally {
+      if (cancelledLiteRTLoadRef.current === model.id) {
+        cancelledLiteRTLoadRef.current = null;
+      }
       setDownloadingModelId(null);
     }
   };
 
   // بارگذاری مدل در رم گرافیک
   const handleLoadModel = async (modelId: string) => {
-    setActionMessage('در حال بارگذاری شیدرهای WebGPU و خط لوله استنتاج...');
+    setActionMessage('در حال بارگذاری runtime و منابع WebGPU برای استنتاج محلی...');
     try {
       const result = await BrowserOfflineAIManager.loadModelToMemory(modelId);
       await refreshStatus();
@@ -294,7 +339,7 @@ export const OfflineAIManagerModal: React.FC<OfflineAIManagerModalProps> = ({
                   مرکز مدل‌های هوش مصنوعی داخل مرورگر (Browser AI v4.0)
                 </h2>
                 <span className="px-2 py-0.5 rounded-full text-[10px] bg-emerald-950/80 border border-emerald-800 text-emerald-300 font-mono">
-                  WebLLM / WebGPU Worker
+                  WebLLM + LiteRT-LM / WebGPU
                 </span>
               </div>
               <p className="text-xs text-zinc-400 mt-0.5">
@@ -304,7 +349,7 @@ export const OfflineAIManagerModal: React.FC<OfflineAIManagerModalProps> = ({
           </div>
           <button
             type="button"
-            onClick={onClose}
+            onClick={handleClose}
             className="p-2 rounded-xl bg-[#1b202c] hover:bg-[#252c3c] text-zinc-400 hover:text-white transition-colors border border-[#2b3345]"
             aria-label="بستن پنجره"
           >
@@ -456,22 +501,24 @@ export const OfflineAIManagerModal: React.FC<OfflineAIManagerModalProps> = ({
             <div className="flex items-center gap-2">
               <Zap className="w-4 h-4 text-amber-400 shrink-0" />
               <div>
-                <span className="font-bold text-zinc-200">شتاب‌دهنده دانلود (hf-mirror.com): </span>
-                <span className="text-zinc-400 hidden sm:inline">رفع نوسان اینترنت و دور زدن محدودیت‌های CDN</span>
+                <span className="font-bold text-zinc-200">شتاب‌دهنده دانلود WebLLM (hf-mirror.com): </span>
+                <span className="text-zinc-400 hidden sm:inline">برای مدل‌های WebLLM؛ LiteRT artifact پین‌شده را مستقیم دریافت می‌کند</span>
               </div>
             </div>
             <div className="flex items-center gap-2 flex-wrap">
               <button
                 type="button"
                 onClick={handleToggleFastMirror}
-                className={`px-2.5 py-1 rounded-xl font-bold transition-all text-[11px] flex items-center gap-1.5 ${
-                  useFastMirror
+                disabled={isLiteRTMirrorInapplicable}
+                title={isLiteRTMirrorInapplicable ? 'میرور فقط برای مدل‌های WebLLM است و برای LiteRT اعمال نمی‌شود.' : undefined}
+                className={`px-2.5 py-1 rounded-xl font-bold transition-all text-[11px] flex items-center gap-1.5 disabled:cursor-not-allowed disabled:opacity-55 ${
+                  !isLiteRTMirrorInapplicable && useFastMirror
                     ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
                     : 'bg-zinc-800 text-zinc-400 border border-zinc-700'
                 }`}
               >
-                <span className={`w-1.5 h-1.5 rounded-full ${useFastMirror ? 'bg-amber-400 animate-pulse' : 'bg-zinc-500'}`} />
-                {useFastMirror ? 'میرور کمکی: فعال' : 'سرور اصلی'}
+                <span className={`w-1.5 h-1.5 rounded-full ${!isLiteRTMirrorInapplicable && useFastMirror ? 'bg-amber-400 animate-pulse' : 'bg-zinc-500'}`} />
+                {isLiteRTMirrorInapplicable ? 'فقط WebLLM' : useFastMirror ? 'میرور کمکی: فعال' : 'سرور اصلی'}
               </button>
               <button
                 type="button"
@@ -659,12 +706,12 @@ export const OfflineAIManagerModal: React.FC<OfflineAIManagerModalProps> = ({
                         </div>
                       </div>
 
-                      {/* نوار پیشرفت در حین دانلود و کامپایل شیدرهای WebGPU */}
+                      {/* نوار پیشرفت در حین دانلود و آماده‌سازی WebGPU */}
                       {isCurrentlyDownloading && (
                         <div className="mt-3 p-3 bg-[#111622] rounded-xl border border-cyan-800/60 space-y-2">
                           <div className="flex items-center justify-between text-[11px] text-cyan-300">
                             <span className="truncate max-w-[200px]" title={downloadProgress.text}>
-                              {downloadProgress.text || 'در حال آماده‌سازی خط لوله WebLLM...'}
+                              {downloadProgress.text || 'در حال آماده‌سازی خط لوله اجرای محلی...'}
                             </span>
                             <span className="font-mono">{downloadProgress.percent}٪</span>
                           </div>
@@ -680,6 +727,21 @@ export const OfflineAIManagerModal: React.FC<OfflineAIManagerModalProps> = ({
                             </span>
                             <span>سرعت: {downloadProgress.speedMBs} MB/s</span>
                           </div>
+                          {model.runtime === 'LiteRT-LM-Web' && downloadProgress.percent < 100 && (
+                            <button
+                              type="button"
+                              onClick={handleCancelLiteRTDownload}
+                              className="w-full py-1.5 px-2.5 rounded-lg bg-rose-950/70 hover:bg-rose-900 text-rose-200 border border-rose-800 text-[10px] font-bold flex items-center justify-center gap-1 transition-colors"
+                            >
+                              <StopCircle className="w-3.5 h-3.5" />
+                              <span>لغو دانلود LiteRT</span>
+                            </button>
+                          )}
+                        </div>
+                      )}
+                      {model.runtime === 'LiteRT-LM-Web' && (
+                        <div className="mt-3 p-2.5 rounded-xl bg-amber-950/30 border border-amber-800/70 text-[10px] leading-relaxed text-amber-200">
+                          LiteRT-LM Web در این نسخه آزمایشی است. artifact مدل در CacheStorage ذخیره می‌شود، اما runtime آن در اجرای نخست از CDN دریافت می‌شود؛ بنابراین وضعیت «آفلاین تأییدشده» برای Gemma عمداً نمایش داده نمی‌شود.
                         </div>
                       )}
                     </div>
@@ -688,7 +750,7 @@ export const OfflineAIManagerModal: React.FC<OfflineAIManagerModalProps> = ({
                     <div className="mt-4 pt-3 border-t border-[#232938] flex items-center justify-between gap-2">
                       {!isSupported ? (
                         <div className="w-full py-2 px-3 rounded-xl bg-rose-950/30 text-rose-300 border border-rose-900 text-xs text-center">
-                          این مدل در WebLLM registry یا runtime فعلی قابل اجرا نیست.
+                          runtime یا قابلیت‌های لازم مرورگر برای این مدل در دسترس نیست.
                         </div>
                       ) : !isDownloaded ? (
                         <button
@@ -698,7 +760,7 @@ export const OfflineAIManagerModal: React.FC<OfflineAIManagerModalProps> = ({
                           className="w-full py-2 px-3 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white font-bold flex items-center justify-center gap-1.5 transition-colors disabled:opacity-50 text-xs shadow-md"
                         >
                           <Download className="w-3.5 h-3.5" />
-                          <span>درخواست دانلود ({model.downloadSizeMB} MB)</span>
+                          <span>{model.runtime === 'LiteRT-LM-Web' ? `دانلود آزمایشی LiteRT (${model.downloadSizeMB} MB)` : `درخواست دانلود (${model.downloadSizeMB} MB)`}</span>
                         </button>
                       ) : (
                         <div className="flex items-center gap-1.5 w-full">
@@ -710,7 +772,7 @@ export const OfflineAIManagerModal: React.FC<OfflineAIManagerModalProps> = ({
                               className="flex-1 py-1.5 px-2.5 rounded-xl bg-cyan-700 hover:bg-cyan-600 text-white font-bold flex items-center justify-center gap-1 text-xs transition-colors"
                             >
                               <Play className="w-3.5 h-3.5" />
-                              <span>بارگذاری در رم</span>
+                              <span>{model.runtime === 'LiteRT-LM-Web' ? 'بارگذاری آزمایشی' : 'بارگذاری در رم'}</span>
                             </button>
                           ) : (
                             <button
@@ -738,15 +800,17 @@ export const OfflineAIManagerModal: React.FC<OfflineAIManagerModalProps> = ({
                             تست محلی
                           </button>
 
-                          <button
-                            type="button"
-                            onClick={() => handleVerifyOffline(model.id)}
-                            disabled={isVerifyingOffline || model.runtime === 'Core-Deterministic'}
-                            className="p-1.5 rounded-xl bg-emerald-950/60 hover:bg-emerald-900/80 text-emerald-300 border border-emerald-800/80 text-[11px] disabled:opacity-40"
-                            title="تنها با شبکه قطع‌شده، cache مدل را برای اجرای محلی تأیید می‌کند"
-                          >
-                            تأیید آفلاین
-                          </button>
+                          {model.runtime !== 'LiteRT-LM-Web' && (
+                            <button
+                              type="button"
+                              onClick={() => handleVerifyOffline(model.id)}
+                              disabled={isVerifyingOffline || model.runtime === 'Core-Deterministic'}
+                              className="p-1.5 rounded-xl bg-emerald-950/60 hover:bg-emerald-900/80 text-emerald-300 border border-emerald-800/80 text-[11px] disabled:opacity-40"
+                              title="تنها با شبکه قطع‌شده، cache مدل را برای اجرای محلی تأیید می‌کند"
+                            >
+                              تأیید آفلاین
+                            </button>
+                          )}
 
                           {/* دکمه حذف مدل از حافظه */}
                           {!model.isBuiltIn && (
@@ -754,7 +818,7 @@ export const OfflineAIManagerModal: React.FC<OfflineAIManagerModalProps> = ({
                               type="button"
                               onClick={() => handleDeleteModel(model.id)}
                               className="p-1.5 rounded-xl bg-rose-950/60 hover:bg-rose-900/80 text-rose-300 border border-rose-800/80 text-[11px]"
-                              title="حذف فایل‌ها از حافظه کش مرورگر"
+                              title={model.runtime === 'LiteRT-LM-Web' ? 'حذف artifact Gemma از CacheStorage برنامه' : 'حذف فایل‌ها از حافظه کش مرورگر'}
                             >
                               <Trash2 className="w-3.5 h-3.5" />
                             </button>
@@ -845,7 +909,7 @@ export const OfflineAIManagerModal: React.FC<OfflineAIManagerModalProps> = ({
           </div>
           <button
             type="button"
-            onClick={onClose}
+            onClick={handleClose}
             className="px-4 py-1.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-200 font-bold transition-colors"
           >
             تایید و بازگشت به میز کار
