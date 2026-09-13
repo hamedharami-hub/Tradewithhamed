@@ -463,6 +463,23 @@ export class BrowserOfflineAIManager {
     } catch { return false; }
   }
 
+  private static useFastMirror: boolean = true;
+
+  static setUseFastMirror(enabled: boolean): void {
+    this.useFastMirror = enabled;
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('trade_offline_ai_use_mirror', enabled ? '1' : '0');
+    }
+  }
+
+  static getUseFastMirror(): boolean {
+    if (typeof window !== 'undefined') {
+      const stored = localStorage.getItem('trade_offline_ai_use_mirror');
+      if (stored !== null) return stored === '1';
+    }
+    return this.useFastMirror;
+  }
+
   static async loadModelToMemory(modelId: string, onProgress?: (progress: ProgressReportPayload) => void): Promise<{ success: boolean; messageFa: string }> {
     const model = PLAN_V4_MODELS.find(item => item.id === modelId);
     if (!model) return { success: false, messageFa: 'مدل انتخاب‌شده در catalog یافت نشد.' };
@@ -491,19 +508,33 @@ export class BrowserOfflineAIManager {
         const elapsedSec = Math.max(0.1, (performance.now() - startedAt) / 1000);
         onProgress?.({ percent: Math.round(progress * 100), downloadedMB: Number((progress * model.downloadSizeMB).toFixed(1)), totalMB: model.downloadSizeMB, speedMBs: Number(((progress * model.downloadSizeMB) / elapsedSec).toFixed(1)), text: report.text || 'در حال آماده‌سازی مدل محلی...' });
       };
+
+      const useMirror = this.getUseFastMirror();
+      let appConfig = webllm.prebuiltAppConfig;
+      if (useMirror) {
+        appConfig = {
+          ...webllm.prebuiltAppConfig,
+          model_list: webllm.prebuiltAppConfig.model_list.map((m: any) => ({
+            ...m,
+            model_url: typeof m.model_url === 'string' ? m.model_url.replace('https://huggingface.co/', 'https://hf-mirror.com/') : m.model_url,
+            model: typeof m.model === 'string' ? m.model.replace('https://huggingface.co/', 'https://hf-mirror.com/') : m.model,
+          })),
+        };
+      }
+
       let engine: any;
       let worker: Worker | null = null;
       try {
         if (typeof Worker !== 'undefined') {
           worker = new Worker(new URL('./web-llm.worker.ts', import.meta.url), { type: 'module' });
-          engine = await webllm.CreateWebWorkerMLCEngine(worker, mlcId, { initProgressCallback });
+          engine = await webllm.CreateWebWorkerMLCEngine(worker, mlcId, { initProgressCallback, appConfig });
         }
       } catch (error) {
         worker?.terminate();
         worker = null;
         console.warn('WebLLM worker creation failed; direct engine is attempted.', error);
       }
-      if (!engine) engine = await webllm.CreateMLCEngine(mlcId, { initProgressCallback });
+      if (!engine) engine = await webllm.CreateMLCEngine(mlcId, { initProgressCallback, appConfig });
       this.assertOperation(operationId);
       this.activeEngine = engine;
       this.activeWorker = worker;
@@ -511,9 +542,17 @@ export class BrowserOfflineAIManager {
       this.setSelectedModelId(modelId);
       return { success: true, messageFa: `مدل ${model.name} به‌صورت محلی در WebGPU بارگذاری شد. دانلود اولیه ممکن است به شبکه نیاز داشته باشد.` };
     } catch (error) {
-      this.lastError = error instanceof Error ? error.message : 'MODEL_LOAD_FAILED';
+      const rawError = error instanceof Error ? error.message : 'MODEL_LOAD_FAILED';
+      this.lastError = rawError;
       await this.disposeActiveEngine();
-      return { success: false, messageFa: `خطا در بارگذاری مدل: ${this.lastError}` };
+
+      let friendlyMsg = `خطا در بارگذاری مدل: ${rawError}`;
+      if (rawError.includes('Failed to fetch') || rawError.includes('NetworkError') || rawError.includes('fetch failed')) {
+        friendlyMsg = 'خطای اتصال شبکه حین دانلود وزن‌های مدل (محدودیت یا نوسان اینترنت بین‌الملل). راهکار پیشنهادی: سوئیچ به «موتور قطعی ریاضی S0 (۰ مگابایت)» را از بالای پنجره انتخاب کنید تا بدون نیاز به حتی ۱ مگابایت دانلود، تحلیل فوری اجرا شود.';
+      } else if (rawError.includes('QuotaExceededError')) {
+        friendlyMsg = 'حافظه کش مرورگر پر شده است. لطفاً کش مدل‌های قبلی را حذف کنید تا فضا آزاد شود.';
+      }
+      return { success: false, messageFa: friendlyMsg };
     } finally { this.finishOperation(operationId); }
   }
 

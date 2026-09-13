@@ -75,6 +75,14 @@ export const OfflineAIManagerModal: React.FC<OfflineAIManagerModalProps> = ({
   const [showGuide, setShowGuide] = useState(false);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
   const [filterTier, setFilterTier] = useState<'ALL' | 'ULTRA_DENSE' | 'HEAVY_POWER' | 'MOBILE_TABLET' | 'ZERO_WEIGHT'>('ALL');
+  const [useFastMirror, setUseFastMirror] = useState<boolean>(() => BrowserOfflineAIManager.getUseFastMirror());
+
+  const handleToggleFastMirror = () => {
+    const next = !useFastMirror;
+    setUseFastMirror(next);
+    BrowserOfflineAIManager.setUseFastMirror(next);
+    setActionMessage(next ? 'میرور پرسرعت کمکی (hf-mirror.com) فعال شد.' : 'دانلود مستقیم از مخزن اصلی هاگینگ‌فیس فعال شد.');
+  };
 
   // به‌روزرسانی وضعیت و سنجش سخت‌افزار
   const refreshStatus = async () => {
@@ -435,6 +443,41 @@ export const OfflineAIManagerModal: React.FC<OfflineAIManagerModalProps> = ({
               <span>
                 بر روی دستگاه‌های قدرتمند نظیر <strong className="text-cyan-300">Google Pixel 9 Pro Fold (۱۶ گیگابایت رم)</strong>، تبلت‌ها و لپ‌تاپ‌های <strong className="text-purple-300">Snapdragon X Plus</strong>، مدل‌های بهینه و چگال با بالاترین راندمان استدلال (Phi-4-mini، Llama-3.2 و Qwen2.5-7B) مستقیماً و به صورت ۱۰۰٪ آفلاین در WebGPU مرورگر اجرا می‌شوند. مدل‌های سنگین‌تر ۱۴ میلیاردی به عنوان معماری‌های تکمیلی برای سناریوهای سرور استنتاج محلی در نظر گرفته شده‌اند.
               </span>
+            </div>
+          </div>
+
+          {/* نوار کنترل شتاب‌دهنده دانلود و دسترسی فوری بدون دانلود */}
+          <div className="flex items-center justify-between p-3 rounded-2xl bg-[#0c101a] border border-cyan-900/40 flex-wrap gap-2 text-[11px]">
+            <div className="flex items-center gap-2">
+              <Zap className="w-4 h-4 text-amber-400 shrink-0" />
+              <div>
+                <span className="font-bold text-zinc-200">شتاب‌دهنده دانلود (hf-mirror.com): </span>
+                <span className="text-zinc-400 hidden sm:inline">رفع نوسان اینترنت و دور زدن محدودیت‌های CDN</span>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 flex-wrap">
+              <button
+                type="button"
+                onClick={handleToggleFastMirror}
+                className={`px-2.5 py-1 rounded-xl font-bold transition-all text-[11px] flex items-center gap-1.5 ${
+                  useFastMirror
+                    ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
+                    : 'bg-zinc-800 text-zinc-400 border border-zinc-700'
+                }`}
+              >
+                <span className={`w-1.5 h-1.5 rounded-full ${useFastMirror ? 'bg-amber-400 animate-pulse' : 'bg-zinc-500'}`} />
+                {useFastMirror ? 'میرور کمکی: فعال' : 'سرور اصلی'}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  onSelectModel('s0-deterministic');
+                  setActionMessage('موتور قطعی ریاضی S0 (۰ مگابایت) فوراً فعال شد. آماده معامله بدون نیاز به دانلود.');
+                }}
+                className="px-2.5 py-1 rounded-xl bg-emerald-600/20 text-emerald-300 hover:bg-emerald-600/30 border border-emerald-500/40 font-bold transition-all text-[11px]"
+              >
+                ⚡ اجرای فوری S0 (بدون دانلود - ۰MB)
+              </button>
             </div>
           </div>
 

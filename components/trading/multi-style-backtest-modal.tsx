@@ -17,6 +17,8 @@ import {
   filterCandlesByHorizon,
   TimeHorizon,
   TIME_HORIZONS,
+  YearDatasetId,
+  BacktestTimeframe,
 } from '@/lib/core/yearly-data-loader';
 import {
   X,
@@ -49,12 +51,13 @@ export const MultiStyleBacktestModal: React.FC<MultiStyleBacktestModalProps> = (
   const [customSymbol, setCustomSymbol] = useState<SymbolId | null>(null);
   const selectedSymbol = customSymbol ?? symbol;
 
+  const [selectedYear, setSelectedYear] = useState<YearDatasetId>('2025');
   const [timeHorizon, setTimeHorizon] = useState<TimeHorizon>('FULL_YEAR');
-  const [backtestTimeframe, setBacktestTimeframe] = useState<'4H' | '1H' | 'D1'>('4H');
+  const [backtestTimeframe, setBacktestTimeframe] = useState<BacktestTimeframe>('4H');
   const [yearlyCandles, setYearlyCandles] = useState<Candle[]>([]);
   const [loadedDataKey, setLoadedDataKey] = useState<string>('');
 
-  const currentDataKey = `${selectedSymbol}-${backtestTimeframe}-${timeHorizon}`;
+  const currentDataKey = `${selectedSymbol}-${backtestTimeframe}-${timeHorizon}-${selectedYear}`;
   const isLoadingData = timeHorizon !== 'REPLAY_WINDOW' && loadedDataKey !== currentDataKey;
 
   const activeCandles = useMemo(() => {
@@ -85,15 +88,15 @@ export const MultiStyleBacktestModal: React.FC<MultiStyleBacktestModalProps> = (
   const [report, setReport] = useState<BacktestReport | null>(null);
   const [isRunning, setIsRunning] = useState<boolean>(false);
 
-  // بارگذاری داده‌های تاریخی ۱ ساله به صورت ناهمگام و کش‌شده
+  // بارگذاری داده‌های تاریخی سالانه به صورت ناهمگام و کش‌شده
   useEffect(() => {
     if (!isOpen || timeHorizon === 'REPLAY_WINDOW') return;
 
     let isCancelled = false;
-    loadYearlyDataset(selectedSymbol, backtestTimeframe)
+    loadYearlyDataset(selectedSymbol, backtestTimeframe, selectedYear)
       .then((raw) => {
         if (isCancelled) return;
-        const filtered = filterCandlesByHorizon(raw, timeHorizon, candles);
+        const filtered = filterCandlesByHorizon(raw, timeHorizon, candles, selectedYear);
         setYearlyCandles(filtered);
         setLoadedDataKey(currentDataKey);
       })
@@ -107,13 +110,18 @@ export const MultiStyleBacktestModal: React.FC<MultiStyleBacktestModalProps> = (
     return () => {
       isCancelled = true;
     };
-  }, [isOpen, selectedSymbol, timeHorizon, backtestTimeframe, candles, currentDataKey]);
+  }, [isOpen, selectedSymbol, timeHorizon, backtestTimeframe, selectedYear, candles, currentDataKey]);
 
   const handleRunBacktest = () => {
     setIsRunning(true);
     setTimeout(() => {
       try {
-        const res = MultiStyleBacktester.runBacktest(activeCandles, {
+        // برای جلوگیری از فریز شدن مرورگر در تایم‌فریم‌های ۱ دقیقه و ۵ دقیقه سال کامل
+        const executionCandles = activeCandles.length > 25000
+          ? activeCandles.slice(-25000)
+          : activeCandles;
+
+        const res = MultiStyleBacktester.runBacktest(executionCandles, {
           symbol: selectedSymbol,
           style,
           minAlphaConsensusScore: minCouncilScore,
@@ -151,14 +159,12 @@ export const MultiStyleBacktestModal: React.FC<MultiStyleBacktestModalProps> = (
                 <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-purple-950 text-purple-300 border border-purple-800">
                   {selectedSymbol} ({activeCandles.length.toLocaleString('fa-IR')} کندل)
                 </span>
-                {timeHorizon === 'FULL_YEAR' && (
-                  <span className="text-[10px] font-sans px-2 py-0.5 rounded bg-emerald-950/80 text-emerald-300 border border-emerald-800/80 font-bold">
-                    دادهٔ ۱ ساله کامل ۲۰۲۴
-                  </span>
-                )}
+                <span className="text-[10px] font-sans px-2 py-0.5 rounded bg-emerald-950/80 text-emerald-300 border border-emerald-800/80 font-bold">
+                  سال {selectedYear === '2025' ? '۲۰۲۵ (جدید)' : '۲۰۲۴'} ({backtestTimeframe})
+                </span>
               </h2>
               <p className="text-xs text-zinc-400">
-                شبیه‌سازی ۱ ساله روی هر ۴ نماد با اسپرد پویا، اعتبارسنجی شورای هوش مصنوعی و مونت‌کارلو
+                شبیه‌سازی کامل روی هر ۴ نماد با اسپرد پویا، اعتبارسنجی شورای هوش مصنوعی و مونت‌کارلو
               </p>
             </div>
           </div>
@@ -187,13 +193,13 @@ export const MultiStyleBacktestModal: React.FC<MultiStyleBacktestModalProps> = (
                   </span>
                 ) : (
                   <span className="text-zinc-400 font-mono">
-                    بازه: <strong className="text-zinc-200">{dateSpanInfo || 'سال کامل ۲۰۲۴'}</strong> ({activeCandles.length.toLocaleString('fa-IR')} کندل {backtestTimeframe})
+                    بازه: <strong className="text-zinc-200">{dateSpanInfo || `سال ${selectedYear}`}</strong> ({activeCandles.length.toLocaleString('fa-IR')} کندل {backtestTimeframe})
                   </span>
                 )}
               </div>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
               {/* نماد مورد آزمایش */}
               <div className="space-y-1">
                 <label className="text-[11px] text-zinc-400">نماد معاملاتی:</label>
@@ -215,38 +221,60 @@ export const MultiStyleBacktestModal: React.FC<MultiStyleBacktestModalProps> = (
                 </div>
               </div>
 
+              {/* انتخاب سال */}
+              <div className="space-y-1">
+                <label className="text-[11px] text-zinc-400">سال داده‌های تاریخی:</label>
+                <div className="grid grid-cols-2 gap-1">
+                  {(['2025', '2024'] as YearDatasetId[]).map(yr => (
+                    <button
+                      key={yr}
+                      type="button"
+                      disabled={timeHorizon === 'REPLAY_WINDOW'}
+                      onClick={() => setSelectedYear(yr)}
+                      className={`py-1.5 rounded-xl text-center font-sans text-[11px] font-bold transition-all disabled:opacity-40 ${
+                        selectedYear === yr && timeHorizon !== 'REPLAY_WINDOW'
+                          ? 'bg-emerald-600 text-white shadow-md'
+                          : 'bg-[#151a24] text-zinc-400 hover:text-zinc-200 border border-[#232a3b]'
+                      }`}
+                    >
+                      {yr === '2025' ? '۲۰۲۵ (جدید)' : '۲۰۲۴'}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
               {/* بازه افق زمانی */}
               <div className="space-y-1">
                 <label className="text-[11px] text-zinc-400">افق زمانی بک‌تست:</label>
                 <select
                   value={timeHorizon}
                   onChange={e => setTimeHorizon(e.target.value as TimeHorizon)}
-                  className="w-full bg-[#151a24] border border-[#2a3344] rounded-xl px-2.5 py-1.5 text-zinc-100 text-xs font-bold"
+                  className="w-full bg-[#151a24] border border-[#2a3344] rounded-xl px-2 py-1.5 text-zinc-100 text-[11px] font-bold"
                 >
-                  <option value="FULL_YEAR">۱ ساله کامل ۲۰۲۴ (۳۶۵ روز - پیشنهاد اصلی)</option>
-                  <option value="H2_6M">۶ ماهه دوم ۲۰۲۴ (از ۱ ژوئیه تا دسامبر)</option>
-                  <option value="Q4_3M">۳ ماهه پایانی ۲۰۲۴ (از ۱ اکتبر تا دسامبر)</option>
+                  <option value="FULL_YEAR">۱ ساله کامل {selectedYear} (۳۶۵ روز)</option>
+                  <option value="H2_6M">۶ ماهه دوم H2 (از ۱ ژوئیه تا دسامبر)</option>
+                  <option value="Q4_3M">۳ ماهه پایانی Q4 (از ۱ اکتبر تا دسامبر)</option>
                   <option value="REPLAY_WINDOW">پنجره جاری ریپلی زنده چارت</option>
                 </select>
               </div>
 
               {/* تایم‌فریم محاسباتی */}
               <div className="space-y-1">
-                <label className="text-[11px] text-zinc-400">تایم‌فریم ساختار کندلی:</label>
-                <div className="grid grid-cols-3 gap-1">
-                  {(['4H', '1H', 'D1'] as const).map(tf => (
+                <label className="text-[11px] text-zinc-400">تایم‌فریم کندل‌ها:</label>
+                <div className="grid grid-cols-6 gap-0.5">
+                  {(['1M', '5M', '15M', '1H', '4H', 'D1'] as const).map(tf => (
                     <button
                       key={tf}
                       type="button"
                       disabled={timeHorizon === 'REPLAY_WINDOW'}
                       onClick={() => setBacktestTimeframe(tf)}
-                      className={`py-1.5 rounded-xl text-center font-mono text-[11px] font-bold transition-all disabled:opacity-40 ${
+                      className={`py-1.5 rounded-lg text-center font-mono text-[10px] font-bold transition-all disabled:opacity-40 ${
                         backtestTimeframe === tf && timeHorizon !== 'REPLAY_WINDOW'
                           ? 'bg-cyan-600 text-white shadow-md'
                           : 'bg-[#151a24] text-zinc-400 hover:text-zinc-200 border border-[#232a3b]'
                       }`}
                     >
-                      {tf} {tf === '4H' ? '(۱,۶۰۰)' : tf === '1H' ? '(۶,۲۰۰)' : '(۳۰۰)'}
+                      {tf}
                     </button>
                   ))}
                 </div>

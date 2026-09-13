@@ -10,6 +10,9 @@ import { USDJPY_CANDLES_FIXTURE_5M } from '../replay/fixtures/usdjpy-candles';
 
 export type TimeHorizon = 'FULL_YEAR' | 'H2_6M' | 'Q4_3M' | 'REPLAY_WINDOW';
 
+export type YearDatasetId = '2025' | '2024';
+export type BacktestTimeframe = 'D1' | '4H' | '1H' | '15M' | '5M' | '1M';
+
 export interface HorizonOption {
   id: TimeHorizon;
   labelFa: string;
@@ -19,17 +22,17 @@ export interface HorizonOption {
 export const TIME_HORIZONS: HorizonOption[] = [
   {
     id: 'FULL_YEAR',
-    labelFa: '۱ ساله کامل (۲۰۲۴)',
-    descriptionFa: 'پوشش ۳۶۵ روز کامل سال ۲۰۲۴ با بیش از ۱,۵۰۰ تا ۶,۲۰۰ کندل ساختاری',
+    labelFa: '۱ ساله کامل',
+    descriptionFa: 'پوشش کامل سال با تمام کندل‌های ساختاری بازار',
   },
   {
     id: 'H2_6M',
-    labelFa: '۶ ماهه دوم (H2 2024)',
-    descriptionFa: 'از ۱ ژوئیه تا ۳۱ دسامبر ۲۰۲۴ برای بررسی رژیم‌های نیم‌سال پایانی',
+    labelFa: '۶ ماهه دوم (H2)',
+    descriptionFa: 'از ۱ ژوئیه تا ۳۱ دسامبر برای بررسی رژیم‌های نیم‌سال پایانی',
   },
   {
     id: 'Q4_3M',
-    labelFa: '۳ ماهه پایانی (Q4 2024)',
+    labelFa: '۳ ماهه پایانی (Q4)',
     descriptionFa: 'از ۱ اکتبر تا پایان سال برای ارزیابی عملکرد در ماه‌های پرنوسان پاییز و زمستان',
   },
   {
@@ -72,21 +75,34 @@ export function parseCsvToCandles(csvText: string): Candle[] {
 
 export async function loadYearlyDataset(
   symbol: SymbolId,
-  timeframe: 'D1' | '4H' | '1H' = '4H'
+  timeframe: BacktestTimeframe = '4H',
+  year: YearDatasetId = '2025'
 ): Promise<Candle[]> {
-  const cacheKey = `${symbol}-${timeframe}`;
+  const cacheKey = `${symbol}-${timeframe}-${year}`;
   if (memoryCache.has(cacheKey)) {
     return memoryCache.get(cacheKey)!;
   }
 
   const lowerSymbol = symbol.toLowerCase();
   const lowerTf = timeframe.toLowerCase();
-  const url = `/historical/intraday/histdata-${lowerSymbol}-${lowerTf}-2024.csv`;
+  const url = `/historical/intraday/histdata-${lowerSymbol}-${lowerTf}-${year}.csv`;
 
   try {
     if (typeof window !== 'undefined') {
       const response = await fetch(url);
       if (!response.ok) {
+        // فالبک خودکار به ۲۰۲۴ در صورت نبودن فایل
+        if (year === '2025') {
+          const fallbackResp = await fetch(`/historical/intraday/histdata-${lowerSymbol}-${lowerTf}-2024.csv`);
+          if (fallbackResp.ok) {
+            const text = await fallbackResp.text();
+            const candles = parseCsvToCandles(text);
+            if (candles.length > 0) {
+              memoryCache.set(cacheKey, candles);
+              return candles;
+            }
+          }
+        }
         throw new Error(`Failed to fetch ${url}: HTTP ${response.status}`);
       }
       const text = await response.text();
@@ -97,14 +113,19 @@ export async function loadYearlyDataset(
       }
     } else {
       // محیط Node / تست
-      const { readFileSync } = await import('node:fs');
+      const { readFileSync, existsSync } = await import('node:fs');
       const { resolve } = await import('node:path');
-      const filePath = resolve(`public/historical/intraday/histdata-${lowerSymbol}-${lowerTf}-2024.csv`);
-      const text = readFileSync(filePath, 'utf8');
-      const candles = parseCsvToCandles(text);
-      if (candles.length > 0) {
-        memoryCache.set(cacheKey, candles);
-        return candles;
+      let filePath = resolve(`public/historical/intraday/histdata-${lowerSymbol}-${lowerTf}-${year}.csv`);
+      if (!existsSync(filePath) && year === '2025') {
+        filePath = resolve(`public/historical/intraday/histdata-${lowerSymbol}-${lowerTf}-2024.csv`);
+      }
+      if (existsSync(filePath)) {
+        const text = readFileSync(filePath, 'utf8');
+        const candles = parseCsvToCandles(text);
+        if (candles.length > 0) {
+          memoryCache.set(cacheKey, candles);
+          return candles;
+        }
       }
     }
   } catch (err) {
@@ -135,7 +156,8 @@ function getFallbackCandles(symbol: SymbolId): Candle[] {
 export function filterCandlesByHorizon(
   candles: Candle[],
   horizon: TimeHorizon,
-  replayVisibleCandles?: Candle[]
+  replayVisibleCandles?: Candle[],
+  year: YearDatasetId = '2025'
 ): Candle[] {
   if (horizon === 'REPLAY_WINDOW' && replayVisibleCandles && replayVisibleCandles.length > 0) {
     return replayVisibleCandles;
@@ -143,8 +165,10 @@ export function filterCandlesByHorizon(
 
   if (candles.length === 0) return [];
 
-  const h2Cutoff = new Date('2024-07-01T00:00:00.000Z').getTime();
-  const q4Cutoff = new Date('2024-10-01T00:00:00.000Z').getTime();
+  const firstDate = new Date(candles[0].timestamp);
+  const detectedYear = !isNaN(firstDate.getUTCFullYear()) ? firstDate.getUTCFullYear() : parseInt(year, 10);
+  const h2Cutoff = new Date(`${detectedYear}-07-01T00:00:00.000Z`).getTime();
+  const q4Cutoff = new Date(`${detectedYear}-10-01T00:00:00.000Z`).getTime();
 
   switch (horizon) {
     case 'H2_6M': {
