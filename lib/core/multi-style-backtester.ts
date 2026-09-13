@@ -51,7 +51,8 @@ interface ActivePosition {
 export class MultiStyleBacktester {
   public static runBacktest(
     candles: Candle[],
-    userConfig: Partial<BacktestConfig> = {}
+    userConfig: Partial<BacktestConfig> = {},
+    onProgress?: (completedBars: number, totalBars: number) => void,
   ): BacktestReport {
     const config: BacktestConfig = { ...DEFAULT_BACKTEST_CONFIG, ...userConfig };
     const contractMultiplier = config.symbol === 'XAUUSD' ? 100 : 100000;
@@ -81,7 +82,9 @@ export class MultiStyleBacktester {
 
     const startIdx = Math.min(20, Math.floor(candles.length / 4));
 
+    const progressEvery = Math.max(1, Math.floor((candles.length - startIdx) / 100));
     for (let i = startIdx; i < candles.length; i++) {
+      if ((i - startIdx) % progressEvery === 0 || i === candles.length - 1) onProgress?.(i - startIdx + 1, candles.length - startIdx);
       const currentCandle = candles[i];
       const slice = candles.slice(0, i + 1);
 

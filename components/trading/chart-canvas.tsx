@@ -1058,8 +1058,8 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
         loadedKeysRef.current.add(key);
         loadYearlyDataset(symbol, tf)
           .then((loaded) => {
-            if (loaded.length > 0) {
-              setYearlyDataMap((prev) => ({ ...prev, [key]: loaded }));
+            if (loaded.candles.length > 0) {
+              setYearlyDataMap((prev) => ({ ...prev, [key]: loaded.candles }));
             }
           })
           .catch((err) => {

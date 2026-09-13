@@ -1,62 +1,81 @@
-type TestSuite = { name: string; run: () => Promise<unknown[]> | unknown[] };
+import { readdir } from 'node:fs/promises';
+import { relative, resolve, sep } from 'node:path';
+import { pathToFileURL } from 'node:url';
 
-const suiteModules = [
-  '../lib/core/__tests__/core.test',
-  '../lib/core/__tests__/w2-acceptance.test',
-  '../lib/core/__tests__/w3-acceptance.test',
-  '../lib/core/__tests__/w4-acceptance.test',
-  '../lib/core/__tests__/w5-acceptance.test',
-  '../lib/server/__tests__/stage8-security-dr.test',
-  '../lib/server/__tests__/stage9-health-smoke.test',
-  '../lib/server/__tests__/risk-dashboard.test',
-  '../lib/stress/__tests__/stress-scenarios.test',
-  '../lib/gateway/__tests__/gateway.test',
-  '../lib/gateway/__tests__/readonly-ctrader.test',
-  '../lib/execution/__tests__/ctrader-execution.test',
-  '../lib/execution/__tests__/reconciliation.test',
-  '../lib/server/__tests__/auto-reconciliation.test',
-  '../lib/core/__tests__/local-rag.test',
-  '../lib/ai/__tests__/offline-ai-safety.test',
-  '../lib/ai/__tests__/agentic-review.test',
-  '../lib/core/__tests__/multi-agent-council.test',
-  '../lib/core/__tests__/research-desk.test',
-  '../lib/research/__tests__/research-engine.test',
-  '../lib/research/__tests__/paper-forward-ledger.test',
-  '../lib/research/__tests__/stage8-analysis.test',
-  '../lib/research/__tests__/walk-forward.test',
-  '../lib/research/__tests__/parameter-optimizer.test',
-  '../lib/research/__tests__/acceptance-gate.test',
-  '../lib/core/__tests__/market-microstructure.test',
-  '../lib/core/__tests__/economic-calendar.test',
-  '../lib/core/__tests__/equity-curve-monte-carlo.test',
-  '../lib/core/__tests__/prop-firms.test',
-  '../lib/core/__tests__/multi-timeframe-split.test',
-  '../lib/core/__tests__/shareable-trade-card.test',
-  '../lib/core/__tests__/ruler-measurement.test',
-];
+type TestResult = { name: string; passed: boolean; details: string };
+type TestSuite = { name: string; run: () => Promise<unknown> | unknown };
 
-export {};
+async function discoverTestFiles(directory: string): Promise<string[]> {
+  const entries = await readdir(directory, { withFileTypes: true });
+  const files = await Promise.all(entries.map(async entry => {
+    const path = resolve(directory, entry.name);
+    if (entry.isDirectory()) return discoverTestFiles(path);
+    return entry.name.endsWith('.test.ts') ? [path] : [];
+  }));
+  return files.flat();
+}
 
-async function loadSuites(): Promise<TestSuite[]> {
+async function loadSuites(): Promise<{ suites: TestSuite[]; discoveryFailures: string[] }> {
+  const testRoot = resolve(process.cwd(), 'lib');
+  const discovered = (await discoverTestFiles(testRoot))
+    .filter(path => path.split(sep).includes('__tests__'))
+    .sort();
   const suites: TestSuite[] = [];
-  for (const modulePath of suiteModules) {
-    const loadedSuite = await import(modulePath) as Record<string, unknown>;
-    const entry = Object.entries(loadedSuite).find(([name, value]) => name.startsWith('run') && typeof value === 'function');
-    if (entry) suites.push({ name: modulePath, run: entry[1] as TestSuite['run'] });
+  const discoveryFailures: string[] = [];
+
+  for (const filePath of discovered) {
+    const displayName = relative(process.cwd(), filePath).replaceAll('\\', '/');
+    try {
+      const loadedSuite = await import(pathToFileURL(filePath).href) as Record<string, unknown>;
+      const entries = Object.entries(loadedSuite)
+        .filter(([name, value]) => name.startsWith('run') && typeof value === 'function');
+      if (entries.length !== 1) {
+        discoveryFailures.push(`${displayName}: expected exactly one exported run* test function, found ${entries.length}.`);
+        continue;
+      }
+      suites.push({ name: displayName, run: entries[0][1] as TestSuite['run'] });
+    } catch (error) {
+      discoveryFailures.push(`${displayName}: ${(error as Error).message}`);
+    }
   }
-  return suites;
+
+  return { suites, discoveryFailures };
+}
+
+function normalizeResults(suiteName: string, output: unknown): TestResult[] {
+  if (Array.isArray(output)) return output as TestResult[];
+
+  // The W3 benchmark exports a report rather than an array of checks.  Keep it
+  // in the unified runner, but turn its category summaries into explicit checks.
+  if (output && typeof output === 'object' && Array.isArray((output as { categories?: unknown[] }).categories)) {
+    const report = output as {
+      categories: Array<{ categoryTitleFa: string; passedCases: number; totalCases: number }>;
+    };
+    return report.categories.map(category => ({
+      name: category.categoryTitleFa,
+      passed: category.passedCases === category.totalCases,
+      details: `${category.passedCases}/${category.totalCases}`,
+    }));
+  }
+
+  throw new Error(`${suiteName} returned an unsupported result shape.`);
 }
 
 async function main(): Promise<void> {
-  const suites = await loadSuites();
-  let failed = 0;
+  const { suites, discoveryFailures } = await loadSuites();
+  let failed = discoveryFailures.length;
   let total = 0;
+  for (const failure of discoveryFailures) console.error(`[DISCOVERY FAIL] ${failure}`);
   for (const suite of suites) {
-    const results = await suite.run();
-    const failures = results.filter((result) => {
-      const record = result as { passed?: boolean; pass?: boolean };
-      return record.passed === false || record.pass === false;
-    });
+    let results: TestResult[];
+    try {
+      results = normalizeResults(suite.name, await suite.run());
+    } catch (error) {
+      failed++;
+      console.error(`[FAIL] ${suite.name}: ${(error as Error).message}`);
+      continue;
+    }
+    const failures = results.filter(result => !result.passed);
     total += results.length;
     failed += failures.length;
     console.log(`[${failures.length === 0 ? 'PASS' : 'FAIL'}] ${suite.name}: ${results.length - failures.length}/${results.length}`);

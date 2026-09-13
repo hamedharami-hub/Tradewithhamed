@@ -11,7 +11,7 @@ import {
   BacktestReport,
   BacktestSessionFilter,
 } from '@/lib/contracts/backtester';
-import { MultiStyleBacktester } from '@/lib/core/multi-style-backtester';
+import { useBacktestWorker } from '@/hooks/use-backtest-worker';
 import {
   loadYearlyDataset,
   filterCandlesByHorizon,
@@ -51,10 +51,13 @@ export const MultiStyleBacktestModal: React.FC<MultiStyleBacktestModalProps> = (
   const [customSymbol, setCustomSymbol] = useState<SymbolId | null>(null);
   const selectedSymbol = customSymbol ?? symbol;
 
-  const [selectedYear, setSelectedYear] = useState<YearDatasetId>('2025');
+  const [selectedYear, setSelectedYear] = useState<YearDatasetId>('2024');
   const [timeHorizon, setTimeHorizon] = useState<TimeHorizon>('FULL_YEAR');
   const [backtestTimeframe, setBacktestTimeframe] = useState<BacktestTimeframe>('4H');
   const [yearlyCandles, setYearlyCandles] = useState<Candle[]>([]);
+  const [datasetNotice, setDatasetNotice] = useState<string>('');
+  const [datasetWarnings, setDatasetWarnings] = useState<string[]>([]);
+  const [datasetIsSynthetic, setDatasetIsSynthetic] = useState(false);
   const [loadedDataKey, setLoadedDataKey] = useState<string>('');
 
   const currentDataKey = `${selectedSymbol}-${backtestTimeframe}-${timeHorizon}-${selectedYear}`;
@@ -87,6 +90,7 @@ export const MultiStyleBacktestModal: React.FC<MultiStyleBacktestModalProps> = (
   const [adaptiveRiskScaling, setAdaptiveRiskScaling] = useState<boolean>(false);
   const [report, setReport] = useState<BacktestReport | null>(null);
   const [isRunning, setIsRunning] = useState<boolean>(false);
+  const { run: runInWorker, cancel: cancelBacktest, progress } = useBacktestWorker();
 
   // بارگذاری داده‌های تاریخی سالانه به صورت ناهمگام و کش‌شده
   useEffect(() => {
@@ -94,15 +98,21 @@ export const MultiStyleBacktestModal: React.FC<MultiStyleBacktestModalProps> = (
 
     let isCancelled = false;
     loadYearlyDataset(selectedSymbol, backtestTimeframe, selectedYear)
-      .then((raw) => {
+      .then((loaded) => {
         if (isCancelled) return;
-        const filtered = filterCandlesByHorizon(raw, timeHorizon, candles, selectedYear);
+        const filtered = filterCandlesByHorizon(loaded.candles, timeHorizon, candles, selectedYear);
         setYearlyCandles(filtered);
+        setDatasetNotice(`${loaded.provenance.labelFa} — ${loaded.coverage.labelFa}`);
+        setDatasetWarnings([...loaded.provenance.warnings, ...loaded.quality.warnings]);
+        setDatasetIsSynthetic(loaded.provenance.isSynthetic);
         setLoadedDataKey(currentDataKey);
       })
       .catch((err) => {
-        console.error('Failed to load yearly dataset:', err);
         if (!isCancelled) {
+          setYearlyCandles([]);
+          setDatasetNotice(err instanceof Error ? err.message : 'دریافت دیتاست ناموفق بود.');
+          setDatasetWarnings([]);
+          setDatasetIsSynthetic(false);
           setLoadedDataKey(currentDataKey);
         }
       });
@@ -112,16 +122,10 @@ export const MultiStyleBacktestModal: React.FC<MultiStyleBacktestModalProps> = (
     };
   }, [isOpen, selectedSymbol, timeHorizon, backtestTimeframe, selectedYear, candles, currentDataKey]);
 
-  const handleRunBacktest = () => {
+  const handleRunBacktest = async () => {
     setIsRunning(true);
-    setTimeout(() => {
-      try {
-        // برای جلوگیری از فریز شدن مرورگر در تایم‌فریم‌های ۱ دقیقه و ۵ دقیقه سال کامل
-        const executionCandles = activeCandles.length > 25000
-          ? activeCandles.slice(-25000)
-          : activeCandles;
-
-        const res = MultiStyleBacktester.runBacktest(executionCandles, {
+    try {
+        const res = await runInWorker(activeCandles, {
           symbol: selectedSymbol,
           style,
           minAlphaConsensusScore: minCouncilScore,
@@ -136,10 +140,9 @@ export const MultiStyleBacktestModal: React.FC<MultiStyleBacktestModalProps> = (
           adaptiveRiskScaling,
         });
         setReport(res);
-      } finally {
-        setIsRunning(false);
-      }
-    }, 50);
+    } catch (error) {
+      setDatasetNotice(error instanceof Error ? error.message : 'بک‌تست ناموفق بود.');
+    } finally { setIsRunning(false); }
   };
 
   if (!isOpen) return null;
@@ -160,7 +163,7 @@ export const MultiStyleBacktestModal: React.FC<MultiStyleBacktestModalProps> = (
                   {selectedSymbol} ({activeCandles.length.toLocaleString('fa-IR')} کندل)
                 </span>
                 <span className="text-[10px] font-sans px-2 py-0.5 rounded bg-emerald-950/80 text-emerald-300 border border-emerald-800/80 font-bold">
-                  سال {selectedYear === '2025' ? '۲۰۲۵ (جدید)' : '۲۰۲۴'} ({backtestTimeframe})
+                  سال درخواستی {selectedYear} ({backtestTimeframe})
                 </span>
               </h2>
               <p className="text-xs text-zinc-400">
@@ -198,6 +201,8 @@ export const MultiStyleBacktestModal: React.FC<MultiStyleBacktestModalProps> = (
                 )}
               </div>
             </div>
+            {datasetNotice && <p className={`text-[11px] rounded-lg px-2.5 py-2 ${datasetIsSynthetic ? 'bg-amber-950/40 text-amber-200 border border-amber-900/60' : 'bg-slate-900 text-slate-300 border border-slate-700'}`}>{datasetNotice}</p>}
+            {datasetWarnings.length > 0 && <ul className="text-[10px] text-amber-300 space-y-1 list-disc pr-4">{datasetWarnings.slice(0, 3).map(warning => <li key={warning}>{warning}</li>)}</ul>}
 
             <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
               {/* نماد مورد آزمایش */}
@@ -251,7 +256,7 @@ export const MultiStyleBacktestModal: React.FC<MultiStyleBacktestModalProps> = (
                   onChange={e => setTimeHorizon(e.target.value as TimeHorizon)}
                   className="w-full bg-[#151a24] border border-[#2a3344] rounded-xl px-2 py-1.5 text-zinc-100 text-[11px] font-bold"
                 >
-                  <option value="FULL_YEAR">۱ ساله کامل {selectedYear} (۳۶۵ روز)</option>
+                  <option value="FULL_YEAR">تمام دادهٔ موجود</option>
                   <option value="H2_6M">۶ ماهه دوم H2 (از ۱ ژوئیه تا دسامبر)</option>
                   <option value="Q4_3M">۳ ماهه پایانی Q4 (از ۱ اکتبر تا دسامبر)</option>
                   <option value="REPLAY_WINDOW">پنجره جاری ریپلی زنده چارت</option>
@@ -484,7 +489,7 @@ export const MultiStyleBacktestModal: React.FC<MultiStyleBacktestModalProps> = (
               {isRunning ? (
                 <>
                   <Loader2 className="w-4 h-4 animate-spin text-purple-200" />
-                  <span>در حال اجرای شبیه‌سازی ۱ ساله...</span>
+                  <span>در حال اجرا در Worker {progress ? `(${Math.round((progress.completedBars / progress.totalBars) * 100)}٪)` : ''}</span>
                 </>
               ) : isLoadingData ? (
                 <>
@@ -498,6 +503,7 @@ export const MultiStyleBacktestModal: React.FC<MultiStyleBacktestModalProps> = (
                 </>
               )}
             </button>
+            {isRunning && <button type="button" onClick={() => { cancelBacktest(); setIsRunning(false); }} className="w-full sm:w-auto px-4 py-2.5 rounded-xl font-bold text-amber-200 border border-amber-700 bg-amber-950/40">لغو اجرا</button>}
           </div>
 
           {/* نتایج بک‌تست */}
