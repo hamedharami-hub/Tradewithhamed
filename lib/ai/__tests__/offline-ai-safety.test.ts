@@ -16,6 +16,7 @@ export async function runOfflineAISafetyTests(): Promise<OfflineAISafetyTestResu
     symbol: 'XAUUSD', currentPrice: 2350, sweepDetected: true, fvgDetected: true, contextConfirmed: true, riskRewardRatio: 3,
   });
   const unsupported = await BrowserOfflineAIManager.isModelSupported('deepseek-r1-distill-qwen-14b-mlc');
+  const smallestSupported = await BrowserOfflineAIManager.isModelSupported('smollm2-360m-mlc');
   const runtime = BrowserOfflineAIManager.getRuntimeStatus();
   const synchronousNeural = AnalystCriticPipeline.runShadowPipeline(candidate, 'qwen3.5-0.8b-mlc');
   const openai = getOnlineProviderSettings('ONLINE', {});
@@ -36,6 +37,11 @@ export async function runOfflineAISafetyTests(): Promise<OfflineAISafetyTestResu
       name: '[Offline AI] Unsupported WebLLM artifact is rejected before load',
       passed: unsupported === false,
       details: `supported=${unsupported}`,
+    },
+    {
+      name: '[Offline AI] Smallest WebLLM model remains available for device download smoke tests',
+      passed: smallestSupported === true,
+      details: `supported=${smallestSupported}; model=SmolLM2-360M-Instruct-q4f16_1-MLC`,
     },
     {
       name: '[Offline AI] Server runtime never claims a browser-resident model',
