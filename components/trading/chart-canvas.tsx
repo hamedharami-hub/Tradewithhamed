@@ -1041,6 +1041,8 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
   const [internalCrosshairPrice, setInternalCrosshairPrice] = useState<number | null>(null);
   const [activeDrawingTool, setActiveDrawingTool] = useState<DrawingToolType>('cursor');
   const [yearlyDataMap, setYearlyDataMap] = useState<Record<string, LoadedYearlyDataset>>({});
+  const [dataLoadErrors, setDataLoadErrors] = useState<Record<string, string>>({});
+  const [jumpDate, setJumpDate] = useState('');
   const loadedKeysRef = useRef<Set<string>>(new Set());
 
   const { actualTheme } = useTheme();
@@ -1055,19 +1057,34 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
       const key = `${symbol}-${tf}-${selectedYear}`;
       if (!loadedKeysRef.current.has(key)) {
         loadedKeysRef.current.add(key);
+        setDataLoadErrors((previous) => {
+          const { [key]: _discarded, ...remaining } = previous;
+          return remaining;
+        });
         loadYearlyDataset(symbol, tf, selectedYear)
           .then((loaded) => {
             if (loaded.candles.length > 0) setYearlyDataMap((prev) => ({ ...prev, [key]: loaded }));
           })
           .catch((err) => {
             loadedKeysRef.current.delete(key);
+            setDataLoadErrors((previous) => ({ ...previous, [key]: err instanceof Error ? err.message : 'خواندن دادهٔ تاریخی ناموفق بود.' }));
             console.warn(`[ChartCanvas] Could not load ${selectedYear} ${tf} for ${symbol}:`, err);
           });
       }
     });
   }, [symbol, primaryTimeframe, secondaryTimeframe, isSplitView, selectedYear]);
 
-  useEffect(() => { setHistoryOffset(0); }, [symbol, primaryTimeframe, selectedYear]);
+  const selectPrimaryTimeframe = (timeframe: Timeframe) => {
+    setPrimaryTimeframe(timeframe);
+    setHistoryOffset(0);
+    setJumpDate('');
+  };
+
+  const selectHistoricalYear = (year: YearDatasetId) => {
+    setSelectedYear(year);
+    setHistoryOffset(0);
+    setJumpDate('');
+  };
 
   // پالت رنگ‌های هماهنگ با قالب فعال
   const themeColors = useMemo(
@@ -1092,15 +1109,13 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
     [isDark]
   );
 
-  // کندل‌های نمایان چارت اولیه بر اساس تایم‌فریم انتخابی
+  // Historical mode never falls back to replay candles: a missing dataset must stay visible as an error.
   const fullPrimaryCandles = useMemo(() => {
     const key = `${symbol}-${primaryTimeframe}-${selectedYear}`;
     const dataset = yearlyDataMap[key];
     if (dataset && dataset.candles.length > 0) return dataset.candles;
-    if (primaryTimeframe === '5M') return candles;
-    const agg = DataWorkbench.aggregateCandles(candles, primaryTimeframe);
-    return agg.length > 0 ? agg : candles;
-  }, [candles, primaryTimeframe, selectedYear, symbol, yearlyDataMap]);
+    return [];
+  }, [primaryTimeframe, selectedYear, symbol, yearlyDataMap]);
 
   const activePrimaryCandles = useMemo(() => {
     const end = Math.max(0, fullPrimaryCandles.length - historyOffset);
@@ -1114,9 +1129,8 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
     const key = `${symbol}-${secondaryTimeframe}-${selectedYear}`;
     const dataset = yearlyDataMap[key];
     if (dataset && dataset.candles.length > 0) return dataset.candles.slice(-Math.min(visibleCandleCount, dataset.candles.length));
-    const agg = DataWorkbench.aggregateCandles(candles, secondaryTimeframe);
-    return agg.slice(-Math.min(visibleCandleCount, agg.length));
-  }, [isSplitView, candles, secondaryTimeframe, selectedYear, symbol, yearlyDataMap, visibleCandleCount]);
+    return [];
+  }, [isSplitView, secondaryTimeframe, selectedYear, symbol, yearlyDataMap, visibleCandleCount]);
 
   // مدیریت کراس‌هیر مشترک دوسویه
   const handleCrosshairUpdate = useCallback(
@@ -1130,7 +1144,21 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
   );
 
   const activeCrosshairPrice = crosshairPrice !== null ? crosshairPrice : internalCrosshairPrice;
-  const primaryDataset = yearlyDataMap[`${symbol}-${primaryTimeframe}-${selectedYear}`];
+  const primaryDataKey = `${symbol}-${primaryTimeframe}-${selectedYear}`;
+  const primaryDataset = yearlyDataMap[primaryDataKey];
+  const primaryLoadError = dataLoadErrors[primaryDataKey];
+  const chartStartDate = fullPrimaryCandles[0] ? new Date(fullPrimaryCandles[0].timestamp).toISOString().slice(0, 10) : '';
+  const chartEndDate = fullPrimaryCandles.at(-1) ? new Date(fullPrimaryCandles.at(-1)!.timestamp).toISOString().slice(0, 10) : '';
+
+  const jumpToHistoricalDate = (value: string) => {
+    setJumpDate(value);
+    const target = Date.parse(`${value}T00:00:00.000Z`);
+    if (!Number.isFinite(target) || fullPrimaryCandles.length === 0) return;
+    const targetIndex = fullPrimaryCandles.findIndex((candle) => candle.timestamp >= target);
+    if (targetIndex < 0) return;
+    const end = Math.min(fullPrimaryCandles.length, targetIndex + visibleCandleCount);
+    setHistoryOffset(Math.max(0, fullPrimaryCandles.length - end));
+  };
 
   const CHART_TOTAL_HEIGHT = isExpanded ? 640 : isSplitView ? 340 : 360;
 
@@ -1169,7 +1197,7 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
               <button
                 key={tf}
                 type="button"
-                onClick={() => setPrimaryTimeframe(tf)}
+                onClick={() => selectPrimaryTimeframe(tf)}
                 className={`px-2 py-0.5 rounded-lg transition-all ${
                   primaryTimeframe === tf
                     ? 'bg-cyan-500 text-slate-950 font-bold shadow-xs'
@@ -1187,7 +1215,7 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
               <button
                 key={year}
                 type="button"
-                onClick={() => setSelectedYear(year)}
+                onClick={() => selectHistoricalYear(year)}
                 className={`px-2 py-0.5 rounded-lg transition-all ${selectedYear === year ? 'bg-violet-500 text-white font-bold shadow-xs' : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'}`}
                 title={`دادهٔ تاریخی سال ${year}`}
               >
@@ -1330,6 +1358,18 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
 
           {/* پیمایش پنجرهٔ تاریخچه بدون رندر همهٔ کندل‌ها */}
           <div className="flex items-center gap-1 border-r border-[var(--border-subtle)] pr-2">
+            <label className="sr-only" htmlFor="chart-history-date">پرش به تاریخ</label>
+            <input
+              id="chart-history-date"
+              type="date"
+              value={jumpDate}
+              min={chartStartDate || undefined}
+              max={chartEndDate || undefined}
+              disabled={fullPrimaryCandles.length === 0}
+              onChange={(event) => jumpToHistoricalDate(event.target.value)}
+              className="h-7 w-[132px] rounded border border-[var(--border-subtle)] bg-[var(--bg-canvas)] px-1 text-[10px] text-[var(--text-primary)] disabled:opacity-40"
+              title="پرش به تاریخ در دادهٔ تاریخی انتخاب‌شده"
+            />
             <button
               type="button"
               onClick={() => setHistoryOffset(offset => Math.min(Math.max(0, fullPrimaryCandles.length - activePrimaryCandles.length), offset + Math.max(1, Math.floor(visibleCandleCount * 0.8))))}
@@ -1399,6 +1439,12 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
           </div>
         </div>
       </div>
+
+      {primaryLoadError && (
+        <div role="alert" className="mb-2 rounded-lg border border-rose-700/70 bg-rose-950/30 px-3 py-2 text-xs text-rose-200">
+          دادهٔ تاریخی {symbol} {primaryTimeframe} برای سال {selectedYear} بارگذاری نشد: {primaryLoadError}
+        </div>
+      )}
 
       {/* ناحیه رندر چارت‌ها: تک‌چارت یا شبکه دو ستونه موازی با خط‌کش و کراس‌هیر همگام */}
       {!isSplitView ? (
