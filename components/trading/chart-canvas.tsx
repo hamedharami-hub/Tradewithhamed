@@ -92,6 +92,8 @@ interface SingleChartPaneProps {
   chartHeight: number;
   activeTool: DrawingToolType;
   onToolUsed?: () => void;
+  onViewportPan?: (bars: number) => void;
+  onViewportZoom?: (direction: 'IN' | 'OUT', focusRatio: number) => void;
 }
 
 // کامپوننت داخلی رندر مستقل هر پانل چارت SVG همراه با خط‌کش اندازه‌گیری پیپ و ابزارهای ترسیمی
@@ -110,6 +112,8 @@ const SingleChartPane: React.FC<SingleChartPaneProps> = ({
   chartHeight,
   activeTool,
   onToolUsed,
+  onViewportPan,
+  onViewportZoom,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [paneWidth, setPaneWidth] = useState(500);
@@ -127,6 +131,7 @@ const SingleChartPane: React.FC<SingleChartPaneProps> = ({
   const [rectangles, setRectangles] = useState<PersistentRectangle[]>([]);
   const [activeRectDraft, setActiveRectDraft] = useState<PersistentRectangle | null>(null);
   const [isDrawing, setIsDrawing] = useState(false);
+  const panAnchorXRef = useRef<number | null>(null);
 
   const PLOT_TOP = 24;
   const PLOT_BOTTOM = chartHeight - 55;
@@ -239,6 +244,11 @@ const SingleChartPane: React.FC<SingleChartPaneProps> = ({
 
     const isRulerMode = activeTool === 'ruler' || isShift;
 
+    if (activeTool === 'cursor' && !isShift && onViewportPan) {
+      panAnchorXRef.current = x;
+      return;
+    }
+
     if (isRulerMode) {
       setIsDrawing(true);
       setActiveRulerDraft({
@@ -293,6 +303,14 @@ const SingleChartPane: React.FC<SingleChartPaneProps> = ({
       return;
     }
 
+    if (activeTool === 'cursor' && panAnchorXRef.current !== null && onViewportPan) {
+      const bars = Math.trunc((panAnchorXRef.current - x) / slotWidth);
+      if (bars !== 0) {
+        onViewportPan(bars);
+        panAnchorXRef.current = x;
+      }
+    }
+
     const price = getPriceAtY(y);
     const candleIdx = getCandleIdxAtX(x);
     const timestamp = candles[candleIdx]?.timestamp;
@@ -332,6 +350,7 @@ const SingleChartPane: React.FC<SingleChartPaneProps> = ({
 
   // رویداد رها کردن ماوس و تثبیت ترسیم
   const handleMouseUp = () => {
+    panAnchorXRef.current = null;
     if (!isDrawing) return;
 
     if (activeRulerDraft) {
@@ -365,6 +384,7 @@ const SingleChartPane: React.FC<SingleChartPaneProps> = ({
   };
 
   const handleMouseLeave = () => {
+    panAnchorXRef.current = null;
     setHoverState(null);
     if (onCrosshairChange) onCrosshairChange(null, null);
     if (isDrawing) {
@@ -440,11 +460,18 @@ const SingleChartPane: React.FC<SingleChartPaneProps> = ({
               ? 'cursor-row-resize'
               : 'cursor-crosshair'
           }`}
-          style={{ touchAction: activeTool !== 'cursor' ? 'none' : 'pan-y' }}
+          style={{ touchAction: activeTool !== 'cursor' || onViewportPan ? 'none' : 'pan-y' }}
           onMouseDown={(e) => startInteraction(e.clientX, e.clientY, e.currentTarget, e.shiftKey)}
           onMouseMove={(e) => moveInteraction(e.clientX, e.clientY, e.currentTarget)}
           onMouseUp={handleMouseUp}
           onMouseLeave={handleMouseLeave}
+          onWheel={(event) => {
+            if (!onViewportZoom || activeTool !== 'cursor') return;
+            event.preventDefault();
+            const rect = event.currentTarget.getBoundingClientRect();
+            const focusRatio = Math.min(1, Math.max(0, (event.clientX - rect.left - 10) / usableWidth));
+            onViewportZoom(event.deltaY < 0 ? 'IN' : 'OUT', focusRatio);
+          }}
           onTouchStart={(e) => {
             if (e.touches.length === 1) {
               startInteraction(e.touches[0].clientX, e.touches[0].clientY, e.currentTarget);
@@ -452,7 +479,7 @@ const SingleChartPane: React.FC<SingleChartPaneProps> = ({
           }}
           onTouchMove={(e) => {
             if (e.touches.length === 1) {
-              if (activeTool !== 'cursor') e.preventDefault();
+              e.preventDefault();
               moveInteraction(e.touches[0].clientX, e.touches[0].clientY, e.currentTarget);
             }
           }}
@@ -1160,6 +1187,27 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
     setHistoryOffset(Math.max(0, fullPrimaryCandles.length - end));
   };
 
+  const panHistoricalViewport = (bars: number) => {
+    setHistoryOffset((currentOffset) => Math.max(0, Math.min(
+      Math.max(0, fullPrimaryCandles.length - visibleCandleCount),
+      currentOffset + bars,
+    )));
+  };
+
+  const zoomHistoricalViewport = (direction: 'IN' | 'OUT', focusRatio: number) => {
+    if (fullPrimaryCandles.length === 0) return;
+    const ratio = Math.max(0, Math.min(1, focusRatio));
+    const nextCount = direction === 'IN'
+      ? Math.max(20, Math.floor(visibleCandleCount / 1.5))
+      : Math.min(fullPrimaryCandles.length, Math.ceil(visibleCandleCount * 1.5));
+    if (nextCount === visibleCandleCount) return;
+    const currentStart = Math.max(0, fullPrimaryCandles.length - historyOffset - visibleCandleCount);
+    const anchorIndex = currentStart + Math.floor(visibleCandleCount * ratio);
+    const nextStart = Math.max(0, Math.min(fullPrimaryCandles.length - nextCount, anchorIndex - Math.floor(nextCount * ratio)));
+    setHistoryOffset(fullPrimaryCandles.length - nextStart - nextCount);
+    setVisibleCandleCount(nextCount);
+  };
+
   const CHART_TOTAL_HEIGHT = isExpanded ? 640 : isSplitView ? 340 : 360;
 
   if (!candles || candles.length === 0) {
@@ -1409,7 +1457,7 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
           <div className="flex items-center gap-1 border-r border-[var(--border-subtle)] pr-2">
             <button
               type="button"
-              onClick={() => setVisibleCandleCount((count) => Math.max(20, Math.floor(count / 1.5)))}
+              onClick={() => zoomHistoricalViewport('IN', 0.5)}
               disabled={activePrimaryCandles.length <= 20}
               className="p-1 rounded hover:bg-[var(--bg-surface-raised)] disabled:opacity-40"
               title="بزرگ‌نمایی کندل‌ها"
@@ -1419,7 +1467,7 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
             </button>
             <button
               type="button"
-              onClick={() => setVisibleCandleCount((count) => Math.min(fullPrimaryCandles.length, Math.ceil(count * 1.5)))}
+              onClick={() => zoomHistoricalViewport('OUT', 0.5)}
               disabled={activePrimaryCandles.length >= fullPrimaryCandles.length}
               className="p-1 rounded hover:bg-[var(--bg-surface-raised)] disabled:opacity-40"
               title="کوچک‌نمایی کندل‌ها"
@@ -1462,6 +1510,8 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
             themeColors={themeColors}
             chartHeight={CHART_TOTAL_HEIGHT}
             activeTool={activeDrawingTool}
+            onViewportPan={panHistoricalViewport}
+            onViewportZoom={zoomHistoricalViewport}
           />
         </div>
       ) : (
@@ -1480,6 +1530,8 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
             themeColors={themeColors}
             chartHeight={CHART_TOTAL_HEIGHT}
             activeTool={activeDrawingTool}
+            onViewportPan={panHistoricalViewport}
+            onViewportZoom={zoomHistoricalViewport}
           />
 
           {/* چارت دوم: تایم‌فریم کلان ثانویه */}
