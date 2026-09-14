@@ -325,6 +325,7 @@ export const MultiStyleBacktestModal: React.FC<MultiStyleBacktestModalProps> = (
                 <option value="SMC_INTRADAY">اسمارت‌مانی دی‌تریدینگ (SMC)</option>
                 <option value="SWING_MACRO">سوینگ ساختاری H1/H4</option>
                 <option value="MEAN_REVERSION">برگشت به میانگین ۲.۵ سیگما</option>
+                <option value="TREND_BREAKOUT">شکست کانال و روند (Breakout 55/EMA200)</option>
               </select>
             </div>
 

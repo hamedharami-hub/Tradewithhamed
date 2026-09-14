@@ -304,6 +304,9 @@ export default function TradingLabPage() {
         } else {
           replayEngine.reset();
         }
+        if (typeof saved.accountBalance === 'number' && saved.accountBalance > 0) {
+          broker.resetAccount(saved.accountBalance);
+        }
         setReplayState(replayEngine.getSnapshot());
       }
     }, 0);
@@ -452,8 +455,17 @@ export default function TradingLabPage() {
     } else {
       replayEngine.reset();
     }
+    if (typeof imported.accountBalance === 'number' && imported.accountBalance > 0) {
+      broker.resetAccount(imported.accountBalance);
+    }
     const snap = replayEngine.getSnapshot();
     setReplayState(snap);
+    PersistenceStorage.saveToLocal({
+      symbol: imported.symbol || symbol,
+      currentStepIndex: snap.currentStepIndex,
+      accountBalance: broker.getState().accountBalance,
+      accountEquity: broker.getState().accountEquity,
+    });
     setExecutionMessage(`وضعیت با موفقیت از فایل بازیابی شد (نماد ${imported.symbol}).`);
   };
 

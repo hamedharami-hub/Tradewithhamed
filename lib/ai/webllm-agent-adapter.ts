@@ -35,6 +35,7 @@ const AGENT_MODEL_MAP: Record<string, string> = {
   'qwen3.5-2b-critic': 'qwen3.5-2b-mlc',
   'qwen3.5-0.8b-critic': 'qwen3.5-0.8b-mlc',
   'smollm2-360m-critic': 'smollm2-360m-mlc',
+  'gemma-4-e4b-critic': 'gemma-4-e4b-litert',
   'deepseek-r1-14b-critic': 'deepseek-r1-distill-qwen-14b-mlc',
   'qwen2.5-14b-critic': 'qwen2.5-14b-instruct-mlc',
 };

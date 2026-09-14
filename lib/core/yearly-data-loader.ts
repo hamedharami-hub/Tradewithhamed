@@ -20,13 +20,60 @@ export class DatasetLoadError extends Error { constructor(public readonly datase
 const memoryCache = new Map<string, LoadedYearlyDataset>();
 
 export function parseCsvToCandles(csvText: string): Candle[] {
-  return csvText.trim().split(/\r?\n/).slice(1).flatMap((line) => {
-    const [rawTime, rawOpen, rawHigh, rawLow, rawClose, rawVolume] = line.split(',');
-    const timestamp = new Date(rawTime).getTime();
-    const values = [timestamp, Number(rawOpen), Number(rawHigh), Number(rawLow), Number(rawClose)];
-    if (!values.every(Number.isFinite)) return [];
-    return [{ timestamp, open: Number(rawOpen), high: Number(rawHigh), low: Number(rawLow), close: Number(rawClose), volume: Number(rawVolume) || 0, isClosed: true }];
-  });
+  const lines = csvText.trim().split('\n');
+  const count = lines.length;
+  if (count <= 1) return [];
+  const candles: Candle[] = [];
+
+  for (let i = 1; i < count; i++) {
+    const line = lines[i].trim();
+    if (!line) continue;
+    const comma1 = line.indexOf(',');
+    if (comma1 === -1) continue;
+    const comma2 = line.indexOf(',', comma1 + 1);
+    if (comma2 === -1) continue;
+    const comma3 = line.indexOf(',', comma2 + 1);
+    if (comma3 === -1) continue;
+    const comma4 = line.indexOf(',', comma3 + 1);
+    if (comma4 === -1) continue;
+    const comma5 = line.indexOf(',', comma4 + 1);
+
+    const rawTime = line.substring(0, comma1);
+    const rawOpen = line.substring(comma1 + 1, comma2);
+    const rawHigh = line.substring(comma2 + 1, comma3);
+    const rawLow = line.substring(comma3 + 1, comma4);
+    const rawClose = comma5 === -1 ? line.substring(comma4 + 1) : line.substring(comma4 + 1, comma5);
+    const rawVolume = comma5 === -1 ? '0' : line.substring(comma5 + 1);
+
+    const timestamp = Date.parse(rawTime);
+    const open = Number(rawOpen);
+    const high = Number(rawHigh);
+    const low = Number(rawLow);
+    const close = Number(rawClose);
+    const volume = Number(rawVolume) || 0;
+
+    if (
+      !Number.isFinite(timestamp) ||
+      !Number.isFinite(open) ||
+      !Number.isFinite(high) ||
+      !Number.isFinite(low) ||
+      !Number.isFinite(close)
+    ) {
+      continue;
+    }
+
+    candles.push({
+      timestamp,
+      open,
+      high,
+      low,
+      close,
+      volume,
+      isClosed: true,
+    });
+  }
+
+  return candles;
 }
 
 export async function loadYearlyDataset(symbol: SymbolId, timeframe: BacktestTimeframe = '4H', year: YearDatasetId = '2024'): Promise<LoadedYearlyDataset> {

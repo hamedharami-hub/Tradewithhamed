@@ -259,6 +259,15 @@ export const AGENT_ENGINE_OPTIONS: AgentEngineOption[] = [
     descriptionFa: 'تحلیل آنی هم‌راستایی بستر کلان با NPU/GPU داخلی بدون دانلود و بدون تاخیر شبکه.',
   },
   {
+    id: 'gemma-4-e4b-analyst',
+    role: 'ANALYST',
+    name: 'Google Gemma 4 E4B LiteRT Analyst',
+    nameFa: 'تحلیل‌گر نسل جدید گوگل Gemma 4 (LiteRT/WebGPU)',
+    type: 'NEURAL_WEBGPU',
+    latencyMs: 25,
+    descriptionFa: 'مدل بومی نسل چهارم گوگل با معماری بهینه LiteRT و درک عمیق ساختار بازار و نقدینگی.',
+  },
+  {
     id: 'phi-4-mini-analyst',
     role: 'ANALYST',
     name: 'Microsoft Phi-4-mini Dense Analyst',
@@ -405,6 +414,15 @@ export const AGENT_ENGINE_OPTIONS: AgentEngineOption[] = [
     type: 'NEURAL_WEBGPU',
     latencyMs: 15,
     descriptionFa: 'سپر ریاضی S0 همراه با مدل توکار مرورگر بدون نیاز به دانلود بایت اضافه و با شتاب سخت‌افزاری NPU/GPU.',
+  },
+  {
+    id: 'gemma-4-e4b-critic',
+    role: 'CRITIC',
+    name: 'Google Gemma 4 E4B LiteRT Critic',
+    nameFa: '🛡️ سپر دوگانه: منتقد قطعی S0 + گوگل Gemma 4 (LiteRT)',
+    type: 'NEURAL_WEBGPU',
+    latencyMs: 25,
+    descriptionFa: 'حفاظت قطعی ریاضی S0 همراه با استدلال نسل چهارم گوگل Gemma 4 برای نقد سخت‌گیرانه و کشف تله‌های نقدینگی.',
   },
   {
     id: 'llama-3.2-3b-critic',

@@ -1059,6 +1059,7 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
   onOpenBacktest,
 }) => {
   const [isSplitView, setIsSplitView] = useState(false);
+  const [chartDisplayMode, setChartDisplayMode] = useState<'REPLAY' | 'HISTORICAL'>('REPLAY');
   const [primaryTimeframe, setPrimaryTimeframe] = useState<Timeframe>('5M');
   const [secondaryTimeframe, setSecondaryTimeframe] = useState<Timeframe>('15M');
   const [selectedYear, setSelectedYear] = useState<YearDatasetId>('2025');
@@ -1105,12 +1106,14 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
     setPrimaryTimeframe(timeframe);
     setHistoryOffset(0);
     setJumpDate('');
+    setChartDisplayMode('HISTORICAL');
   };
 
   const selectHistoricalYear = (year: YearDatasetId) => {
     setSelectedYear(year);
     setHistoryOffset(0);
     setJumpDate('');
+    setChartDisplayMode('HISTORICAL');
   };
 
   // پالت رنگ‌های هماهنگ با قالب فعال
@@ -1145,10 +1148,16 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
   }, [primaryTimeframe, selectedYear, symbol, yearlyDataMap]);
 
   const activePrimaryCandles = useMemo(() => {
-    const end = Math.max(0, fullPrimaryCandles.length - historyOffset);
-    const start = Math.max(0, end - visibleCandleCount);
-    return fullPrimaryCandles.slice(start, end);
-  }, [fullPrimaryCandles, historyOffset, visibleCandleCount]);
+    if (chartDisplayMode === 'REPLAY') {
+      return candles;
+    }
+    if (fullPrimaryCandles.length > 0) {
+      const end = Math.max(0, fullPrimaryCandles.length - historyOffset);
+      const start = Math.max(0, end - visibleCandleCount);
+      return fullPrimaryCandles.slice(start, end);
+    }
+    return candles;
+  }, [chartDisplayMode, candles, fullPrimaryCandles, historyOffset, visibleCandleCount]);
 
   // تولید کندل‌های کلان چارت دوم
   const activeSecondaryCandles = useMemo(() => {
@@ -1179,6 +1188,7 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
 
   const jumpToHistoricalDate = (value: string) => {
     setJumpDate(value);
+    setChartDisplayMode('HISTORICAL');
     const target = Date.parse(`${value}T00:00:00.000Z`);
     if (!Number.isFinite(target) || fullPrimaryCandles.length === 0) return;
     const targetIndex = fullPrimaryCandles.findIndex((candle) => candle.timestamp >= target);
@@ -1239,6 +1249,34 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
             </span>
           </div>
 
+          {/* سوئیچ حالت نمایش: بازپخش زنده vs کاوش تاریخچه */}
+          <div className="flex items-center bg-[var(--bg-canvas)] rounded-xl p-0.5 border border-[var(--border-subtle)] text-[11px] font-sans">
+            <button
+              type="button"
+              onClick={() => setChartDisplayMode('REPLAY')}
+              className={`px-2 py-0.5 rounded-lg font-bold transition-all flex items-center gap-1 ${
+                chartDisplayMode === 'REPLAY'
+                  ? 'bg-emerald-500 text-slate-950 shadow-xs'
+                  : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'
+              }`}
+              title="همگام با گام‌های موتور بازپخش زنده شبیه‌ساز"
+            >
+              <span>🔄 بازپخش زنده</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setChartDisplayMode('HISTORICAL')}
+              className={`px-2 py-0.5 rounded-lg font-bold transition-all flex items-center gap-1 ${
+                chartDisplayMode === 'HISTORICAL'
+                  ? 'bg-cyan-500 text-slate-950 shadow-xs'
+                  : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'
+              }`}
+              title="کاوش آزادانه تاریخچه کندل‌ها با زوم، جابجایی و پرش تاریخ"
+            >
+              <span>📅 کاوش تاریخچه</span>
+            </button>
+          </div>
+
           {/* انتخابگر تایم‌فریم اصلی چارت */}
           <div className="flex items-center bg-[var(--bg-canvas)] rounded-xl p-0.5 border border-[var(--border-subtle)] text-[11px] font-mono">
             {(['1M', '5M', '15M', '1H', '4H', 'D1', 'W1'] as Timeframe[]).map((tf) => (
@@ -1275,9 +1313,11 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
           {/* برچسب وضعیت بستر */}
           <div className="hidden lg:flex items-center gap-1 text-[10px] font-sans">
             <span className="px-1.5 py-0.5 rounded bg-[var(--bg-canvas)] border border-[var(--border-subtle)] text-[var(--text-muted)]">
-              تاریخچهٔ {selectedYear}: {activePrimaryCandles.length.toLocaleString('fa-IR')} از {fullPrimaryCandles.length.toLocaleString('fa-IR')} کندل ({primaryTimeframe})
+              {chartDisplayMode === 'REPLAY'
+                ? `بازپخش زنده: ${activePrimaryCandles.length.toLocaleString('fa-IR')} کندل جاری`
+                : `تاریخچهٔ ${selectedYear}: ${activePrimaryCandles.length.toLocaleString('fa-IR')} از ${fullPrimaryCandles.length.toLocaleString('fa-IR')} کندل (${primaryTimeframe})`}
             </span>
-            {primaryDataset && (
+            {chartDisplayMode === 'HISTORICAL' && primaryDataset && (
               <span className={`px-1.5 py-0.5 rounded border ${primaryDataset.provenance.isSynthetic ? 'text-amber-400 border-amber-800 bg-amber-950/30' : 'text-cyan-400 border-cyan-800 bg-cyan-950/30'}`}>
                 {primaryDataset.coverage.labelFa}
               </span>
@@ -1420,8 +1460,11 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
             />
             <button
               type="button"
-              onClick={() => setHistoryOffset(offset => Math.min(Math.max(0, fullPrimaryCandles.length - activePrimaryCandles.length), offset + Math.max(1, Math.floor(visibleCandleCount * 0.8))))}
-              disabled={historyOffset >= fullPrimaryCandles.length - activePrimaryCandles.length}
+              onClick={() => {
+                if (chartDisplayMode === 'REPLAY') setChartDisplayMode('HISTORICAL');
+                setHistoryOffset(offset => Math.min(Math.max(0, fullPrimaryCandles.length - activePrimaryCandles.length), offset + Math.max(1, Math.floor(visibleCandleCount * 0.8))));
+              }}
+              disabled={chartDisplayMode === 'HISTORICAL' && historyOffset >= fullPrimaryCandles.length - activePrimaryCandles.length}
               className="p-1 rounded hover:bg-[var(--bg-surface-raised)] disabled:opacity-40"
               title="نمایش کندل‌های قدیمی‌تر"
               aria-label="نمایش کندل‌های قدیمی‌تر"
@@ -1431,7 +1474,7 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
             <button
               type="button"
               onClick={() => setHistoryOffset(offset => Math.max(0, offset - Math.max(1, Math.floor(visibleCandleCount * 0.8))))}
-              disabled={historyOffset === 0}
+              disabled={chartDisplayMode === 'REPLAY' || historyOffset === 0}
               className="p-1 rounded hover:bg-[var(--bg-surface-raised)] disabled:opacity-40"
               title="نمایش کندل‌های جدیدتر"
               aria-label="نمایش کندل‌های جدیدتر"
@@ -1501,7 +1544,13 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
             symbol={symbol}
             candles={activePrimaryCandles}
             timeframe={primaryTimeframe}
-            title={primaryTimeframe === 'D1' ? `نمودار روزانهٔ کامل سال ${selectedYear}` : `نمودار تحلیلی و ورود ${primaryTimeframe} — ${selectedYear}`}
+            title={
+              chartDisplayMode === 'REPLAY'
+                ? `نمودار زنده بازپخش (همگام با شبیه‌ساز) — ${candles.length} کندل`
+                : primaryTimeframe === 'D1'
+                  ? `نمودار روزانهٔ کامل سال ${selectedYear}`
+                  : `نمودار تحلیلی و ورود ${primaryTimeframe} — ${selectedYear}`
+            }
             activeCandidate={activeCandidate}
             multiTimeframeLevels={multiTimeframeLevels}
             monteCarloCone={monteCarloCone}
@@ -1521,7 +1570,11 @@ export const ChartCanvas: React.FC<ChartCanvasProps> = ({
             symbol={symbol}
             candles={activePrimaryCandles}
             timeframe={primaryTimeframe}
-            title={`چارت ۱: ساختار و ورود (${primaryTimeframe})`}
+            title={
+              chartDisplayMode === 'REPLAY'
+                ? `چارت ۱: بازپخش زنده (${candles.length} کندل)`
+                : `چارت ۱: ساختار و ورود (${primaryTimeframe})`
+            }
             activeCandidate={activeCandidate}
             multiTimeframeLevels={multiTimeframeLevels}
             monteCarloCone={monteCarloCone}

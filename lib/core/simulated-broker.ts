@@ -28,6 +28,13 @@ export class SimulatedBroker {
     this.enablePartialTp = enabled;
   }
 
+  public resetAccount(newBalance = 10000): void {
+    this.balance = newBalance;
+    this.equity = newBalance;
+    this.orders = [];
+    this.positions = [];
+  }
+
   public calculatePnlDollars(symbol: SymbolId, volumeLots: number, priceDiff: number, currentPrice: number): number {
     const contractSize = symbol === 'XAUUSD' ? 100 : symbol === 'BTCUSD' ? 1 : 100000;
     const grossQuotePnl = volumeLots * priceDiff * contractSize;
