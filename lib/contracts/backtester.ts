@@ -13,6 +13,12 @@ export type BacktestSessionFilter =
   | 'NEW_YORK'
   | 'ASIA';
 
+export type BacktestAIMode =
+  | 'AI_OFF'                 // بدون فیلتر هوش مصنوعی (محاسباتی و تکنیکال خالص)
+  | 'AI_COUNCIL_S0'          // شورای ۴ عاملی S0 (اسکنر، بستر، منتقد، داور حدنصاب)
+  | 'AI_DUAL_GUARD_STRICT'   // سپر دوگانه هوش مصنوعی (شورا + وتوی سدهای نقدینگی و تله‌ها)
+  | 'AI_ADAPTIVE_CONFIDENCE';// تخصیص پویای حجم بر اساس درصد اطمینان هوش مصنوعی
+
 export interface BacktestConfig {
   symbol: SymbolId;
   timeframe: Timeframe;
@@ -32,6 +38,8 @@ export interface BacktestConfig {
   intraBarModel?: 'PESSIMISTIC' | 'BAR_POLARITY';
   newsFilter?: boolean;
   adaptiveRiskScaling?: boolean;
+  aiMode?: BacktestAIMode;
+  aiModelNameFa?: string;
 }
 
 export const DEFAULT_BACKTEST_CONFIG: BacktestConfig = {
@@ -53,6 +61,8 @@ export const DEFAULT_BACKTEST_CONFIG: BacktestConfig = {
   intraBarModel: 'BAR_POLARITY',
   newsFilter: true,
   adaptiveRiskScaling: false,
+  aiMode: 'AI_COUNCIL_S0',
+  aiModelNameFa: 'شورای ۴ عاملی S0 (پیش‌فرض سریع)',
 };
 
 export type BacktestExitReason =
@@ -125,6 +135,36 @@ export interface BacktestDatasetContext {
   isSynthetic: boolean;
 }
 
+export interface BacktestVetoedTrade {
+  id: string;
+  timestamp: number;
+  symbol: SymbolId;
+  style: TradingStyleType;
+  direction: 'BUY' | 'SELL';
+  entryPrice: number;
+  stopLossPrice: number;
+  takeProfitPrice: number;
+  councilScore?: number;
+  vetoReasonFa: string;
+  hypotheticalOutcome: 'AVOIDED_LOSS' | 'MISSED_PROFIT' | 'TIMEOUT';
+}
+
+export interface BacktestAIMetrics {
+  mode: BacktestAIMode;
+  modelNameFa: string;
+  totalCandidatesGenerated: number;
+  approvedCandidatesCount: number;
+  vetoedCandidatesCount: number;
+  vetoRatePercent: number;
+  avoidedLossesCount: number; // موقعیت‌های باختی که هوش مصنوعی وتو کرد و مانع ضرر شد
+  missedProfitsCount: number; // موقعیت‌هایی که به تارگت می‌رسیدند ولی وتو شدند
+  capitalSavedDollars: number; // تخمین کل سرمایه نجات‌یافته توسط فیلتر هوش مصنوعی
+  winRateWithoutAI: number; // وین‌ریت کل کاندیداها بدون فیلتر هوش مصنوعی
+  winRateWithAI: number;    // وین‌ریت پس از اعمال فیلتر شورا و منتقد
+  winRateImprovementPercent: number; // درصد ارتقای وین‌ریت با هوش مصنوعی
+  vetoedTradesSample: BacktestVetoedTrade[];
+}
+
 export interface BacktestReport {
   config: BacktestConfig;
   summary: BacktestSummaryMetrics;
@@ -141,4 +181,5 @@ export interface BacktestReport {
   equityMonteCarlo?: EquityMonteCarloResult;
   trades: BacktestTrade[];
   datasetContext?: BacktestDatasetContext;
+  aiMetrics?: BacktestAIMetrics;
 }

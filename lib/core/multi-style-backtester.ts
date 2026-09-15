@@ -11,11 +11,15 @@ import {
   BacktestTrade,
   EquityCurvePoint,
   BacktestExitReason,
+  BacktestAIMode,
+  BacktestAIMetrics,
+  BacktestVetoedTrade,
 } from '../contracts/backtester';
 import { MarketRegimeClassifier } from './market-regime-classifier';
 import { MultiStyleEngine } from './multi-style-engine';
 import { MultiAgentOrchestrator } from './multi-agent-orchestrator';
 import { DEFAULT_MULTI_AGENT_CONFIG } from '../contracts/multi-agent-system';
+import { AnalystCriticPipeline } from './analyst-critic';
 import { MonteCarloSimulator } from './monte-carlo-simulator';
 import {
   getDynamicSpreadPips,
@@ -79,6 +83,15 @@ export class MultiStyleBacktester {
       priceDistance: number;
     } | null = null;
     const tradeReturns: number[] = [];
+    const aiMode: BacktestAIMode = config.aiMode || 'AI_COUNCIL_S0';
+    let totalCandidatesGenerated = 0;
+    let approvedCandidatesCount = 0;
+    let vetoedCandidatesCount = 0;
+    let avoidedLossesCount = 0;
+    let missedProfitsCount = 0;
+    let hypotheticalVetoLossesSum = 0;
+    let hypotheticalVetoWinsSum = 0;
+    const vetoedTradesSample: BacktestVetoedTrade[] = [];
 
     const startIdx = Math.min(20, Math.floor(candles.length / 4));
 
@@ -285,29 +298,118 @@ export class MultiStyleBacktester {
         const candidate = evalRes.candidate;
 
         if (candidate) {
-          const matchedStyleId = candidate.style === 'SCALP_M1_M5'
-            ? 'SCALP_M1_M5'
-            : candidate.style === 'SWING_MACRO'
-            ? 'SWING_MACRO'
-            : candidate.style === 'TREND_BREAKOUT'
-            ? 'TREND_BREAKOUT'
-            : candidate.evidenceIds?.fvgId
-            ? 'S0_SWEEP_FVG'
-            : 'BOS_ORDER_BLOCK';
+          totalCandidatesGenerated++;
 
-          const councilRes = MultiAgentOrchestrator.evaluateCandidate(candidate, {
-            ...DEFAULT_MULTI_AGENT_CONFIG,
-            activeTradingStyle: matchedStyleId,
-            judgeEngineId: 'alpha-consensus-quorum-judge',
-          });
+          let passesAI = true;
+          let vetoReasonFa = '';
+          let councilScore = 100;
+          let quorumReached = true;
 
-          const councilScore = councilRes.councilConsensus?.alphaConsensusScore ?? 0;
-          const quorumReached = councilRes.councilConsensus?.quorumReached ?? false;
+          if (aiMode === 'AI_OFF') {
+            passesAI = true;
+            councilScore = 100;
+          } else {
+            const matchedStyleId = candidate.style === 'SCALP_M1_M5'
+              ? 'SCALP_M1_M5'
+              : candidate.style === 'SWING_MACRO'
+              ? 'SWING_MACRO'
+              : candidate.style === 'TREND_BREAKOUT'
+              ? 'TREND_BREAKOUT'
+              : candidate.evidenceIds?.fvgId
+              ? 'S0_SWEEP_FVG'
+              : 'BOS_ORDER_BLOCK';
 
-          const passesCouncil = councilScore >= config.minAlphaConsensusScore &&
-            (!config.requireQuorum || quorumReached);
+            const councilRes = MultiAgentOrchestrator.evaluateCandidate(candidate, {
+              ...DEFAULT_MULTI_AGENT_CONFIG,
+              activeTradingStyle: matchedStyleId,
+              judgeEngineId: 'alpha-consensus-quorum-judge',
+            });
 
-          if (passesCouncil) {
+            councilScore = councilRes.councilConsensus?.alphaConsensusScore ?? 0;
+            quorumReached = councilRes.councilConsensus?.quorumReached ?? false;
+
+            const baseCouncilPass = councilScore >= config.minAlphaConsensusScore &&
+              (!config.requireQuorum || quorumReached);
+
+            if (aiMode === 'AI_COUNCIL_S0') {
+              passesAI = baseCouncilPass;
+              if (!passesAI) {
+                vetoReasonFa = councilScore < config.minAlphaConsensusScore
+                  ? `نمره شورا (${councilScore}٪) پایین‌تر از سقف مجاز (${config.minAlphaConsensusScore}٪)`
+                  : 'عدم تحقق حدنصاب شورا (Quorum Not Reached)';
+              }
+            } else if (aiMode === 'AI_DUAL_GUARD_STRICT') {
+              if (!baseCouncilPass) {
+                passesAI = false;
+                vetoReasonFa = `وتو در شورا (نمره ${councilScore}٪)`;
+              } else {
+                const criticReview = AnalystCriticPipeline.evaluateCandidate(candidate, 'local-offline-deep-critic-v1');
+                const isRrAcceptable = (candidate.riskRewardRatio ?? 0) >= 1.8;
+                if (!isRrAcceptable) {
+                  passesAI = false;
+                  vetoReasonFa = `نسبت R:R نامناسب (${(candidate.riskRewardRatio ?? 0).toFixed(1)})؛ حداقل مجاز ۱:۱٫۸`;
+                } else if (criticReview.decision === 'NO_TRADE') {
+                  passesAI = false;
+                  vetoReasonFa = `منتقد سخت‌گیر: ${criticReview.uncertainties.join('، ') || 'ضعف در جمع‌آوری نقدینگی معتبر'}`;
+                }
+              }
+            } else if (aiMode === 'AI_ADAPTIVE_CONFIDENCE') {
+              passesAI = councilScore >= 65;
+              if (!passesAI) {
+                vetoReasonFa = `اطمینان شورا ناکافی (${councilScore}٪ < ۶۵٪)`;
+              }
+            }
+          }
+
+          if (!passesAI) {
+            vetoedCandidatesCount++;
+            let hypotheticalOutcome: 'AVOIDED_LOSS' | 'MISSED_PROFIT' | 'TIMEOUT' = 'TIMEOUT';
+            const isBuy = candidate.direction === 'BUY';
+            const searchMax = Math.min(candles.length, i + 50);
+            for (let k = i + 1; k < searchMax; k++) {
+              const futureBar = candles[k];
+              const slHit = isBuy ? futureBar.low <= candidate.stopLossPrice : futureBar.high >= candidate.stopLossPrice;
+              const tpHit = isBuy ? futureBar.high >= candidate.takeProfitPrice : futureBar.low <= candidate.takeProfitPrice;
+              if (slHit && !tpHit) {
+                hypotheticalOutcome = 'AVOIDED_LOSS';
+                break;
+              }
+              if (tpHit && !slHit) {
+                hypotheticalOutcome = 'MISSED_PROFIT';
+                break;
+              }
+              if (slHit && tpHit) {
+                hypotheticalOutcome = 'AVOIDED_LOSS';
+                break;
+              }
+            }
+
+            if (hypotheticalOutcome === 'AVOIDED_LOSS') {
+              avoidedLossesCount++;
+              const estLoss = currentCash * (config.riskPerTradePercent / 100);
+              hypotheticalVetoLossesSum += estLoss;
+            } else if (hypotheticalOutcome === 'MISSED_PROFIT') {
+              missedProfitsCount++;
+              hypotheticalVetoWinsSum += currentCash * (config.riskPerTradePercent / 100) * (candidate.riskRewardRatio || 2);
+            }
+
+            if (vetoedTradesSample.length < 15) {
+              vetoedTradesSample.push({
+                id: `VETO-${candidate.id || i}`,
+                timestamp: currentCandle.timestamp,
+                symbol: config.symbol,
+                style: candidate.style ?? 'SMC_INTRADAY',
+                direction: candidate.direction,
+                entryPrice: candidate.entryPrice,
+                stopLossPrice: candidate.stopLossPrice,
+                takeProfitPrice: candidate.takeProfitPrice,
+                councilScore: Math.round(councilScore),
+                vetoReasonFa,
+                hypotheticalOutcome,
+              });
+            }
+          } else {
+            approvedCandidatesCount++;
             const baseVol = config.symbol === 'XAUUSD' ? 0.16 : 0.08;
             const mcRes = MonteCarloSimulator.simulate({
               initialPrice: candidate.entryPrice,
@@ -320,6 +422,15 @@ export class MultiStyleBacktester {
 
             if (mcRes.probabilityHittingTarget >= config.minMonteCarloTpProbability) {
               let effectiveRiskPercent = config.riskPerTradePercent;
+              if (aiMode === 'AI_ADAPTIVE_CONFIDENCE') {
+                if (councilScore >= 80) {
+                  effectiveRiskPercent = config.riskPerTradePercent * 1.0;
+                } else if (councilScore >= 70) {
+                  effectiveRiskPercent = Number((config.riskPerTradePercent * 0.65).toFixed(2));
+                } else {
+                  effectiveRiskPercent = Number((config.riskPerTradePercent * 0.35).toFixed(2));
+                }
+              }
               if (config.adaptiveRiskScaling && consecutiveLossCount > 0) {
                 if (consecutiveLossCount === 1) {
                   effectiveRiskPercent = Number((effectiveRiskPercent * 0.75).toFixed(2));
@@ -332,7 +443,6 @@ export class MultiStyleBacktester {
               const priceDistance = Math.abs(candidate.entryPrice - candidate.stopLossPrice);
               const rawVolume = priceDistance > 0 ? dollarRisk / (priceDistance * contractMultiplier) : 0;
               if (rawVolume < 0.01) {
-                // بودجه ریسک پاسخگوی حداقل حجم معامله (۰.۰۱ لات) نیست؛ جهت حفظ سقف ریسک صرف‌نظر می‌شود
                 continue;
               }
               const volumeLots = Number(rawVolume.toFixed(2));
@@ -340,7 +450,6 @@ export class MultiStyleBacktester {
                 continue;
               }
 
-              // ذخیره سیگنال به عنوان معلق جهت اجرای بدون بایاس در باز شدن کندل بعدی (Open of bar i+1)
               pendingSignal = {
                 candidate,
                 regime: regimeAnalysis.regime,
@@ -426,6 +535,38 @@ export class MultiStyleBacktester {
     const highProbWinRate = highProbTrades.length > 0 ? (highProbWins / highProbTrades.length) * 100 : 0;
     const lowProbWinRate = lowProbTrades.length > 0 ? (lowProbWins / lowProbTrades.length) * 100 : 0;
 
+    const totalWithoutAI = totalTrades + avoidedLossesCount + missedProfitsCount;
+    const winsWithoutAI = winningTrades + missedProfitsCount;
+    const winRateWithoutAI = totalWithoutAI > 0
+      ? Number(((winsWithoutAI / totalWithoutAI) * 100).toFixed(1))
+      : Number(winRatePercent.toFixed(1));
+    const winRateWithAI = Number(winRatePercent.toFixed(1));
+    const winRateImprovementPercent = Number((winRateWithAI - winRateWithoutAI).toFixed(1));
+
+    const aiMetrics: BacktestAIMetrics = {
+      mode: aiMode,
+      modelNameFa: config.aiModelNameFa || (
+        aiMode === 'AI_OFF'
+          ? 'بدون هوش مصنوعی (محاسباتی و پرایس‌اکشن خالص)'
+          : aiMode === 'AI_DUAL_GUARD_STRICT'
+          ? 'سپر دوگانه هوش مصنوعی (S0 + منتقد سخت‌گیر نقدینگی)'
+          : aiMode === 'AI_ADAPTIVE_CONFIDENCE'
+          ? 'حجم‌گذاری انطباقی بر پایه اطمینان شورا'
+          : 'شورای ۴ عاملی S0 (اسکنر، بستر، منتقد، داور)'
+      ),
+      totalCandidatesGenerated,
+      approvedCandidatesCount,
+      vetoedCandidatesCount,
+      vetoRatePercent: totalCandidatesGenerated > 0 ? Number(((vetoedCandidatesCount / totalCandidatesGenerated) * 100).toFixed(1)) : 0,
+      avoidedLossesCount,
+      missedProfitsCount,
+      capitalSavedDollars: Number(hypotheticalVetoLossesSum.toFixed(2)),
+      winRateWithoutAI,
+      winRateWithAI,
+      winRateImprovementPercent,
+      vetoedTradesSample,
+    };
+
     return {
       config,
       summary: {
@@ -464,6 +605,7 @@ export class MultiStyleBacktester {
           )
         : undefined,
       trades: completedTrades,
+      aiMetrics,
     };
   }
 }

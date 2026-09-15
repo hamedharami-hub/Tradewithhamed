@@ -10,6 +10,7 @@ import { TradingStyleType } from '@/lib/contracts/regimes';
 import {
   BacktestReport,
   BacktestSessionFilter,
+  BacktestAIMode,
 } from '@/lib/contracts/backtester';
 import { useBacktestWorker } from '@/hooks/use-backtest-worker';
 import {
@@ -34,6 +35,11 @@ import {
   Database,
   Calendar,
   Loader2,
+  Bot,
+  Zap,
+  Award,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react';
 
 interface MultiStyleBacktestModalProps {
@@ -96,6 +102,89 @@ export const MultiStyleBacktestModal: React.FC<MultiStyleBacktestModalProps> = (
   const [isRunning, setIsRunning] = useState<boolean>(false);
   const { run: runInWorker, cancel: cancelBacktest, progress } = useBacktestWorker();
 
+  const [aiMode, setAiMode] = useState<BacktestAIMode>('AI_COUNCIL_S0');
+  const [aiModelNameFa, setAiModelNameFa] = useState<string>('شورای ۴ عاملی S0 (پیش‌فرض سریع)');
+  const [showVetoedList, setShowVetoedList] = useState<boolean>(false);
+
+  const handleAiModeChange = (mode: BacktestAIMode) => {
+    setAiMode(mode);
+    if (mode === 'AI_OFF') setAiModelNameFa('تکنیکال خالص بدون هوش مصنوعی');
+    else if (mode === 'AI_COUNCIL_S0') setAiModelNameFa('شورای ۴ ایجنتی S0 (اسکنر، تحلیلگر، منتقد، داور)');
+    else if (mode === 'AI_DUAL_GUARD_STRICT') setAiModelNameFa('نگهبان دوگانه نقدینگی و تله‌های قیمت');
+    else if (mode === 'AI_ADAPTIVE_CONFIDENCE') setAiModelNameFa('حجم‌گذاری تطبیقی مبتنی بر اطمینان هوش مصنوعی');
+  };
+
+  type PresetId = 'SCALP_QUICK' | 'SMC_INTRADAY' | 'SWING_SAFE' | 'AI_COUNCIL' | 'ULTRA_SAFE';
+
+  const applyPreset = (preset: PresetId) => {
+    if (preset === 'SCALP_QUICK') {
+      setBacktestTimeframe('5M');
+      setStyle('SCALP_M1_M5');
+      setAiMode('AI_COUNCIL_S0');
+      setAiModelNameFa('شورای ۴ عاملی S0');
+      setMinCouncilScore(70);
+      setMinMcProb(35);
+      setRiskPercent(0.5);
+      setSessionFilter('ALL');
+      setUseDynamicSpread(true);
+      setRolloverBlackout(true);
+      setNewsFilter(true);
+      setAdaptiveRiskScaling(true);
+    } else if (preset === 'SMC_INTRADAY') {
+      setBacktestTimeframe('15M');
+      setStyle('SMC_INTRADAY');
+      setAiMode('AI_COUNCIL_S0');
+      setAiModelNameFa('شورای ۴ عاملی S0');
+      setMinCouncilScore(75);
+      setMinMcProb(40);
+      setRiskPercent(0.5);
+      setSessionFilter('LONDON_NY_OVERLAP');
+      setUseDynamicSpread(true);
+      setRolloverBlackout(true);
+      setNewsFilter(true);
+      setAdaptiveRiskScaling(false);
+    } else if (preset === 'SWING_SAFE') {
+      setBacktestTimeframe('4H');
+      setStyle('SWING_MACRO');
+      setAiMode('AI_DUAL_GUARD_STRICT');
+      setAiModelNameFa('سپر دوگانه هوش مصنوعی (S0 + منتقد سخت‌گیر)');
+      setMinCouncilScore(75);
+      setMinMcProb(45);
+      setRiskPercent(0.25);
+      setSessionFilter('ALL');
+      setUseDynamicSpread(true);
+      setRolloverBlackout(true);
+      setNewsFilter(true);
+      setAdaptiveRiskScaling(false);
+    } else if (preset === 'AI_COUNCIL') {
+      setBacktestTimeframe('15M');
+      setStyle('ALL');
+      setAiMode('AI_DUAL_GUARD_STRICT');
+      setAiModelNameFa('سپر دوگانه هوش مصنوعی (S0 + منتقد سخت‌گیر)');
+      setMinCouncilScore(75);
+      setMinMcProb(40);
+      setRiskPercent(0.5);
+      setSessionFilter('ALL');
+      setUseDynamicSpread(true);
+      setRolloverBlackout(true);
+      setNewsFilter(true);
+      setAdaptiveRiskScaling(true);
+    } else if (preset === 'ULTRA_SAFE') {
+      setBacktestTimeframe('1H');
+      setStyle('ALL');
+      setAiMode('AI_ADAPTIVE_CONFIDENCE');
+      setAiModelNameFa('حجم‌گذاری شناور بر پایه اطمینان شورا');
+      setMinCouncilScore(80);
+      setMinMcProb(50);
+      setRiskPercent(0.25);
+      setSessionFilter('LONDON_NY_OVERLAP');
+      setUseDynamicSpread(true);
+      setRolloverBlackout(true);
+      setNewsFilter(true);
+      setAdaptiveRiskScaling(true);
+    }
+  };
+
   // بارگذاری داده‌های تاریخی سالانه به صورت ناهمگام و کش‌شده
   useEffect(() => {
     if (!isOpen || timeHorizon === 'REPLAY_WINDOW') return;
@@ -147,6 +236,8 @@ export const MultiStyleBacktestModal: React.FC<MultiStyleBacktestModalProps> = (
           intraBarModel,
           newsFilter,
           adaptiveRiskScaling,
+          aiMode,
+          aiModelNameFa,
         });
         setReport({
           ...res,
@@ -203,6 +294,59 @@ export const MultiStyleBacktestModal: React.FC<MultiStyleBacktestModalProps> = (
 
         {/* بدنه محتوا اسکرول‌خور */}
         <div className="p-4 sm:p-5 overflow-y-auto space-y-4 text-xs">
+          {/* نوار پریست‌های سریع ۱-کلیکی (بک‌تست آسان و سریع) */}
+          <div className="bg-[#0e121a] p-3 rounded-2xl border border-purple-500/20 space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-zinc-200 font-bold flex items-center gap-1.5 text-xs">
+                <Zap className="w-3.5 h-3.5 text-amber-400" />
+                <span>پریست‌های آماده و سریع (بک‌تست آسان ۱-کلیکی):</span>
+              </span>
+              <span className="text-[10px] text-zinc-400">یک کلیک برای تنظیم فوری نماد، تایم‌فریم، شورا و فیلترها</span>
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-5 gap-1.5">
+              <button
+                type="button"
+                onClick={() => applyPreset('SCALP_QUICK')}
+                className="px-2.5 py-1.5 rounded-xl text-center text-[11px] font-bold bg-[#141924] hover:bg-purple-950/60 text-purple-300 border border-purple-800/40 hover:border-purple-600 transition-all flex items-center justify-center gap-1.5"
+              >
+                <span>⚡</span>
+                <span>اسکلپ چابک M5</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => applyPreset('SMC_INTRADAY')}
+                className="px-2.5 py-1.5 rounded-xl text-center text-[11px] font-bold bg-[#141924] hover:bg-cyan-950/60 text-cyan-300 border border-cyan-800/40 hover:border-cyan-600 transition-all flex items-center justify-center gap-1.5"
+              >
+                <span>🎯</span>
+                <span>اسمارت‌مانی M15</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => applyPreset('SWING_SAFE')}
+                className="px-2.5 py-1.5 rounded-xl text-center text-[11px] font-bold bg-[#141924] hover:bg-emerald-950/60 text-emerald-300 border border-emerald-800/40 hover:border-emerald-600 transition-all flex items-center justify-center gap-1.5"
+              >
+                <span>🛡️</span>
+                <span>سوینگ ماکرو H1</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => applyPreset('AI_COUNCIL')}
+                className="px-2.5 py-1.5 rounded-xl text-center text-[11px] font-bold bg-gradient-to-r from-purple-900/50 to-indigo-900/50 hover:from-purple-800/60 hover:to-indigo-800/60 text-indigo-200 border border-indigo-500/50 transition-all flex items-center justify-center gap-1.5 shadow-sm"
+              >
+                <span>🤖</span>
+                <span>بک‌تست شورای AI</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => applyPreset('ULTRA_SAFE')}
+                className="px-2.5 py-1.5 rounded-xl text-center text-[11px] font-bold bg-[#141924] hover:bg-amber-950/60 text-amber-300 border border-amber-800/40 hover:border-amber-600 transition-all flex items-center justify-center gap-1.5 col-span-2 sm:col-span-1"
+              >
+                <span>👑</span>
+                <span>ماکزیمم امنیت پراپ</span>
+              </button>
+            </div>
+          </div>
+
           {/* بخش انتخاب دامنه زمانی و منبع دیتای تاریخی */}
           <div className="bg-[#0c0f17] p-3.5 rounded-2xl border border-purple-900/30 space-y-3">
             <div className="flex items-center justify-between border-b border-[#1d2331] pb-2 flex-wrap gap-2">
@@ -388,6 +532,97 @@ export const MultiStyleBacktestModal: React.FC<MultiStyleBacktestModalProps> = (
             </div>
           </div>
 
+          {/* پنل ارزیابی و وتوی هوش مصنوعی (AI Backtest Engine) */}
+          <div className="bg-gradient-to-br from-[#121024] to-[#0c0f18] p-3.5 rounded-2xl border border-purple-500/30 space-y-2.5">
+            <div className="flex items-center justify-between border-b border-purple-900/40 pb-2">
+              <div className="flex items-center gap-2 text-purple-200 font-bold text-xs">
+                <Bot className="w-4 h-4 text-purple-400" />
+                <span>موتور هوش مصنوعی در بک‌تست (AI Evaluation & Veto Engine):</span>
+              </div>
+              <span className={`text-[10px] px-2 py-0.5 rounded border font-bold ${
+                aiMode === 'AI_OFF'
+                  ? 'bg-zinc-900 text-zinc-400 border-zinc-700'
+                  : 'bg-purple-950 text-purple-300 border-purple-700'
+              }`}>
+                {aiMode === 'AI_OFF' ? 'هوش مصنوعی خاموش' : 'هوش مصنوعی فعال'}
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-4 gap-2">
+              <button
+                type="button"
+                onClick={() => handleAiModeChange('AI_OFF')}
+                className={`p-2.5 rounded-xl text-right transition-all border ${
+                  aiMode === 'AI_OFF'
+                    ? 'bg-purple-950/60 border-purple-500 text-white shadow-md'
+                    : 'bg-[#141824] border-[#222938] text-zinc-400 hover:text-zinc-200 hover:border-zinc-700'
+                }`}
+              >
+                <div className="font-bold text-[11px] text-zinc-200 flex items-center justify-between">
+                  <span>خاموش (تکنیکال خالص)</span>
+                  {aiMode === 'AI_OFF' && <span className="w-2 h-2 rounded-full bg-zinc-400" />}
+                </div>
+                <p className="text-[10px] text-zinc-400 mt-1 leading-snug">
+                  تست استراتژی صرفاً بر اساس قواعد تکنیکال بدون وتوی هوش مصنوعی
+                </p>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleAiModeChange('AI_COUNCIL_S0')}
+                className={`p-2.5 rounded-xl text-right transition-all border ${
+                  aiMode === 'AI_COUNCIL_S0'
+                    ? 'bg-purple-950/60 border-purple-500 text-white shadow-md'
+                    : 'bg-[#141824] border-[#222938] text-zinc-400 hover:text-zinc-200 hover:border-zinc-700'
+                }`}
+              >
+                <div className="font-bold text-[11px] text-purple-200 flex items-center justify-between">
+                  <span>شورای ۴-ایجنت S0</span>
+                  {aiMode === 'AI_COUNCIL_S0' && <span className="w-2 h-2 rounded-full bg-purple-400 shadow-sm" />}
+                </div>
+                <p className="text-[10px] text-zinc-400 mt-1 leading-snug">
+                  وتوی معاملات ضعیف بر اساس اجماع تحلیلگر، منتقد، اسکنر و داور
+                </p>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleAiModeChange('AI_DUAL_GUARD_STRICT')}
+                className={`p-2.5 rounded-xl text-right transition-all border ${
+                  aiMode === 'AI_DUAL_GUARD_STRICT'
+                    ? 'bg-purple-950/60 border-purple-500 text-white shadow-md'
+                    : 'bg-[#141824] border-[#222938] text-zinc-400 hover:text-zinc-200 hover:border-zinc-700'
+                }`}
+              >
+                <div className="font-bold text-[11px] text-cyan-200 flex items-center justify-between">
+                  <span>نگهبان دوگانه سخت‌گیر</span>
+                  {aiMode === 'AI_DUAL_GUARD_STRICT' && <span className="w-2 h-2 rounded-full bg-cyan-400 shadow-sm" />}
+                </div>
+                <p className="text-[10px] text-zinc-400 mt-1 leading-snug">
+                  شورا + وتوی تله‌های استاپ‌هانتینگ و موانع نقدینگی ماژور
+                </p>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleAiModeChange('AI_ADAPTIVE_CONFIDENCE')}
+                className={`p-2.5 rounded-xl text-right transition-all border ${
+                  aiMode === 'AI_ADAPTIVE_CONFIDENCE'
+                    ? 'bg-purple-950/60 border-purple-500 text-white shadow-md'
+                    : 'bg-[#141824] border-[#222938] text-zinc-400 hover:text-zinc-200 hover:border-zinc-700'
+                }`}
+              >
+                <div className="font-bold text-[11px] text-emerald-200 flex items-center justify-between">
+                  <span>حجم‌گذاری تطبیقی هوشمند</span>
+                  {aiMode === 'AI_ADAPTIVE_CONFIDENCE' && <span className="w-2 h-2 rounded-full bg-emerald-400 shadow-sm" />}
+                </div>
+                <p className="text-[10px] text-zinc-400 mt-1 leading-snug">
+                  تعدیل حجم پوزیشن (۰.۶۵R تا ۱.۰R) متناسب با اطمینان هوش مصنوعی
+                </p>
+              </button>
+            </div>
+          </div>
+
           {/* پنل تنظیمات ردیف دوم: ریزساختار بازار، سشن‌ها و ابهام‌زدایی */}
           <div className="space-y-3 bg-[#0d1017] p-3.5 rounded-2xl border border-[#1d2331]">
             {/* انتخابگرهای سشن زمانی و حل ابهام درون‌کندلی */}
@@ -490,6 +725,30 @@ export const MultiStyleBacktestModal: React.FC<MultiStyleBacktestModalProps> = (
             </div>
           </div>
 
+          {/* نوار خلاصه پارامترها قبل از اجرای بک‌تست */}
+          <div className="bg-[#0b0e15] px-3.5 py-2.5 rounded-2xl border border-[#1f2638] flex flex-wrap items-center justify-between gap-2 text-[11px]">
+            <div className="flex items-center gap-3 flex-wrap">
+              <span className="text-zinc-400 font-bold">تنظیمات آماده اجرا:</span>
+              <span className="font-bold font-mono text-purple-300 bg-purple-950/60 px-2 py-0.5 rounded border border-purple-800/60">
+                {selectedSymbol} • {backtestTimeframe}
+              </span>
+              <span className="text-zinc-300 font-bold">
+                سبک: <span className="text-cyan-400">{style === 'ALL' ? 'همه سبک‌ها (تلفیقی)' : style}</span>
+              </span>
+              <span className="text-zinc-300">
+                موتور AI: <span className="text-emerald-400 font-bold">{aiMode === 'AI_OFF' ? 'خاموش (تکنیکال خالص)' : aiModelNameFa}</span>
+              </span>
+              <span className="text-zinc-300">
+                ریسک: <span className="text-amber-400 font-mono font-bold">{riskPercent}٪</span>
+              </span>
+            </div>
+            <div className="flex items-center gap-2 text-zinc-400 font-mono text-[10px]">
+              <span>{activeCandles.length.toLocaleString('fa-IR')} کندل</span>
+              {useDynamicSpread && <span className="text-cyan-400">● اسپرد پویا</span>}
+              {newsFilter && <span className="text-rose-400">● فیلتر خبر</span>}
+            </div>
+          </div>
+
           {/* نوار اکشن و تاگل خروج پله‌ای */}
           <div className="flex flex-col sm:flex-row items-center justify-between gap-3 bg-[#141924] p-3 rounded-2xl border border-[#232c3d]">
             <label className="flex items-center gap-2 cursor-pointer">
@@ -579,6 +838,124 @@ export const MultiStyleBacktestModal: React.FC<MultiStyleBacktestModalProps> = (
                   <div className="font-mono text-base font-bold text-purple-400">{report.summary.sharpeRatio}</div>
                 </div>
               </div>
+
+              {/* کارت تحلیلی جامع عملکرد هوش مصنوعی و سرمایه نجات‌یافته */}
+              {report.aiMetrics && (
+                <div className="p-4 bg-gradient-to-br from-[#121026] via-[#0e121d] to-[#0c0f18] rounded-2xl border border-purple-500/40 space-y-3 shadow-lg">
+                  <div className="flex flex-wrap items-center justify-between gap-2 border-b border-purple-900/40 pb-2.5">
+                    <div className="flex items-center gap-2">
+                      <div className="p-1.5 rounded-lg bg-purple-500/20 text-purple-300 border border-purple-500/30">
+                        <Bot className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <span className="font-bold text-zinc-100 text-xs">
+                          گزارش عملکرد ارزیابی و وتوی هوش مصنوعی ({report.aiMetrics.modelNameFa})
+                        </span>
+                        <p className="text-[10px] text-zinc-400">
+                          مقایسه نتایج تریدها با حضور هوش مصنوعی در برابر تریدر تکنیکال سنتی
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] px-2.5 py-0.5 rounded-full font-bold bg-purple-500/10 text-purple-300 border border-purple-500/30">
+                        نرخ وتو: {report.aiMetrics.vetoRatePercent}٪
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center text-[11px]">
+                    <div className="p-2.5 rounded-xl bg-[#141824] border border-[#222938]">
+                      <span className="text-zinc-400 text-[10px]">کاندیدهای بررسی‌شده</span>
+                      <div className="font-mono font-bold text-zinc-100 text-sm mt-0.5">
+                        {report.aiMetrics.totalCandidatesGenerated}
+                      </div>
+                      <span className="text-[9px] text-zinc-500">
+                        تأیید: {report.aiMetrics.approvedCandidatesCount} | وتو: {report.aiMetrics.vetoedCandidatesCount}
+                      </span>
+                    </div>
+
+                    <div className="p-2.5 rounded-xl bg-[#141824] border border-emerald-900/40 bg-emerald-950/10">
+                      <span className="text-emerald-400 text-[10px] font-bold">جلوگیری از ضرر حتمی (SL)</span>
+                      <div className="font-mono font-bold text-emerald-300 text-sm mt-0.5">
+                        {report.aiMetrics.avoidedLossesCount} معامله
+                      </div>
+                      <span className="text-[9px] text-emerald-500/80">سیگنال‌هایی که استاپ می‌خوردند</span>
+                    </div>
+
+                    <div className="p-2.5 rounded-xl bg-[#141824] border border-amber-900/40 bg-amber-950/10">
+                      <span className="text-amber-400 text-[10px] font-bold">سرمایه نجات‌یافته توسط AI</span>
+                      <div className="font-mono font-bold text-emerald-400 text-sm mt-0.5" dir="ltr">
+                        +${report.aiMetrics.capitalSavedDollars.toLocaleString()}
+                      </div>
+                      <span className="text-[9px] text-zinc-400">جلوگیری مستقیم از افت اکوئیتی</span>
+                    </div>
+
+                    <div className="p-2.5 rounded-xl bg-[#141824] border border-[#222938]">
+                      <span className="text-zinc-400 text-[10px]">ارتقای وین‌ریت با AI</span>
+                      <div className="font-mono font-bold text-cyan-300 text-sm mt-0.5">
+                        {report.aiMetrics.winRateWithAI}٪ <span className="text-zinc-500 text-xs">vs</span> {report.aiMetrics.winRateWithoutAI}٪
+                      </div>
+                      <span className={`text-[9px] font-bold ${
+                        report.aiMetrics.winRateWithAI >= report.aiMetrics.winRateWithoutAI ? 'text-emerald-400' : 'text-amber-400'
+                      }`}>
+                        {report.aiMetrics.winRateWithAI >= report.aiMetrics.winRateWithoutAI ? '▲ رشد نرخ برد' : 'بدون تغییر'}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* دکمه و آکاردئون لیست تریدهای وتوشده */}
+                  {report.aiMetrics.vetoedTradesSample.length > 0 && (
+                    <div className="pt-1">
+                      <button
+                        type="button"
+                        onClick={() => setShowVetoedList(prev => !prev)}
+                        className="w-full flex items-center justify-between p-2 rounded-xl bg-[#141926] hover:bg-[#181e2e] text-zinc-300 border border-[#20283a] transition-all text-xs font-bold"
+                      >
+                        <span className="flex items-center gap-1.5">
+                          <ShieldAlert className="w-3.5 h-3.5 text-amber-400" />
+                          <span>مشاهده نمونه سیگنال‌های وتوشده توسط هوش مصنوعی ({report.aiMetrics.vetoedTradesSample.length} مورد)</span>
+                        </span>
+                        {showVetoedList ? <ChevronUp className="w-4 h-4 text-zinc-400" /> : <ChevronDown className="w-4 h-4 text-zinc-400" />}
+                      </button>
+
+                      {showVetoedList && (
+                        <div className="mt-2 space-y-1.5 max-h-48 overflow-y-auto pr-1">
+                          {report.aiMetrics.vetoedTradesSample.map(vt => (
+                            <div
+                              key={vt.id}
+                              className="p-2 rounded-xl bg-[#0c0f17] border border-[#1d2334] flex flex-wrap items-center justify-between gap-2 text-[10px]"
+                            >
+                              <div className="flex items-center gap-2">
+                                <span className={`px-1.5 py-0.5 rounded font-bold font-mono text-[9px] ${
+                                  vt.direction === 'BUY' ? 'bg-emerald-950 text-emerald-300' : 'bg-rose-950 text-rose-300'
+                                }`}>
+                                  {vt.direction}
+                                </span>
+                                <span className="text-zinc-300 font-mono">
+                                  {new Date(vt.timestamp).toLocaleDateString('fa-IR')}
+                                </span>
+                                <span className="text-zinc-400 font-mono">@ {vt.entryPrice}</span>
+                                <span className="text-purple-300 font-bold">امتیاز: {vt.councilScore}٪</span>
+                              </div>
+
+                              <div className="flex items-center gap-2">
+                                <span className="text-zinc-400">{vt.vetoReasonFa}</span>
+                                <span className={`px-2 py-0.5 rounded font-bold text-[9px] ${
+                                  vt.hypotheticalOutcome === 'AVOIDED_LOSS'
+                                    ? 'bg-emerald-950/80 text-emerald-300 border border-emerald-800'
+                                    : 'bg-amber-950/80 text-amber-300 border border-amber-800'
+                                }`}>
+                                  {vt.hypotheticalOutcome === 'AVOIDED_LOSS' ? '✓ نجات از استاپ‌لاس' : '✗ سود از دست رفته'}
+                                </span>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* منحنی اکوئیتی SVG */}
               {report.equityCurve.length > 1 && (

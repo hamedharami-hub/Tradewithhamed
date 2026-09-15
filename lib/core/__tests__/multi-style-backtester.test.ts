@@ -177,5 +177,67 @@ export function runMultiStyleBacktesterTestSuite(): TestResultItem[] {
     });
   }
 
+  // ۵. آزمون ارزیابی و وتوی هوش مصنوعی (AI Council S0 & Metrics Validation)
+  try {
+    const reportAI = MultiStyleBacktester.runBacktest(testCandles, {
+      symbol: 'XAUUSD',
+      initialCapital: 10000,
+      aiMode: 'AI_COUNCIL_S0',
+      aiModelNameFa: 'شورای ۴ ایجنتی S0',
+      minAlphaConsensusScore: 70,
+      minMonteCarloTpProbability: 40,
+    });
+
+    const hasAiMetrics = !!reportAI.aiMetrics;
+    const aiMetrics = reportAI.aiMetrics!;
+    const validMetrics = hasAiMetrics &&
+      typeof aiMetrics.totalCandidatesGenerated === 'number' &&
+      typeof aiMetrics.approvedCandidatesCount === 'number' &&
+      typeof aiMetrics.vetoedCandidatesCount === 'number' &&
+      typeof aiMetrics.avoidedLossesCount === 'number' &&
+      typeof aiMetrics.capitalSavedDollars === 'number' &&
+      Array.isArray(aiMetrics.vetoedTradesSample);
+
+    results.push({
+      name: '[Multi-Style Backtester] AI Council S0 Evaluation & Saved Capital Metrics Integrity',
+      passed: validMetrics,
+      details: hasAiMetrics
+        ? `کل کاندیدها: ${aiMetrics.totalCandidatesGenerated} | تأیید: ${aiMetrics.approvedCandidatesCount} | وتو: ${aiMetrics.vetoedCandidatesCount} | نجات از استاپ: ${aiMetrics.avoidedLossesCount} | سرمایه حفظ‌شده: $${aiMetrics.capitalSavedDollars}`
+        : 'فیلد aiMetrics در گزارش غایب است',
+    });
+  } catch (err) {
+    results.push({
+      name: '[Multi-Style Backtester] AI Council S0 Evaluation & Saved Capital Metrics Integrity',
+      passed: false,
+      details: (err as Error).message,
+    });
+  }
+
+  // ۶. آزمون حجم‌گذاری تطبیقی هوش مصنوعی (Adaptive Risk Sizing)
+  try {
+    const reportAdaptive = MultiStyleBacktester.runBacktest(testCandles, {
+      symbol: 'XAUUSD',
+      initialCapital: 10000,
+      aiMode: 'AI_ADAPTIVE_CONFIDENCE',
+      minAlphaConsensusScore: 65,
+      minMonteCarloTpProbability: 35,
+    });
+
+    const passed = !!reportAdaptive.aiMetrics && reportAdaptive.summary.totalTrades >= 0;
+
+    results.push({
+      name: '[Multi-Style Backtester] AI Adaptive Confidence Position Sizing',
+      passed,
+      details: `بک‌تست با حجم‌گذاری پویا بر اساس نمره شورا با موفقیت اجرا شد. وین‌ریت: ${reportAdaptive.summary.winRatePercent}٪`,
+    });
+  } catch (err) {
+    results.push({
+      name: '[Multi-Style Backtester] AI Adaptive Confidence Position Sizing',
+      passed: false,
+      details: (err as Error).message,
+    });
+  }
+
   return results;
 }
+
