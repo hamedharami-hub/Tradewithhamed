@@ -1,9 +1,9 @@
 import type { MultiAgentConfiguration } from '@/lib/contracts/multi-agent-system';
 import type { StrategyCandidate } from '@/lib/contracts/strategy';
-import { BrowserOfflineAIManager } from './browser-offline-ai';
 import { buildAgentPrompt, evidencePacketFromCandidate, judgeAgentReviews } from './agentic-review-contracts';
 import { modelIdForAgentEngine } from './webllm-agent-adapter';
-import type { DeterministicMarketEvidence, StructuredCandidateAdvisory } from './offline-ai-contracts';
+import { createInferenceProvenance, type DeterministicMarketEvidence, type StructuredCandidateAdvisory } from './offline-ai-contracts';
+import { aiRuntimeRouter } from './runtime-router';
 
 export type AdvisoryProviderKind = 'DETERMINISTIC' | 'WEBLLM' | 'ONLINE' | 'GEMINI' | 'XAI' | 'HYBRID';
 export type OnlineAdvisoryProviderKind = Extract<AdvisoryProviderKind, 'ONLINE' | 'GEMINI' | 'XAI'>;
@@ -87,8 +87,8 @@ export function getOnlineProviderSettings(kind: OnlineAdvisoryProviderKind, envi
 
 export async function reviewWithDeterministicProvider(request: AdvisoryProviderRequest): Promise<AdvisoryProviderResult> {
   const started = performance.now();
-  const modelId = request.config?.analystEngineId || 'deterministic-analyst';
-  const advisory = BrowserOfflineAIManager.buildDeterministicAdvisory(modelId, deterministicEvidence(request.candidate));
+  const modelId = 's0-deterministic';
+  const advisory = (await aiRuntimeRouter.generate({ modelId, evidence: deterministicEvidence(request.candidate) })).advisory;
   const approved = advisory.verdict === 'TRADE';
   return { provider: 'DETERMINISTIC', status: approved ? 'APPROVED' : 'REJECTED', approved, advisory, latencyMs: Number((performance.now() - started).toFixed(1)), reasonCodes: advisory.riskFlags, modelId };
 }
@@ -96,13 +96,12 @@ export async function reviewWithDeterministicProvider(request: AdvisoryProviderR
 export async function reviewWithWebLLMProvider(request: AdvisoryProviderRequest): Promise<AdvisoryProviderResult> {
   const engineId = request.config?.analystEngineId || 'qwen3-1.7b-analyst';
   const modelId = modelIdForAgentEngine(engineId) || engineId;
-  if (typeof window === 'undefined') return blocked('WEBLLM', 'WEBLLM_BROWSER_RUNTIME_REQUIRED', modelId);
-  if (BrowserOfflineAIManager.getResidentModelId() !== modelId) return blocked('WEBLLM', 'MODEL_NOT_RESIDENT', modelId);
   try {
     const packet = evidencePacketFromCandidate(request.candidate, request.config?.activeTradingStyle || 'S0_SWEEP_FVG', request.context);
     const prompt = buildAgentPrompt('ANALYST', packet);
     const started = performance.now();
-    const advisory = await BrowserOfflineAIManager.evaluateCandidateAdvisory(modelId, deterministicEvidence(request.candidate), prompt.systemPrompt, prompt.userPrompt);
+    const advisory = (await aiRuntimeRouter.generate({ modelId, evidence: deterministicEvidence(request.candidate), systemPrompt: prompt.systemPrompt, userPrompt: prompt.userPrompt })).advisory;
+    if (!advisory.provenance.inferenceExecuted) return blocked('WEBLLM', advisory.provenance.fallbackReason || 'INFERENCE_NOT_EXECUTED', modelId);
     const approved = advisory.verdict === 'TRADE';
     return { provider: 'WEBLLM', status: approved ? 'APPROVED' : advisory.verdict === 'REVIEW_REQUIRED' ? 'REVIEW_REQUIRED' : 'REJECTED', approved, advisory, latencyMs: Number((performance.now() - started).toFixed(1)), reasonCodes: advisory.riskFlags, modelId };
   } catch (error) {
@@ -117,7 +116,10 @@ function parseOnlineAdvisory(value: unknown, modelId: string, latencyMs: number)
   const rationaleFa = typeof data.rationaleFa === 'string' ? data.rationaleFa.slice(0, 1200) : 'خروجی آنلاین توضیح معتبر نداشت.';
   const riskFlags = Array.isArray(data.riskFlags) ? data.riskFlags.filter((item): item is string => typeof item === 'string').slice(0, 12) : ['MISSING_RISK_FLAGS'];
   const evidenceIds = Array.isArray(data.evidenceIds) ? data.evidenceIds.filter((item): item is string => typeof item === 'string').slice(0, 12) : [];
-  return { modelId, modelRevision: 'online-api', source: 'ONLINE_API', verdict, confidence, rationaleFa, riskFlags, evidenceIds, latencyMs, advisoryOnly: true };
+  return {
+    modelId, modelRevision: 'online-api', source: 'ONLINE_API', verdict, confidence, rationaleFa, riskFlags, evidenceIds, latencyMs, advisoryOnly: true,
+    provenance: createInferenceProvenance({ provider: 'online-api', runtime: 'ONLINE_API', requestedModelId: modelId, executedModelId: modelId, inferenceExecuted: true }),
+  };
 }
 
 export async function reviewWithOnlineProvider(request: AdvisoryProviderRequest, kind: OnlineAdvisoryProviderKind = 'ONLINE'): Promise<AdvisoryProviderResult> {

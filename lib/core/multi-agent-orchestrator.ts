@@ -13,7 +13,26 @@ import {
   AGENT_ENGINE_OPTIONS,
   DEFAULT_MULTI_AGENT_CONFIG,
   TradingStyleId,
+  AgentRole,
 } from '../contracts/multi-agent-system';
+
+function unexecutedNeuralReview(role: AgentRole, engine: (typeof AGENT_ENGINE_OPTIONS)[number], style: TradingStyleId, now: number): AgentReviewResult {
+  return {
+    agentRole: role,
+    roleTitleFa: AGENT_ROLES_INFO[role].nameFa,
+    engineId: engine.id,
+    engineNameFa: engine.nameFa,
+    engineType: engine.type,
+    verdict: 'NEUTRAL',
+    verdictTitleFa: 'استنتاج اجرا نشده',
+    confidence: 0,
+    tradingStyleUsed: style,
+    summaryFa: 'این مسیر همگام مدل عصبی را اجرا نمی‌کند؛ نتیجه‌ای به نام WebLLM تولید یا گزارش نشد.',
+    reasoningBulletsFa: ['NEURAL_ASYNC_REQUIRED', 'برای نتیجه عصبی واقعی باید مسیر async و Runtime Router فراخوانی شود.'],
+    timestamp: now,
+    latencyMs: 0,
+  };
+}
 
 export class MultiAgentOrchestrator {
   private static STORAGE_KEY = 'hamed_multi_agent_config_v4';
@@ -175,6 +194,8 @@ export class MultiAgentOrchestrator {
       AGENT_ENGINE_OPTIONS.find(e => e.id === config.scannerEngineId) ||
       AGENT_ENGINE_OPTIONS.find(e => e.role === 'SCANNER')!;
 
+    if (engine.type === 'NEURAL_WEBGPU') return unexecutedNeuralReview('SCANNER', engine, style, now);
+
     if (!candidate) {
       return {
         agentRole: 'SCANNER',
@@ -268,6 +289,8 @@ export class MultiAgentOrchestrator {
       AGENT_ENGINE_OPTIONS.find(e => e.id === config.analystEngineId) ||
       AGENT_ENGINE_OPTIONS.find(e => e.role === 'ANALYST')!;
 
+    if (engine.type === 'NEURAL_WEBGPU') return unexecutedNeuralReview('ANALYST', engine, style, now);
+
     if (!candidate || scannerReview.verdict !== 'APPROVED') {
       return {
         agentRole: 'ANALYST',
@@ -286,8 +309,7 @@ export class MultiAgentOrchestrator {
       };
     }
 
-    const isNeural = engine.type === 'NEURAL_WEBGPU';
-    const confidence = isNeural ? 0.92 : 0.88;
+    const confidence = 0.88;
     const bullets: string[] = [
       `هم‌راستایی بستر کلان (Context ساختار HTF متناسب با تایم‌فریم ترید) با جهت ${candidate.direction} تایید می‌شود.`,
       `درجه ابهام (Uncertainty): پایین (حداکثر ۱۲٪ به دلیل شفافیت در سوییپ نقدینگی).`,
@@ -339,6 +361,8 @@ export class MultiAgentOrchestrator {
       AGENT_ENGINE_OPTIONS.find(e => e.id === config.criticEngineId) ||
       AGENT_ENGINE_OPTIONS.find(e => e.role === 'CRITIC')!;
 
+    if (engine.type === 'NEURAL_WEBGPU') return unexecutedNeuralReview('CRITIC', engine, style, now);
+
     if (!candidate || analystReview.verdict !== 'APPROVED') {
       return {
         agentRole: 'CRITIC',
@@ -365,8 +389,6 @@ export class MultiAgentOrchestrator {
     let verdict: 'APPROVED' | 'REJECTED' = 'APPROVED';
     let summaryFa = '';
 
-    const isNeural = engine.type === 'NEURAL_WEBGPU';
-
     if (!isRRValid) {
       verdict = 'REJECTED';
       summaryFa = `رد ستاپ توسط منتقد: نسبت سود به زیان (${candidate.riskRewardRatio}) کمتر از حداقل مصوب سبک (${minRequiredRR}) است.`;
@@ -374,9 +396,7 @@ export class MultiAgentOrchestrator {
       bullets.push('اصطکاک و کمیسیون بروکر در این نسبت توجیه‌پذیر نیست.');
     } else {
       verdict = 'APPROVED';
-      summaryFa = isNeural
-        ? `تایید منتقد با سپر دوگانه (انطباق ریاضی قطعی سیستم + تفکر عمیق عصبی).`
-        : `تست استرس منتقد قطعی با موفقیت پشت سر گذاشته شد (R:R برابر ۱ به ${candidate.riskRewardRatio}).`;
+      summaryFa = `تست استرس منتقد قطعی با موفقیت پشت سر گذاشته شد (R:R برابر ۱ به ${candidate.riskRewardRatio}).`;
       bullets.push(`🛡️ لایه ۱ (موتور قطعی S0): انطباق کامل R:R برابر ۱ به ${candidate.riskRewardRatio} با معیار مصوب سبک.`);
       if (style === 'SCALP_M1_M5' || style === 'M1_SCALP') {
         bullets.push('🛡️ لایه ۱ (موتور قطعی S0): تایید فاصله زمانی امن از اخبار اقتصادی قرمز (عدم آسیب‌پذیری اسکلپ در برابر اسپایک).');
@@ -386,9 +406,6 @@ export class MultiAgentOrchestrator {
         bullets.push('🛡️ لایه ۱ (موتور قطعی S0): کنترل ریسک سواپ شبانه (Overnight Swap Risk).');
       } else {
         bullets.push('🛡️ لایه ۱ (موتور قطعی S0): فاصله امن از اخبار اقتصادی قرمز (Red Folder News) و عدم وجود سد نقدینگی معارض.');
-      }
-      if (isNeural) {
-        bullets.push(`🧠 لایه ۲ (استدلال عصبی WebGPU): موشکافی تله‌های استاپ‌هانتینگ، عدم وجود هیجان فومو (FOMO) و تایید پاک بودن مسیر تارگت.`);
       }
     }
 

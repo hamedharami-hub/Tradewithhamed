@@ -336,6 +336,16 @@ export const SetupAnalysisCard: React.FC<SetupAnalysisCardProps> = React.memo(({
               <p className="text-[11px] text-zinc-300 leading-relaxed pt-1">
                 {shadowAnalysis.explanation}
               </p>
+              {shadowAnalysis.provenance && (
+                <div className="text-[10px] text-zinc-400 border-t border-[#222735] pt-2 flex flex-wrap gap-x-3 gap-y-1">
+                  <span>Runtime: <strong className="text-cyan-300">{shadowAnalysis.provenance.runtime}</strong></span>
+                  <span>مدل اجراشده: <strong className="text-zinc-200">{shadowAnalysis.provenance.executedModelId || 'اجرا نشد'}</strong></span>
+                  <span className={shadowAnalysis.provenance.inferenceExecuted ? 'text-emerald-400' : 'text-amber-400'}>
+                    {shadowAnalysis.provenance.inferenceExecuted ? 'استنتاج واقعی اجرا شد' : `استنتاج اجرا نشد${shadowAnalysis.provenance.fallbackReason ? `: ${shadowAnalysis.provenance.fallbackReason}` : ''}`}
+                  </span>
+                  {shadowAnalysis.provenance.fallbackUsed && <span className="text-amber-300">Fallback شفاف فعال شد</span>}
+                </div>
+              )}
             </div>
           ) : null}
 

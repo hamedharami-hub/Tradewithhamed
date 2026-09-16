@@ -4,7 +4,6 @@
 import { MultiAgentOrchestrator } from '../multi-agent-orchestrator';
 import {
   PLAN_V4_MODELS,
-  BrowserAIModelRecord,
 } from '../../ai/browser-offline-ai';
 import {
   DEFAULT_MULTI_AGENT_CONFIG,
@@ -25,26 +24,21 @@ export function runMultiAgentCouncilTestSuite(): TestResultItem[] {
   // ۱. بررسی کاتالوگ مدل‌های هوش مصنوعی و مدل‌های درخواستی کاربر
   try {
     const phi4 = PLAN_V4_MODELS.find(m => m.id === 'phi-4-mini-instruct-mlc');
-    const deepseek14b = PLAN_V4_MODELS.find(m => m.id === 'deepseek-r1-distill-qwen-14b-mlc');
     const deepseek7b = PLAN_V4_MODELS.find(m => m.id === 'deepseek-r1-distill-qwen-7b-mlc');
-    const qwen14b = PLAN_V4_MODELS.find(m => m.id === 'qwen2.5-14b-instruct-mlc');
     const llama3b = PLAN_V4_MODELS.find(m => m.id === 'llama-3.2-3b-instruct-mlc');
     const nano = PLAN_V4_MODELS.find(m => m.id === 'chrome-gemini-nano');
 
-    const allPresent = !!(phi4 && deepseek14b && deepseek7b && qwen14b && llama3b && nano);
-    const supportsMobile16GB = deepseek14b?.recommendedDevices.includes('MOBILE_16GB') &&
-                               phi4?.recommendedDevices.includes('MOBILE_16GB');
+    const validModelsPresent = !!(phi4 && deepseek7b && llama3b && nano);
+    const invalid14BRemoved = !PLAN_V4_MODELS.some(model => model.id === 'deepseek-r1-distill-qwen-14b-mlc' || model.id === 'qwen2.5-14b-instruct-mlc');
 
     results.push({
-      name: '[Edge AI Catalog] Presence of High-Density & 14B Models',
-      passed: allPresent && !!supportsMobile16GB,
-      details: allPresent
-        ? `مدل‌های Phi-4-mini (چگالی استدلال)، DeepSeek-R1 (7B/14B) و Llama-3.2 (3B) با تگ دستگاه‌های ۱۶ گیگابایت (Pixel Fold) احراز شدند.`
-        : 'برخی از مدل‌های مدنظر در کاتالوگ یافت نشدند.',
+      name: '[Edge AI Catalog] Registry-backed models only',
+      passed: validModelsPresent && invalid14BRemoved,
+      details: `valid=${validModelsPresent}; invalid14BRemoved=${invalid14BRemoved}`,
     });
   } catch (err) {
     results.push({
-      name: '[Edge AI Catalog] Presence of High-Density & 14B Models',
+      name: '[Edge AI Catalog] Registry-backed models only',
       passed: false,
       details: (err as Error).message,
     });
@@ -52,19 +46,19 @@ export function runMultiAgentCouncilTestSuite(): TestResultItem[] {
 
   // ۲. بررسی چگالی استدلال و دسته‌بندی تایرها
   try {
-    const ultraDense = PLAN_V4_MODELS.filter(m => m.densityTier === 'ULTRA_DENSE');
-    const heavyPower = PLAN_V4_MODELS.filter(m => m.densityTier === 'HEAVY_POWER');
-    const zeroWeight = PLAN_V4_MODELS.filter(m => m.densityTier === 'ZERO_WEIGHT');
+    const fast = PLAN_V4_MODELS.filter(m => m.performanceTier === 'FAST');
+    const balanced = PLAN_V4_MODELS.filter(m => m.performanceTier === 'BALANCED');
+    const deep = PLAN_V4_MODELS.filter(m => m.performanceTier === 'DEEP');
 
-    const pass = ultraDense.length >= 2 && heavyPower.length >= 2 && zeroWeight.length >= 2;
+    const pass = fast.length >= 2 && balanced.length >= 3 && deep.length >= 3 && PLAN_V4_MODELS.every(model => model.compatibleRuntimes.length === 1);
     results.push({
-      name: '[Edge AI Density] Reasoning Density & Zero-Weight Classification',
+      name: '[Edge AI Tier] FAST, BALANCED, and DEEP classification',
       passed: pass,
-      details: `تعداد ${ultraDense.length} مدل با چگالی استدلال فوق‌العاده، ${heavyPower.length} مدل سنگین ۱۴B و ${zeroWeight.length} مدل بدون حجم احراز شد.`,
+      details: `FAST=${fast.length}; BALANCED=${balanced.length}; DEEP=${deep.length}`,
     });
   } catch (err) {
     results.push({
-      name: '[Edge AI Density] Reasoning Density & Zero-Weight Classification',
+      name: '[Edge AI Tier] FAST, BALANCED, and DEEP classification',
       passed: false,
       details: (err as Error).message,
     });
@@ -154,23 +148,25 @@ export function runMultiAgentCouncilTestSuite(): TestResultItem[] {
       activeTradingStyle: 'S0_SWEEP_FVG',
       scannerEngineId: 'llama-3.2-3b-scanner',
       analystEngineId: 'phi-4-mini-analyst',
-      criticEngineId: 'deepseek-r1-14b-critic',
+      criticEngineId: 'deepseek-r1-7b-critic',
       judgeEngineId: 'alpha-consensus-quorum-judge',
     };
 
     const res = MultiAgentOrchestrator.evaluateCandidate(validCandidate, customConfig);
     const pass = res.scannerReview.engineId === 'llama-3.2-3b-scanner' &&
-                 res.analystReview.engineId === 'phi-4-mini-analyst' &&
-                 res.criticReview.engineId === 'deepseek-r1-14b-critic';
+                 res.scannerReview.verdict === 'NEUTRAL' &&
+                 res.scannerReview.confidence === 0 &&
+                 res.scannerReview.reasoningBulletsFa.includes('NEURAL_ASYNC_REQUIRED') &&
+                 !res.isApprovedForTrading;
 
     results.push({
-      name: '[Council Engines] 14B & Dense Engine Pipeline Execution',
+      name: '[Council Engines] Neural selection is not reported as synchronous inference',
       passed: pass,
-      details: `خط‌لوله با موفقیت ترکیب اسکنر Llama-3.2، تحلیل‌گر Phi-4 و منتقد DeepSeek-R1 14B را پردازش نمود.`,
+      details: `scanner=${res.scannerReview.engineId}; verdict=${res.scannerReview.verdict}; approved=${res.isApprovedForTrading}`,
     });
   } catch (err) {
     results.push({
-      name: '[Council Engines] 14B & Dense Engine Pipeline Execution',
+      name: '[Council Engines] Neural selection is not reported as synchronous inference',
       passed: false,
       details: (err as Error).message,
     });

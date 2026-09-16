@@ -1,6 +1,6 @@
 // lib/contracts/multi-agent-system.ts
 // قراردادهای رسمی سیستم ۴ ایجنتی چندمدلی و سبک‌های معاملاتی
-// بر اساس اصول متریال ۳، معماری کامپوننت‌های تفکیک‌شده و تضمین ۱۰۰٪ آفلاین
+// بر اساس اصول متریال ۳، معماری کامپوننت‌های تفکیک‌شده و اجرای محلی قابل راستی‌آزمایی
 
 export type TradingStyleId =
   | 'S0_SWEEP_FVG'         // سبک اصلی S0: سوییپ نقدینگی سشن‌ها + FVG + ورود لیمیت در ۵ دقیقه
@@ -192,15 +192,6 @@ export const AGENT_ENGINE_OPTIONS: AgentEngineOption[] = [
     descriptionFa: 'شناسایی شکست آخرین سووینگ معتبر و تشکیل اردر بلاک‌های دست‌نخورده.',
   },
   {
-    id: 'chrome-gemini-nano-scanner',
-    role: 'SCANNER',
-    name: 'Google Gemini Nano Scanner',
-    nameFa: 'اسکنر توکار کروم Gemini Nano (۰MB دانلود)',
-    type: 'NEURAL_WEBGPU',
-    latencyMs: 15,
-    descriptionFa: 'مدل توکار مرورگر کروم؛ پایش بدون دانلود بایت اضافه و با شتاب مستقیم سخت‌افزار دستگاه.',
-  },
-  {
     id: 'llama-3.2-3b-scanner',
     role: 'SCANNER',
     name: 'Meta Llama-3.2-3B Neural Scanner',
@@ -248,15 +239,6 @@ export const AGENT_ENGINE_OPTIONS: AgentEngineOption[] = [
     type: 'DETERMINISTIC',
     latencyMs: 2,
     descriptionFa: 'اعتبارسنجی قطعی شواهد نقدینگی و هم‌راستایی مومنتوم بدون مصرف رم یا گرافیک.',
-  },
-  {
-    id: 'chrome-gemini-nano-analyst',
-    role: 'ANALYST',
-    name: 'Google Gemini Nano Analyst',
-    nameFa: 'تحلیل‌گر توکار گوگل Gemini Nano (۰MB دانلود)',
-    type: 'NEURAL_WEBGPU',
-    latencyMs: 15,
-    descriptionFa: 'تحلیل آنی هم‌راستایی بستر کلان با NPU/GPU داخلی بدون دانلود و بدون تاخیر شبکه.',
   },
   {
     id: 'gemma-4-e4b-analyst',
@@ -348,24 +330,6 @@ export const AGENT_ENGINE_OPTIONS: AgentEngineOption[] = [
     latencyMs: 10,
     descriptionFa: 'مدل سبک برای تست سلامت WebGPU و ارزیابی سریع بستر با حداقل بار.',
   },
-  {
-    id: 'deepseek-r1-14b-analyst',
-    role: 'ANALYST',
-    name: 'DeepSeek-R1 14B Heavy CoT Analyst',
-    nameFa: 'غول استدلال کلان ۱۴ میلیاردی DeepSeek-R1 (ویژه ۱۶GB)',
-    type: 'NEURAL_WEBGPU',
-    latencyMs: 70,
-    descriptionFa: 'ابرقدرت استدلال تفکر عمیق ۱۴ میلیاردی برای تحلیل موشکافانه ساختار چندتایم‌فریمه.',
-  },
-  {
-    id: 'qwen2.5-14b-analyst',
-    role: 'ANALYST',
-    name: 'Qwen2.5-14B Heavy Macro Analyst',
-    nameFa: 'تحلیل‌گر کلان ۱۴ میلیاردی Qwen2.5-14B (ویژه ۱۶GB)',
-    type: 'NEURAL_WEBGPU',
-    latencyMs: 65,
-    descriptionFa: 'تحلیل‌گر سنگین‌وزن ۱۴ میلیاردی برای واکاوی ساختارهای چندتایم‌فریمه در سیستم‌های ۱۶ گیگابایت.',
-  },
 
   // ==========================================
   // گزینه‌های ایجنت ۳: منتقد سخت‌گیر (CRITIC)
@@ -405,15 +369,6 @@ export const AGENT_ENGINE_OPTIONS: AgentEngineOption[] = [
     type: 'NEURAL_WEBGPU',
     latencyMs: 48,
     descriptionFa: 'پایش خط‌به‌خط ریسک با تلفیق فرمول S0 و استنتاج عصبی عمیق علی‌بابا برای بررسی سناریوهای نقض ستاپ.',
-  },
-  {
-    id: 'chrome-gemini-nano-critic',
-    role: 'CRITIC',
-    name: 'Chrome Builtin Gemini Nano Critic',
-    nameFa: '🛡️ سپر دوگانه: منتقد قطعی S0 + گوگل جمینای نانو (داخلی کروم - ۰MB)',
-    type: 'NEURAL_WEBGPU',
-    latencyMs: 15,
-    descriptionFa: 'سپر ریاضی S0 همراه با مدل توکار مرورگر بدون نیاز به دانلود بایت اضافه و با شتاب سخت‌افزاری NPU/GPU.',
   },
   {
     id: 'gemma-4-e4b-critic',
@@ -468,24 +423,6 @@ export const AGENT_ENGINE_OPTIONS: AgentEngineOption[] = [
     type: 'NEURAL_WEBGPU',
     latencyMs: 10,
     descriptionFa: 'سپر ریاضی همراه با سبک‌ترین مدل عصبی برای غربالگری فوری خطرات آشکار.',
-  },
-  {
-    id: 'deepseek-r1-14b-critic',
-    role: 'CRITIC',
-    name: 'DeepSeek-R1 Distill 14B Heavy CoT Critic',
-    nameFa: '🛡️ سپر دوگانه: منتقد قطعی S0 + ابرقدرت ۱۴B DeepSeek-R1 (ویژه ۱۶GB)',
-    type: 'NEURAL_WEBGPU',
-    latencyMs: 70,
-    descriptionFa: 'سخت‌گیرانه‌ترین منتقد ریسک با غول استدلال تفکر عمیق ۱۴ میلیاردی DeepSeek برای دستگاه‌های ۱۶ گیگابایت.',
-  },
-  {
-    id: 'qwen2.5-14b-critic',
-    role: 'CRITIC',
-    name: 'Qwen2.5-14B Heavy Macro Critic',
-    nameFa: '🛡️ سپر دوگانه: منتقد قطعی S0 + منتقد کلان ۱۴B Qwen2.5 (ویژه ۱۶GB)',
-    type: 'NEURAL_WEBGPU',
-    latencyMs: 65,
-    descriptionFa: 'ارزیابی ریسک سنگین‌وزن ۱۴ میلیاردی برای واکاوی عمیق تضادهای نقدینگی چندتایم‌فریمه.',
   },
 
   // ==========================================

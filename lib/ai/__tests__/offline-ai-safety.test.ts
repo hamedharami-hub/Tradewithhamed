@@ -18,6 +18,7 @@ export async function runOfflineAISafetyTests(): Promise<OfflineAISafetyTestResu
   });
   const unsupported = await BrowserOfflineAIManager.isModelSupported('deepseek-r1-distill-qwen-14b-mlc');
   const smallestSupported = await BrowserOfflineAIManager.isModelSupported('smollm2-360m-mlc');
+  const serverRecommendation = await BrowserOfflineAIManager.recommendModel();
   const runtime = BrowserOfflineAIManager.getRuntimeStatus();
   const synchronousNeural = AnalystCriticPipeline.runShadowPipeline(candidate, 'qwen3.5-0.8b-mlc');
   const synchronousLiteRT = AnalystCriticPipeline.runShadowPipeline(candidate, 'gemma-4-e4b-litert');
@@ -39,8 +40,13 @@ export async function runOfflineAISafetyTests(): Promise<OfflineAISafetyTestResu
     },
     {
       name: '[Offline AI] Unsupported WebLLM artifact is rejected before load',
-      passed: unsupported === false,
-      details: `supported=${unsupported}`,
+      passed: unsupported === false && !PLAN_V4_MODELS.some(model => model.id === 'deepseek-r1-distill-qwen-14b-mlc'),
+      details: `supported=${unsupported}; catalogued=${PLAN_V4_MODELS.some(model => model.id === 'deepseek-r1-distill-qwen-14b-mlc')}`,
+    },
+    {
+      name: '[Offline AI] Capability recommendation falls back to deterministic without WebGPU',
+      passed: serverRecommendation.modelId === 's0-deterministic' && serverRecommendation.runtime === 'Core-Deterministic',
+      details: `${serverRecommendation.modelId}; ${serverRecommendation.reasonFa}`,
     },
     {
       name: '[Offline AI] Smallest WebLLM model remains available for device download smoke tests',

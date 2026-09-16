@@ -85,4 +85,10 @@ async function main(): Promise<void> {
   if (failed > 0) process.exit(1);
 }
 
-void main();
+void main().then(
+  () => process.exit(process.exitCode ?? 0),
+  error => {
+    console.error(error);
+    process.exit(1);
+  },
+);
