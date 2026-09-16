@@ -203,7 +203,7 @@ export const MultiAgentOrchestratorModal: React.FC<MultiAgentOrchestratorModalPr
               <div className="p-3 bg-gradient-to-r from-cyan-950/40 via-purple-950/30 to-slate-900 border border-cyan-800/40 rounded-xl text-zinc-300 flex items-start gap-2.5">
                 <Sparkles className="w-4 h-4 text-cyan-400 shrink-0 mt-0.5" />
                 <div className="text-[11px] leading-relaxed">
-                  <strong className="text-cyan-300">معماری هم‌افزا (Symphony Multi-Agent):</strong> برخلاف مدل‌های تک‌انتخابی، در این سیستم هر ۴ ایجنت هم‌زمان فعال هستند. شما می‌توانید برای هر نقش، هوش‌های عصبی پرقدرت (شامل مدل‌های ۱۴ میلیاردی DeepSeek-R1 و Qwen برای دستگاه‌های با رم ۱۶ گیگابایت نظیر Pixel 9 Pro Fold و لپ‌تاپ Snapdragon X Plus) یا الگوریتم‌های فوق‌سریع و فشرده (مانند Phi-4-mini و S0 قطعی) را به طور کاملاً مستقل انتخاب کنید.
+                  <strong className="text-cyan-300">معماری هم‌افزا (Symphony Multi-Agent):</strong> هر نقش می‌تواند از موتور قطعی یا مدل WebLLM سازگار استفاده کند. انتخاب Neural در مسیر همگام به معنی اجرای مدل نیست؛ استنتاج واقعی فقط در مسیر async و با مدل مقیم WebGPU گزارش می‌شود.
                 </div>
               </div>
 
@@ -358,7 +358,7 @@ export const MultiAgentOrchestratorModal: React.FC<MultiAgentOrchestratorModalPr
                         : 'bg-amber-950/80 border-amber-700 text-amber-400'
                     }`}
                   >
-                    {hardware?.hasWebGPU ? 'WebGPU فعال است' : 'استفاده از شتاب‌دهنده CPU'}
+                    {hardware?.hasWebGPU ? 'WebGPU فعال است' : 'فقط مسیر قطعی؛ مدل مرورگری اجرا نمی‌شود'}
                   </span>
                 </div>
 

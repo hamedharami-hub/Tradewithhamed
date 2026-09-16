@@ -8,7 +8,11 @@ import {
   BrowserOfflineAIManager,
   WebGPUCapabilityReport,
   ProgressReportPayload,
+  ModelRecommendation,
 } from '@/lib/ai/browser-offline-ai';
+import type { OfflineModelAvailability } from '@/lib/ai/offline-ai-contracts';
+import type { AIRuntimeId } from '@/lib/ai/offline-ai-contracts';
+import { createAIRuntimeDiagnosticSnapshot, elapsedRuntimeMs, recordAIRuntimeMetric, recordGenerationMetric, startRuntimeTimer, type AIRuntimeDiagnosticSnapshot } from '@/lib/ai/runtime-diagnostics';
 import {
   Bot,
   Download,
@@ -40,6 +44,21 @@ interface OfflineAIManagerModalProps {
   symbol: string;
 }
 
+const AVAILABILITY_LABELS: Record<OfflineModelAvailability['state'], string> = {
+  ONLINE_REQUIRED_FOR_DOWNLOAD: 'دانلود اولیه لازم',
+  DOWNLOADING: 'در حال دانلود',
+  CACHED: 'فایل ذخیره شده',
+  LOADABLE: 'آمادهٔ بارگذاری',
+  READY: 'آمادهٔ اجرا',
+  OFFLINE_VERIFIED: 'آفلاین تأییدشده',
+  ERROR: 'غیرقابل استفاده',
+};
+
+const DIAGNOSTIC_RUNTIME: Record<BrowserAIModelRecord['runtime'], AIRuntimeId> = {
+  'WebLLM-WebGPU': 'WEBLLM_WEBGPU', 'LiteRT-LM-Web': 'LITERT_LM_WEB',
+  'Core-Deterministic': 'CORE_DETERMINISTIC', 'Chrome-Builtin': 'CHROME_BUILTIN',
+};
+
 export const OfflineAIManagerModal: React.FC<OfflineAIManagerModalProps> = ({
   isOpen,
   onClose,
@@ -50,6 +69,7 @@ export const OfflineAIManagerModal: React.FC<OfflineAIManagerModalProps> = ({
 }) => {
   const [downloadedMap, setDownloadedMap] = useState<Record<string, boolean>>({});
   const [supportedMap, setSupportedMap] = useState<Record<string, boolean>>({});
+  const [availabilityMap, setAvailabilityMap] = useState<Record<string, OfflineModelAvailability>>({});
   const [downloadingModelId, setDownloadingModelId] = useState<string | null>(null);
   const [downloadProgress, setDownloadProgress] = useState<ProgressReportPayload>({
     percent: 0,
@@ -62,6 +82,7 @@ export const OfflineAIManagerModal: React.FC<OfflineAIManagerModalProps> = ({
   const [residentModelId, setResidentModelId] = useState<string | null>(null);
   const [runtimeState, setRuntimeState] = useState('IDLE');
   const [hardwareReport, setHardwareReport] = useState<WebGPUCapabilityReport | null>(null);
+  const [modelRecommendation, setModelRecommendation] = useState<ModelRecommendation | null>(null);
   const [testResult, setTestResult] = useState<{
     modelId: string;
     text: string;
@@ -73,14 +94,21 @@ export const OfflineAIManagerModal: React.FC<OfflineAIManagerModalProps> = ({
   const [isTesting, setIsTesting] = useState(false);
   const [isVerifyingOffline, setIsVerifyingOffline] = useState(false);
   const [showGuide, setShowGuide] = useState(false);
+  const [showDiagnostics, setShowDiagnostics] = useState(false);
+  const [shellCached, setShellCached] = useState<boolean | null>(null);
+  const [diagnostics, setDiagnostics] = useState<AIRuntimeDiagnosticSnapshot | null>(null);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
-  const [filterTier, setFilterTier] = useState<'ALL' | 'ULTRA_DENSE' | 'HEAVY_POWER' | 'MOBILE_TABLET' | 'ZERO_WEIGHT'>('ALL');
+  const [filterTier, setFilterTier] = useState<'ALL' | 'FAST' | 'BALANCED' | 'DEEP' | 'ZERO_WEIGHT'>('ALL');
   const [useFastMirror, setUseFastMirror] = useState<boolean>(() => BrowserOfflineAIManager.getUseFastMirror());
   const cancelledLiteRTLoadRef = useRef<string | null>(null);
   const selectedModel = PLAN_V4_MODELS.find((model) => model.id === selectedModelId);
   const downloadingModel = PLAN_V4_MODELS.find((model) => model.id === downloadingModelId);
   const isLiteRTMirrorInapplicable = selectedModel?.runtime === 'LiteRT-LM-Web'
     || downloadingModel?.runtime === 'LiteRT-LM-Web';
+
+  const refreshDiagnostics = (report = hardwareReport, resident = residentModelId, runtime = runtimeState) => {
+    setDiagnostics(createAIRuntimeDiagnosticSnapshot({ selectedModelId, residentModelId: resident, runtimeState: runtime, webGPUAvailable: report?.hasWebGPU ?? false, shellCached }));
+  };
 
   const handleToggleFastMirror = () => {
     if (isLiteRTMirrorInapplicable) {
@@ -113,17 +141,21 @@ export const OfflineAIManagerModal: React.FC<OfflineAIManagerModalProps> = ({
 
   // به‌روزرسانی وضعیت و سنجش سخت‌افزار
   const refreshStatus = async () => {
-    const report = await BrowserOfflineAIManager.probeHardware();
+    const [report, recommendation] = await Promise.all([BrowserOfflineAIManager.probeHardware(), BrowserOfflineAIManager.recommendModel()]);
     const resident = BrowserOfflineAIManager.getResidentModelId();
     const runtime = BrowserOfflineAIManager.getRuntimeStatus();
-    const entries = await Promise.all(PLAN_V4_MODELS.map(async model => [model.id, await BrowserOfflineAIManager.isModelDownloaded(model.id), await BrowserOfflineAIManager.isModelSupported(model.id)] as const));
-    const map = Object.fromEntries(entries.map(([id, downloaded]) => [id, downloaded]));
+    const entries = await Promise.all(PLAN_V4_MODELS.map(async model => [model.id, await BrowserOfflineAIManager.getOfflineModelAvailability(model.id), await BrowserOfflineAIManager.isModelSupported(model.id)] as const));
+    const map = Object.fromEntries(entries.map(([id, availability]) => [id, availability.cached]));
+    const availability = Object.fromEntries(entries.map(([id, value]) => [id, value]));
     const supported = Object.fromEntries(entries.map(([id, , isSupported]) => [id, isSupported]));
     setHardwareReport(report);
+    setModelRecommendation(recommendation);
     setResidentModelId(resident);
     setRuntimeState(runtime.state);
     setDownloadedMap(map);
+    setAvailabilityMap(availability);
     setSupportedMap(supported);
+    refreshDiagnostics(report, resident, runtime.state);
   };
 
   useEffect(() => {
@@ -131,17 +163,20 @@ export const OfflineAIManagerModal: React.FC<OfflineAIManagerModalProps> = ({
     let isSubscribed = true;
 
     const runProbe = async () => {
-      const report = await BrowserOfflineAIManager.probeHardware();
+      const [report, recommendation] = await Promise.all([BrowserOfflineAIManager.probeHardware(), BrowserOfflineAIManager.recommendModel()]);
       const resident = BrowserOfflineAIManager.getResidentModelId();
       const runtime = BrowserOfflineAIManager.getRuntimeStatus();
-      const entries = await Promise.all(PLAN_V4_MODELS.map(async model => [model.id, await BrowserOfflineAIManager.isModelDownloaded(model.id), await BrowserOfflineAIManager.isModelSupported(model.id)] as const));
-      const map = Object.fromEntries(entries.map(([id, downloaded]) => [id, downloaded]));
+      const entries = await Promise.all(PLAN_V4_MODELS.map(async model => [model.id, await BrowserOfflineAIManager.getOfflineModelAvailability(model.id), await BrowserOfflineAIManager.isModelSupported(model.id)] as const));
+      const map = Object.fromEntries(entries.map(([id, availability]) => [id, availability.cached]));
+      const availability = Object.fromEntries(entries.map(([id, value]) => [id, value]));
       const supported = Object.fromEntries(entries.map(([id, , isSupported]) => [id, isSupported]));
       if (isSubscribed) {
         setHardwareReport(report);
+        setModelRecommendation(recommendation);
         setResidentModelId(resident);
         setRuntimeState(runtime.state);
         setDownloadedMap(map);
+        setAvailabilityMap(availability);
         setSupportedMap(supported);
       }
     };
@@ -152,6 +187,15 @@ export const OfflineAIManagerModal: React.FC<OfflineAIManagerModalProps> = ({
       isSubscribed = false;
     };
   }, [isOpen]);
+
+  useEffect(() => {
+    const receiveShellStatus = (event: Event) => {
+      const detail = (event as CustomEvent<{ shellCached?: boolean }>).detail;
+      if (typeof detail?.shellCached === 'boolean') setShellCached(detail.shellCached);
+    };
+    window.addEventListener('tradewithhamed:offline-shell-status', receiveShellStatus);
+    return () => window.removeEventListener('tradewithhamed:offline-shell-status', receiveShellStatus);
+  }, []);
 
   if (!isOpen) return null;
 
@@ -181,6 +225,7 @@ export const OfflineAIManagerModal: React.FC<OfflineAIManagerModalProps> = ({
     );
     if (!consent) return;
 
+    const loadStartedAt = startRuntimeTimer();
     try {
       if (model.runtime === 'LiteRT-LM-Web') {
         cancelledLiteRTLoadRef.current = null;
@@ -209,6 +254,7 @@ export const OfflineAIManagerModal: React.FC<OfflineAIManagerModalProps> = ({
       } else {
         alert(loadRes.messageFa);
       }
+      recordAIRuntimeMetric({ kind: 'MODEL_LOAD', modelId: model.id, runtime: DIAGNOSTIC_RUNTIME[model.runtime], success: loadRes.success, durationMs: elapsedRuntimeMs(loadStartedAt), ttftMs: null, outputRate: null, outputRateUnit: null, fallbackUsed: false, fallbackReason: loadRes.success ? null : 'MODEL_LOAD_FAILED' });
     } catch (err) {
       if (cancelledLiteRTLoadRef.current === model.id) {
         setActionMessage('دانلود LiteRT لغو شد؛ مدل مقیم قبلی بدون تغییر باقی ماند.');
@@ -225,9 +271,12 @@ export const OfflineAIManagerModal: React.FC<OfflineAIManagerModalProps> = ({
 
   // بارگذاری مدل در رم گرافیک
   const handleLoadModel = async (modelId: string) => {
+    const model = PLAN_V4_MODELS.find(item => item.id === modelId);
+    const loadStartedAt = startRuntimeTimer();
     setActionMessage('در حال بارگذاری runtime و منابع WebGPU برای استنتاج محلی...');
     try {
       const result = await BrowserOfflineAIManager.loadModelToMemory(modelId);
+      if (model) recordAIRuntimeMetric({ kind: 'MODEL_LOAD', modelId, runtime: DIAGNOSTIC_RUNTIME[model.runtime], success: result.success, durationMs: elapsedRuntimeMs(loadStartedAt), ttftMs: null, outputRate: null, outputRateUnit: null, fallbackUsed: false, fallbackReason: result.success ? null : 'MODEL_LOAD_FAILED' });
       await refreshStatus();
       if (result.success) {
         onSelectModel(modelId);
@@ -292,6 +341,8 @@ export const OfflineAIManagerModal: React.FC<OfflineAIManagerModalProps> = ({
         ttftMs: output.ttftMs,
         chunksPerSec: output.chunksPerSec,
       });
+      const model = PLAN_V4_MODELS.find(item => item.id === modelId);
+      if (model) recordGenerationMetric({ modelId, runtime: DIAGNOSTIC_RUNTIME[model.runtime], success: true, latencyMs: output.latencyMs, ttftMs: output.ttftMs, chunksPerSec: output.chunksPerSec });
       await refreshStatus();
     } catch (err) {
       setTestResult({
@@ -301,6 +352,7 @@ export const OfflineAIManagerModal: React.FC<OfflineAIManagerModalProps> = ({
       });
     } finally {
       setIsTesting(false);
+      refreshDiagnostics();
     }
   };
 
@@ -448,8 +500,61 @@ export const OfflineAIManagerModal: React.FC<OfflineAIManagerModalProps> = ({
                   </button>
                 )}
               </div>
+              {modelRecommendation && (
+                <div className="mt-2.5 p-3 bg-cyan-950/30 border border-cyan-800/60 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <div>
+                    <div className="font-bold text-cyan-200">پیشنهاد خودکار: {PLAN_V4_MODELS.find(model => model.id === modelRecommendation.modelId)?.name || modelRecommendation.modelId}</div>
+                    <div className="mt-1 text-[10px] text-cyan-100/70">{modelRecommendation.reasonFa} انتخاب دستی همچنان حفظ می‌شود.</div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => onSelectModel(modelRecommendation.modelId)}
+                    className="px-3 py-1.5 rounded-lg bg-cyan-700 hover:bg-cyan-600 text-white font-bold text-[10px] whitespace-nowrap"
+                  >
+                    انتخاب پیشنهاد
+                  </button>
+                </div>
+              )}
             </div>
           )}
+
+          <div className="bg-[#171b25] border border-[#283142] rounded-2xl p-4">
+            <button
+              type="button"
+              onClick={() => {
+                const next = !showDiagnostics;
+                setShowDiagnostics(next);
+                if (next) refreshDiagnostics();
+              }}
+              className="w-full flex items-center justify-between text-zinc-100 font-bold text-xs"
+            >
+              <span className="flex items-center gap-2 text-cyan-400"><Cpu className="w-4 h-4" />تشخیص و Benchmark پیشرفته</span>
+              <span className="text-zinc-400 flex items-center gap-1">{showDiagnostics ? 'بستن' : 'نمایش'} {showDiagnostics ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}</span>
+            </button>
+            {showDiagnostics && diagnostics && (
+              <div className="mt-3 pt-3 border-t border-[#232938] space-y-3">
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-[10px]">
+                  <div className="bg-[#10131b] rounded-lg p-2"><span className="text-zinc-500 block">مرورگر / دستگاه</span><span className="text-zinc-200 font-mono">{diagnostics.browser} / {diagnostics.platform}</span></div>
+                  <div className="bg-[#10131b] rounded-lg p-2"><span className="text-zinc-500 block">WebGPU / شبکه</span><span className="text-zinc-200 font-mono">{diagnostics.webGPUAvailable ? 'Available' : 'Unavailable'} / {diagnostics.online === null ? 'Unknown' : diagnostics.online ? 'Online' : 'Offline'}</span></div>
+                  <div className="bg-[#10131b] rounded-lg p-2"><span className="text-zinc-500 block">Runtime / مدل</span><span className="text-zinc-200 font-mono">{diagnostics.runtimeState} / {diagnostics.selectedModelId}</span></div>
+                  <div className="bg-[#10131b] rounded-lg p-2"><span className="text-zinc-500 block">App shell</span><span className="text-zinc-200 font-mono">{diagnostics.shellCached === null ? 'Unknown' : diagnostics.shellCached ? 'Cached' : 'Not cached'}</span></div>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] text-zinc-400">فقط داده‌های عملکردی نگه‌داری می‌شوند؛ prompt، قیمت، حساب و شواهد معاملاتی ثبت نمی‌شوند.</span>
+                  <button type="button" onClick={() => refreshDiagnostics()} className="px-2 py-1 rounded-lg bg-cyan-950 text-cyan-300 border border-cyan-800 text-[10px]">به‌روزرسانی</button>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-[10px] text-right">
+                    <thead className="text-zinc-500"><tr><th className="p-1">عملیات</th><th className="p-1">مدل</th><th className="p-1">زمان</th><th className="p-1">TTFT / نرخ</th><th className="p-1">Fallback</th></tr></thead>
+                    <tbody>
+                      {diagnostics.recentMetrics.map((metric) => <tr key={`${metric.recordedAt}-${metric.kind}-${metric.modelId}`} className="border-t border-[#232938] text-zinc-300"><td className="p-1 font-mono">{metric.kind}</td><td className="p-1 font-mono">{metric.modelId}</td><td className="p-1 font-mono">{metric.durationMs}ms</td><td className="p-1 font-mono">{metric.ttftMs === null ? '—' : `${metric.ttftMs}ms`} / {metric.outputRate === null ? '—' : `${metric.outputRate} ${metric.outputRateUnit}`}</td><td className="p-1">{metric.fallbackUsed ? metric.fallbackReason || 'Yes' : 'No'}</td></tr>)}
+                      {diagnostics.recentMetrics.length === 0 && <tr><td colSpan={5} className="p-3 text-center text-zinc-500">برای ثبت معیار، یک مدل را بارگذاری یا تست محلی را اجرا کنید.</td></tr>}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+          </div>
 
           {/* جعبه تاشوی راهنمای آموزشی */}
           <div className="bg-[#171b25] border border-[#283142] rounded-2xl p-4">
@@ -474,7 +579,7 @@ export const OfflineAIManagerModal: React.FC<OfflineAIManagerModalProps> = ({
                   • <strong>تک‌مدلی در حافظه (Resident Rule):</strong> برای جلوگیری از کرش تب مرورگر و مدیریت حرارت، در هر لحظه تنها یک مدل مولد در حافظه WebGPU قرار می‌گیرد.
                 </p>
                 <p>
-                  • <strong>آفلاین قطعی:</strong> پس از یک بار دانلود، با قطع کامل اینترنت و ریستارت سیستم، مدل همچنان از حافظه کش مرورگر اجرا می‌شود.
+                  • <strong>آفلاین تأییدشده:</strong> وجود فایل در cache به‌تنهایی کافی نیست؛ تنها پس از اجرای موفق آزمون با شبکه قطع‌شده و نسخه artifact فعلی، مدل این نشان را دریافت می‌کند.
                 </p>
                 <p>
                   • <strong>عدم دسترسی مدل به ریسک:</strong> مدل هوش مصنوعی تنها نقش مشورتی و فیلتر شواهد را دارد و هرگز مجاز به تغییر حجم، تعیین ریسک یا ارسال خودکار سفارش به بروکر نیست.
@@ -491,7 +596,7 @@ export const OfflineAIManagerModal: React.FC<OfflineAIManagerModalProps> = ({
                 راهنمای سخت‌افزار: انتخاب مدل‌های چگال استدلال و گزینه‌های سنگین
               </span>
               <span>
-                بر روی دستگاه‌های قدرتمند نظیر <strong className="text-cyan-300">Google Pixel 9 Pro Fold (۱۶ گیگابایت رم)</strong>، تبلت‌ها و لپ‌تاپ‌های <strong className="text-purple-300">Snapdragon X Plus</strong>، مدل‌های بهینه و چگال با بالاترین راندمان استدلال (Phi-4-mini، Llama-3.2 و Qwen2.5-7B) مستقیماً و به صورت ۱۰۰٪ آفلاین در WebGPU مرورگر اجرا می‌شوند. مدل‌های سنگین‌تر ۱۴ میلیاردی به عنوان معماری‌های تکمیلی برای سناریوهای سرور استنتاج محلی در نظر گرفته شده‌اند.
+                روی دستگاه‌هایی مانند <strong className="text-cyan-300">Pixel 9 Pro Fold</strong> و لپ‌تاپ‌های <strong className="text-purple-300">Windows on Snapdragon</strong>، اجرای مدل فقط از مسیر WebLLM/WebGPU انجام می‌شود و دسترسی مرورگر به NPU فرض نمی‌شود. دانلود اولیه به شبکه نیاز دارد و سازگاری نهایی هر مدل باید روی همان دستگاه آزمون شود.
               </span>
             </div>
           </div>
@@ -556,36 +661,36 @@ export const OfflineAIManagerModal: React.FC<OfflineAIManagerModalProps> = ({
                 </button>
                 <button
                   type="button"
-                  onClick={() => setFilterTier('ULTRA_DENSE')}
+                  onClick={() => setFilterTier('FAST')}
                   className={`px-2.5 py-1 rounded-lg font-medium transition-colors whitespace-nowrap ${
-                    filterTier === 'ULTRA_DENSE'
-                      ? 'bg-purple-600 text-white'
-                      : 'bg-[#181d28] text-zinc-400 hover:text-zinc-200'
-                  }`}
-                >
-                  بالاترین چگالی استدلال (Dense)
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setFilterTier('HEAVY_POWER')}
-                  className={`px-2.5 py-1 rounded-lg font-medium transition-colors whitespace-nowrap ${
-                    filterTier === 'HEAVY_POWER'
-                      ? 'bg-rose-600 text-white'
-                      : 'bg-[#181d28] text-zinc-400 hover:text-zinc-200'
-                  }`}
-                >
-                  مدل‌های ۱۴ میلیاردی و سنگین
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setFilterTier('MOBILE_TABLET')}
-                  className={`px-2.5 py-1 rounded-lg font-medium transition-colors whitespace-nowrap ${
-                    filterTier === 'MOBILE_TABLET'
+                    filterTier === 'FAST'
                       ? 'bg-emerald-600 text-white'
                       : 'bg-[#181d28] text-zinc-400 hover:text-zinc-200'
                   }`}
                 >
-                  بهینه موبایل و تبلت
+                  سریع (FAST)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFilterTier('BALANCED')}
+                  className={`px-2.5 py-1 rounded-lg font-medium transition-colors whitespace-nowrap ${
+                    filterTier === 'BALANCED'
+                      ? 'bg-cyan-600 text-white'
+                      : 'bg-[#181d28] text-zinc-400 hover:text-zinc-200'
+                  }`}
+                >
+                  متعادل (BALANCED)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFilterTier('DEEP')}
+                  className={`px-2.5 py-1 rounded-lg font-medium transition-colors whitespace-nowrap ${
+                    filterTier === 'DEEP'
+                      ? 'bg-purple-600 text-white'
+                      : 'bg-[#181d28] text-zinc-400 hover:text-zinc-200'
+                  }`}
+                >
+                  عمیق (DEEP)
                 </button>
                 <button
                   type="button"
@@ -604,12 +709,10 @@ export const OfflineAIManagerModal: React.FC<OfflineAIManagerModalProps> = ({
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               {PLAN_V4_MODELS.filter((m) => {
                 if (filterTier === 'ALL') return true;
-                if (filterTier === 'ULTRA_DENSE') return m.densityTier === 'ULTRA_DENSE';
-                if (filterTier === 'HEAVY_POWER') return m.densityTier === 'HEAVY_POWER';
+                if (filterTier === 'FAST') return m.performanceTier === 'FAST';
+                if (filterTier === 'BALANCED') return m.performanceTier === 'BALANCED';
+                if (filterTier === 'DEEP') return m.performanceTier === 'DEEP';
                 if (filterTier === 'ZERO_WEIGHT') return m.densityTier === 'ZERO_WEIGHT';
-                if (filterTier === 'MOBILE_TABLET') {
-                  return m.recommendedDevices?.includes('MOBILE_16GB') || m.recommendedDevices?.includes('TABLET');
-                }
                 return true;
               }).map((model) => {
                 const isSelected = selectedModelId === model.id;
@@ -618,6 +721,7 @@ export const OfflineAIManagerModal: React.FC<OfflineAIManagerModalProps> = ({
                 const isResident = residentModelId === model.id;
                 const isCurrentlyDownloading = downloadingModelId === model.id;
                 const isVerified = BrowserOfflineAIManager.isOfflineVerified(model.id);
+                const availability = availabilityMap[model.id];
 
                 return (
                   <div
@@ -654,6 +758,9 @@ export const OfflineAIManagerModal: React.FC<OfflineAIManagerModalProps> = ({
                                 {model.densityBadgeFa}
                               </span>
                             )}
+                            <span className="px-1.5 py-0.5 text-[9px] rounded font-bold border bg-slate-900 text-slate-300 border-slate-700">
+                              {model.performanceTier}
+                            </span>
                           </div>
                           <span className="text-[10px] text-zinc-400 font-mono mt-1 block">
                             {model.params} • {model.quantization} • {model.runtime}
@@ -679,6 +786,11 @@ export const OfflineAIManagerModal: React.FC<OfflineAIManagerModalProps> = ({
                               artifact پشتیبانی نمی‌شود
                             </span>
                           )}
+                          {availability && (
+                            <span className="px-2 py-0.5 rounded-full text-[9px] bg-slate-950/80 text-slate-300 border border-slate-700 font-mono" title={availability.reason}>
+                              {AVAILABILITY_LABELS[availability.state]}
+                            </span>
+                          )}
                         </div>
                       </div>
 
@@ -689,13 +801,13 @@ export const OfflineAIManagerModal: React.FC<OfflineAIManagerModalProps> = ({
                       {/* اطلاعات فنی و حجم */}
                       <div className="mt-3 grid grid-cols-2 gap-2 text-[10px] bg-[#10131b] p-2.5 rounded-xl border border-[#1f2533]">
                         <div>
-                          <span className="text-zinc-500">حجم دانلود: </span>
+                          <span className="text-zinc-500">حجم دانلود {model.sizeMetadata.download === 'PINNED_ARTIFACT' ? '(دقیق)' : '(تخمینی)'}: </span>
                           <span className="text-zinc-200 font-mono">
                             {model.downloadSizeMB > 0 ? `${model.downloadSizeMB} MB` : 'صفر (توکار)'}
                           </span>
                         </div>
                         <div>
-                          <span className="text-zinc-500">تخمین رم/VRAM: </span>
+                          <span className="text-zinc-500">حافظه Runtime (تخمینی): </span>
                           <span className="text-zinc-200 font-mono">
                             {model.estimatedVRAMMB > 0 ? `${model.estimatedVRAMMB} MB` : 'سبک'}
                           </span>

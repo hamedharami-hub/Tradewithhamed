@@ -1,6 +1,6 @@
 import type { StrategyCandidate } from '@/lib/contracts/strategy';
 import type { AgentRole, MultiAgentConfiguration, TradingStyleId } from '@/lib/contracts/multi-agent-system';
-import type { StructuredCandidateAdvisory } from './offline-ai-contracts';
+import type { AIInferenceProvenance, StructuredCandidateAdvisory } from './offline-ai-contracts';
 
 export interface AgentEvidencePacket {
   packetVersion: 'evidence-packet-v1';
@@ -32,13 +32,19 @@ export interface AgentPromptBundle {
 export interface AgenticReviewResult {
   candidateId: string;
   config: Pick<MultiAgentConfiguration, 'scannerEngineId' | 'analystEngineId' | 'criticEngineId' | 'judgeEngineId'>;
-  scanner: { approved: boolean; reasons: string[] };
+  scanner: { approved: boolean; reasons: string[]; advisory: StructuredCandidateAdvisory };
   analyst: StructuredCandidateAdvisory;
   critic: StructuredCandidateAdvisory;
   judge: {
     approved: boolean;
     reasonCodes: string[];
     summaryFa: string;
+    provenance: AIInferenceProvenance;
+  };
+  executionSummary: {
+    neuralRolesRequested: number;
+    neuralRolesExecuted: number;
+    fallbackRoles: Array<'SCANNER' | 'ANALYST' | 'CRITIC'>;
   };
   finalDecision: 'PAPER_TRADE' | 'NO_TRADE' | 'REVIEW_REQUIRED';
   advisoryOnly: true;
@@ -78,7 +84,7 @@ export function buildAgentPrompt(role: AgentRole, packet: AgentEvidencePacket, p
     JUDGE: 'Apply fail-closed policy to the other reviews. Any disagreement, missing evidence, invalid JSON, or risk violation must produce NO_TRADE. Never use confidence as a substitute for evidence.',
   };
   const output: Record<AgentRole, string> = {
-    SCANNER: '{"verdict":"APPROVE|NO_TRADE|REVIEW_REQUIRED","confidence":0,"rationaleFa":"","riskFlags":[],"evidenceIds":[]}',
+    SCANNER: '{"verdict":"TRADE|NO_TRADE|REVIEW_REQUIRED","confidence":0,"rationaleFa":"","riskFlags":[],"evidenceIds":[]}',
     ANALYST: '{"verdict":"TRADE|NO_TRADE|REVIEW_REQUIRED","confidence":0,"rationaleFa":"","riskFlags":[],"evidenceIds":[]}',
     CRITIC: '{"verdict":"TRADE|NO_TRADE|REVIEW_REQUIRED","confidence":0,"rationaleFa":"","riskFlags":[],"evidenceIds":[]}',
     JUDGE: '{"verdict":"TRADE|NO_TRADE|REVIEW_REQUIRED","confidence":0,"rationaleFa":"","riskFlags":[],"evidenceIds":[]}',
@@ -104,9 +110,16 @@ export function judgeAgentReviews(input: { analyst: StructuredCandidateAdvisory;
     reasonCodes.push('HARD_RISK_FLAG_PRESENT');
   }
   if (input.analyst.evidenceIds.length === 0 && input.critic.evidenceIds.length === 0) reasonCodes.push('NO_AGENT_EVIDENCE_IDS');
+  const allowedEvidence = new Set(Object.values(input.candidate.evidenceIds).filter((value): value is string => Boolean(value)));
+  const unknownEvidence = [...input.analyst.evidenceIds, ...input.critic.evidenceIds].some(id => !allowedEvidence.has(id) && !id.startsWith('RULE-'));
+  if (unknownEvidence) reasonCodes.push('UNKNOWN_EVIDENCE_ID');
   return {
     approved: reasonCodes.length === 0,
     reasonCodes,
     summaryFa: reasonCodes.length === 0 ? 'تحلیل‌گر و منتقد با شواهد کافی هم‌نظرند و قیدهای سخت ریسک برقرار است.' : `توقف شکست‌امن: ${reasonCodes.join('، ')}.`,
+    provenance: {
+      provider: 'deterministic', runtime: 'CORE_DETERMINISTIC', requestedModelId: 'strict-consensus-judge', executedModelId: 'strict-consensus-judge',
+      inferenceExecuted: false, fallbackUsed: false, fallbackReason: null,
+    },
   };
 }
