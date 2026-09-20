@@ -1,7 +1,14 @@
 import { Candle, SymbolId } from '../../contracts/market';
 import { SimulatedBroker } from '../simulated-broker';
 import { calculateDeterministicRisk } from '../risk-calculator';
-import { PracticeSessionManager, PracticeSession } from '../practice-session';
+import {
+  PracticeSessionManager,
+  PracticeSession,
+  MAX_ARCHIVED_SESSIONS,
+  validatePracticeSession,
+  ACTIVE_SESSION_STORAGE_KEY,
+  ARCHIVED_SESSIONS_STORAGE_KEY,
+} from '../practice-session';
 import { PracticeExecutionAdapter } from '../environment-adapters';
 import { ReplayEngine } from '../../replay/replay-engine';
 
@@ -508,7 +515,11 @@ export async function runPracticeSessionIntegrityTestSuite(): Promise<TestResult
     oldSession.positions.push(position);
 
     // تأیید پایان نشست و شروع نشست تازه
-    const archived = PracticeSessionManager.archiveSession(oldSession, 'تست بایگانی');
+    const archiveRes = PracticeSessionManager.archiveSession(oldSession, 'تست بایگانی');
+    if (!archiveRes.success || !archiveRes.archivedSession) {
+      throw new Error(`بایگانی با خطا مواجه شد: ${archiveRes.error}`);
+    }
+    const archived = archiveRes.archivedSession;
     const newSession = PracticeSessionManager.createNewSession('EURUSD', 10000);
     PracticeSessionManager.saveActiveSession(newSession);
 
@@ -679,6 +690,273 @@ export async function runPracticeSessionIntegrityTestSuite(): Promise<TestResult
   } catch (err) {
     results.push({
       name: 'تضمین ایزولاسیون کامل و منع ارسال سفارش به بروکر خارجی از محیط تمرین',
+      passed: false,
+      details: (err as Error).message,
+    });
+  }
+
+  // ۱۶. تست: مدیریت صریح سقف ۲۰ نشست و عدم حذف خاموش آرشیو
+  try {
+    PracticeSessionManager.clearAllForTesting();
+
+    // بایگانی ۲۰ نشست مجاز
+    for (let i = 0; i < MAX_ARCHIVED_SESSIONS; i++) {
+      const sess = PracticeSessionManager.createNewSession('XAUUSD', 10000);
+      const res = PracticeSessionManager.archiveSession(sess, `نشست شماره ${i + 1}`);
+      if (!res.success) {
+        throw new Error(`بایگانی نشست مجاز شماره ${i + 1} با خطا مواجه شد.`);
+      }
+    }
+
+    const archivedCountBefore = PracticeSessionManager.loadArchivedSessions().length;
+
+    // تلاش برای بایگانی نشست بیست و یکم
+    const overflowSession = PracticeSessionManager.createNewSession('EURUSD', 10000);
+    const overflowResult = PracticeSessionManager.archiveSession(overflowSession, 'نشست مازاد ۲۱');
+
+    const archivedCountAfter = PracticeSessionManager.loadArchivedSessions().length;
+
+    const passed =
+      archivedCountBefore === 20 &&
+      overflowResult.success === false &&
+      overflowResult.reason === 'CAPACITY_EXCEEDED' &&
+      archivedCountAfter === 20;
+
+    results.push({
+      name: 'عدم حذف خاموش نشست‌ها و بازگرداندن خطای صریح تکمیل ظرفیت برای نشست ۲۱',
+      passed,
+      details: passed
+        ? 'ظرفیت ۲۰ نشست رعایت شد و نشست مازاد بدون حذف خاموش سوابق قبلی رد شد.'
+        : `خطا در کنترل سقف: تعداد قبلی=${archivedCountBefore}, نتیجه=${JSON.stringify(overflowResult)}, تعداد بعد=${archivedCountAfter}`,
+    });
+  } catch (err) {
+    results.push({
+      name: 'عدم حذف خاموش نشست‌ها و بازگرداندن خطای صریح تکمیل ظرفیت برای نشست ۲۱',
+      passed: false,
+      details: (err as Error).message,
+    });
+  }
+
+  // ۱۷. تست: حفظ نشست فعال در صورت شکست بایگانی (عدم نابودی نشست جاری)
+  try {
+    PracticeSessionManager.clearAllForTesting();
+
+    // پر کردن سقف ۲۰ نشست
+    for (let i = 0; i < MAX_ARCHIVED_SESSIONS; i++) {
+      const s = PracticeSessionManager.createNewSession('GBPUSD', 10000);
+      PracticeSessionManager.archiveSession(s);
+    }
+
+    // ایجاد یک نشست فعال با معامله باز
+    const active = PracticeSessionManager.createNewSession('XAUUSD', 10500);
+    PracticeSessionManager.saveActiveSession(active);
+
+    // تلاش برای بایگانی که به دلیل تکمیل ظرفیت شکست می‌خورد
+    const archiveAttempt = PracticeSessionManager.archiveSession(active);
+
+    // بررسی اینکه آیا نشست فعال همچنان در حافظه باقی مانده است
+    const reloadedActive = PracticeSessionManager.loadActiveSession();
+
+    const passed =
+      archiveAttempt.success === false &&
+      reloadedActive !== null &&
+      reloadedActive.sessionId === active.sessionId &&
+      reloadedActive.accountBalance === 10500;
+
+    results.push({
+      name: 'حفظ نشست فعال در حافظه و عدم پاک‌سازی آن در صورت شکست عملیات بایگانی',
+      passed,
+      details: passed
+        ? 'پس از شکست بایگانی به دلیل تکمیل ظرفیت، نشست جاری دست‌نخورده در حافظه حفظ شد.'
+        : 'خطا: نشست فعال پس از شکست بایگانی مفقود یا پاک شده است.',
+    });
+  } catch (err) {
+    results.push({
+      name: 'حفظ نشست فعال در حافظه و عدم پاک‌سازی آن در صورت شکست عملیات بایگانی',
+      passed: false,
+      details: (err as Error).message,
+    });
+  }
+
+  // ۱۸. تست: اعتبارسنجی جامع داده‌های نشست بر اساس اسکیما و محدودیت‌های معنایی
+  try {
+    const validSession = PracticeSessionManager.createNewSession('XAUUSD', 10000);
+    const validCheck = validatePracticeSession(validSession);
+
+    // داده‌های خراب با نسخه نامعتبر
+    const invalidSchema = validatePracticeSession({
+      ...validSession,
+      schemaVersion: '1.0',
+    });
+
+    // داده‌های خراب با نماد غیرمجاز
+    const invalidSymbol = validatePracticeSession({
+      ...validSession,
+      symbol: 'BTCUSD',
+    });
+
+    // داده با بالانس منفی
+    const invalidBalance = validatePracticeSession({
+      ...validSession,
+      accountBalance: -500,
+    });
+
+    const passed =
+      validCheck.valid === true &&
+      invalidSchema.valid === false &&
+      invalidSymbol.valid === false &&
+      invalidBalance.valid === false;
+
+    results.push({
+      name: 'اعتبارسنجی دقیق اسکیما و محدودیت‌های معنایی (نماد، نسخه، بالانس مثبت)',
+      passed,
+      details: passed
+        ? 'اعتبارسنجی با موفقیت داده‌های صحیح را تأیید و موارد نامعتبر را با خطای صریح رد کرد.'
+        : `خطا در اعتبارسنجی اسکیما: validCheck=${validCheck.valid}, invalidSchema=${invalidSchema.valid}`,
+    });
+  } catch (err) {
+    results.push({
+      name: 'اعتبارسنجی دقیق اسکیما و محدودیت‌های معنایی (نماد، نسخه، بالانس مثبت)',
+      passed: false,
+      details: (err as Error).message,
+    });
+  }
+
+  // ۱۹. تست: قرنطینه داده‌های خراب حافظه بدون حذف خاموش یا نابودی اطلاعات
+  try {
+    PracticeSessionManager.clearAllForTesting();
+
+    // ذخیره داده خراب (JSON ناقص) مستقیماً در کلید فعال
+    const corruptJson = '{"sessionId": "practice-corrupt", "schemaVersion": "2.0", "symbol": ';
+    PracticeSessionManager.setRawForTesting(ACTIVE_SESSION_STORAGE_KEY, corruptJson);
+
+    // فراخوانی بارگذاری که نباید خطا پرتاب کند، باید null برگرداند و داده خراب را قرنطینه کند
+    const loaded = PracticeSessionManager.loadActiveSession();
+
+    // بررسی اینکه کلید فعال پاک شده است تا اجازه آغاز نشست تازه بدون خرابی بدهد
+    const activeRawAfter = PracticeSessionManager.getRawForTesting(ACTIVE_SESSION_STORAGE_KEY);
+
+    const passed =
+      loaded === null &&
+      activeRawAfter === null;
+
+    results.push({
+      name: 'قرنطینه داده‌های خراب حافظه بدون حذف خاموش یا بروز خطا در بارگذاری نشست فعال',
+      passed,
+      details: passed
+        ? 'داده‌های خراب با موفقیت تشخیص داده شده، قرنطینه گردید و بارگذاری بدون توقف نامناسب انجام شد.'
+        : 'خطا در قرنطینه‌سازی داده‌های خراب.',
+    });
+  } catch (err) {
+    results.push({
+      name: 'قرنطینه داده‌های خراب حافظه بدون حذف خاموش یا بروز خطا در بارگذاری نشست فعال',
+      passed: false,
+      details: (err as Error).message,
+    });
+  }
+
+  // ۲۰. تست: کسر فوری کارمزد و به‌روزرسانی آنی اکوئیتی در لحظه باز شدن سفارش مارکت (BUG-PRAC-03)
+  try {
+    const broker = new SimulatedBroker(10000);
+    const volume = 0.1; // کارمزد = ۰٫۱ * ۶ = ۰٫۶ دلار
+    const { position } = broker.createMarketBracketOrder(
+      'XAUUSD',
+      'BUY',
+      volume,
+      2000,
+      1990,
+      2020
+    );
+
+    const state = broker.getState();
+    const expectedCommission = 0.6;
+    const expectedUnrealized = -expectedCommission;
+    const expectedEquity = Number((10000 - expectedCommission).toFixed(2));
+
+    const passed =
+      position.unrealizedPnl === expectedUnrealized &&
+      state.accountEquity === expectedEquity &&
+      position.initialVolumeLots === volume;
+
+    results.push({
+      name: 'انعکاس فوری کارمزد در سود/زیان شناور و به‌روزرسانی آنی اکوئیتی در لحظه ورود معامله',
+      passed,
+      details: passed
+        ? `اکوئیتی و سود شناور بلافاصله کسر کارمزد را نشان دادند (اکوئیتی: ${state.accountEquity}، سود شناور: ${position.unrealizedPnl}).`
+        : `خطا در انعکاس اکوئیتی اولیه: اکوئیتی=${state.accountEquity} (انتظار: ${expectedEquity})، سود شناور=${position.unrealizedPnl}`,
+    });
+  } catch (err) {
+    results.push({
+      name: 'انعکاس فوری کارمزد در سود/زیان شناور و به‌روزرسانی آنی اکوئیتی در لحظه ورود معامله',
+      passed: false,
+      details: (err as Error).message,
+    });
+  }
+
+  // ۲۱. تست: انطباق زمان خروج دستی با تایم‌استمپ شبیه‌سازی بازار به جای ساعت سیستم (BUG-PRAC-02)
+  try {
+    const broker = new SimulatedBroker(10000);
+    const marketCandleTimestamp = 1704084000000; // زمان فرضی بازار
+    const { position } = broker.createMarketBracketOrder(
+      'XAUUSD',
+      'BUY',
+      0.04,
+      2000,
+      1990,
+      2020,
+      { candleTimestamp: marketCandleTimestamp }
+    );
+
+    const closeCandleTimestamp = marketCandleTimestamp + 300_000 * 5; // ۵ کندل بعد در بازار
+    const closeRes = broker.closePosition(position.id, 2005, 'MANUAL', closeCandleTimestamp);
+
+    const passed =
+      closeRes.success === true &&
+      closeRes.closedPosition?.closedAt === closeCandleTimestamp &&
+      closeRes.closedPosition?.openedAt === marketCandleTimestamp;
+
+    results.push({
+      name: 'انطباق زمان خروج دستی پوزیشن با تایم‌استمپ کندل بازار به جای ساعت سیستم',
+      passed,
+      details: passed
+        ? `زمان ورود (${marketCandleTimestamp}) و خروج (${closeCandleTimestamp}) کاملاً در خط زمان شبیه‌ساز بازار ثبت شدند.`
+        : `خطا در زمان خروج: closedAt=${closeRes.closedPosition?.closedAt} (انتظار: ${closeCandleTimestamp})`,
+    });
+  } catch (err) {
+    results.push({
+      name: 'انطباق زمان خروج دستی پوزیشن با تایم‌استمپ کندل بازار به جای ساعت سیستم',
+      passed: false,
+      details: (err as Error).message,
+    });
+  }
+
+  // ۲۲. تست: گزارش‌دهی صریح وضعیت ذخیره‌سازی و ممانعت از ثبت کاذب «موفق» در صورت خطا (BUG-PRAC-01)
+  try {
+    PracticeSessionManager.clearAllForTesting();
+    const session = PracticeSessionManager.createNewSession('XAUUSD', 10000);
+
+    // ذخیره با موفقیت
+    const successRes = PracticeSessionManager.saveActiveSession(session);
+
+    // ذخیره نشست نامعتبر (بالانس منفی)
+    const invalidSession = { ...session, accountBalance: -100 };
+    const failureRes = PracticeSessionManager.saveActiveSession(invalidSession as PracticeSession);
+
+    const passed =
+      successRes.success === true &&
+      failureRes.success === false &&
+      Boolean(failureRes.error && failureRes.error.includes('خطای اعتبارسنجی'));
+
+    results.push({
+      name: 'گزارش‌دهی صریح وضعیت ذخیره‌سازی و رد قطعی ذخیره نشست نامعتبر با اعلام خطا',
+      passed,
+      details: passed
+        ? 'سیستم به درستی ذخیره معتبر را تأیید کرد و در داده‌های نامعتبر خروجی خطا بازگرداند.'
+        : `خطا در بازخورد ذخیره‌سازی: successRes=${successRes.success}, failureRes=${failureRes.success}`,
+    });
+  } catch (err) {
+    results.push({
+      name: 'گزارش‌دهی صریح وضعیت ذخیره‌سازی و رد قطعی ذخیره نشست نامعتبر با اعلام خطا',
       passed: false,
       details: (err as Error).message,
     });

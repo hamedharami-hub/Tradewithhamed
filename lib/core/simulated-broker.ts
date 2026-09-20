@@ -136,6 +136,7 @@ export class SimulatedBroker {
           symbol: order.symbol,
           direction: order.direction,
           volumeLots: order.volumeLots,
+          initialVolumeLots: order.volumeLots,
           entryPrice: order.requestedPrice,
           currentPrice: order.requestedPrice,
           stopLoss: order.stopLoss,
@@ -302,7 +303,7 @@ export class SimulatedBroker {
       currentPrice,
       stopLoss,
       takeProfit,
-      unrealizedPnl: 0,
+      unrealizedPnl: -Number((volumeLots * 6.0).toFixed(2)),
       realizedPnl: 0,
       commissionPaid: Number((volumeLots * 6.0).toFixed(2)),
       isOpen: true,
@@ -317,6 +318,11 @@ export class SimulatedBroker {
       propFirmId: meta?.propFirmId,
     };
     this.positions.push(position);
+
+    // به‌روزرسانی آنی اکوئیتی حساب با کسر کارمزد اولیه
+    const stillOpen = this.positions.filter(p => p.isOpen);
+    const totalUnrealized = stillOpen.reduce((sum, p) => sum + p.unrealizedPnl, 0);
+    this.equity = Number((this.balance + totalUnrealized).toFixed(2));
 
     return { order, position };
   }
@@ -390,14 +396,15 @@ export class SimulatedBroker {
   public closePosition(
     positionId: string,
     exitPrice?: number,
-    closeReason: 'MANUAL' | 'TP' | 'SL' = 'MANUAL'
+    closeReason: 'MANUAL' | 'TP' | 'SL' = 'MANUAL',
+    exitTimestamp?: number
   ): { success: boolean; closedPosition?: SimulatedPosition; netRealizedPnl: number } {
     const pos = this.positions.find(p => p.id === positionId && p.isOpen);
     if (!pos) return { success: false, netRealizedPnl: 0 };
 
-    const now = Date.now();
+    const timestamp = exitTimestamp ?? Date.now();
     const finalPrice = exitPrice ?? pos.currentPrice;
-    const pnl = this.executePositionClose(pos, finalPrice, closeReason, now);
+    const pnl = this.executePositionClose(pos, finalPrice, closeReason, timestamp);
 
     const stillOpen = this.positions.filter(p => p.isOpen);
     if (stillOpen.length === 0) {
@@ -417,18 +424,18 @@ export class SimulatedBroker {
   /**
    * اجرای بستن اضطراری سراسری (Panic Kill-Switch): بستن آنی تمام پوزیشن‌ها و لغو تمام سفارش‌ها
    */
-  public panicCloseAll(): {
+  public panicCloseAll(exitTimestamp?: number): {
     closedPositionsCount: number;
     cancelledOrdersCount: number;
     netRealizedPnl: number;
   } {
     let closedPositionsCount = 0;
     let netRealizedPnl = 0;
-    const now = Date.now();
+    const timestamp = exitTimestamp ?? Date.now();
 
     // بستن تمام پوزیشن‌های باز
     for (const pos of this.positions.filter(p => p.isOpen)) {
-      const pnl = this.executePositionClose(pos, pos.currentPrice, 'PANIC_KILL_SWITCH', now);
+      const pnl = this.executePositionClose(pos, pos.currentPrice, 'PANIC_KILL_SWITCH', timestamp);
       netRealizedPnl += pnl;
       closedPositionsCount++;
     }
@@ -437,7 +444,7 @@ export class SimulatedBroker {
     let cancelledOrdersCount = 0;
     for (const order of this.orders.filter(o => o.status === 'PENDING')) {
       order.status = 'CANCELLED';
-      order.updatedAt = now;
+      order.updatedAt = timestamp;
       cancelledOrdersCount++;
     }
 

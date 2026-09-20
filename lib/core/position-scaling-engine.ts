@@ -147,9 +147,10 @@ export class PositionScalingEngine {
    */
   public static triggerPanicKillSwitch(
     broker: SimulatedBroker,
-    source: 'MANUAL_PANIC' | 'DAILY_DRAWDOWN_FUSE' | 'HIGH_VOLATILITY' = 'MANUAL_PANIC'
+    source: 'MANUAL_PANIC' | 'DAILY_DRAWDOWN_FUSE' | 'HIGH_VOLATILITY' = 'MANUAL_PANIC',
+    exitTimestamp?: number
   ): KillSwitchEvent {
-    const result = broker.panicCloseAll();
+    const result = broker.panicCloseAll(exitTimestamp);
     const eventId = `KILL-SWITCH-${Date.now()}`;
 
     const summaryFa = `کلید اضطراری با منشا ${

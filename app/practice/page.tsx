@@ -1,13 +1,13 @@
 'use client';
 
-import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback, useSyncExternalStore } from 'react';
 import { SymbolId } from '@/lib/contracts/market';
 import { DataProvenance } from '@/lib/contracts/provenance';
 import { ReplayEngine, ReplayState } from '@/lib/replay/replay-engine';
 import { SimulatedBroker } from '@/lib/core/simulated-broker';
 import { calculateDeterministicRisk } from '@/lib/core/risk-calculator';
 import { calculateWilderATR } from '@/lib/core/atr';
-import { PracticeSession, PracticeSessionManager } from '@/lib/core/practice-session';
+import { PracticeSession, PracticeSessionManager, MAX_ARCHIVED_SESSIONS } from '@/lib/core/practice-session';
 import { PositionScalingEngine } from '@/lib/core/position-scaling-engine';
 import { EnvironmentNavBar } from '@/components/navigation/environment-nav-bar';
 import { ChartCanvas } from '@/components/trading/chart-canvas';
@@ -43,6 +43,7 @@ import {
   DollarSign,
   Minus,
   CheckCircle2,
+  Trash2,
 } from 'lucide-react';
 
 interface ConfirmModalState {
@@ -65,7 +66,7 @@ function createInitialPracticeEngine(session: PracticeSession) {
   return { broker, replay, snapshot: replay.getSnapshot() };
 }
 
-export default function PracticePage() {
+function PracticePageContent() {
   // ۱. مقداردهی اولیه نشست تمرینی از حافظه محلی یا ایجاد نشست تازه
   const [session, setSession] = useState<PracticeSession>(() => {
     const loaded = PracticeSessionManager.loadActiveSession();
@@ -105,6 +106,25 @@ export default function PracticePage() {
     MultiAgentOrchestrator.loadConfiguration()
   );
 
+  // وضعیت اعتبارسنجی و ثبت واقعی ذخیره‌سازی محلی
+  const [storageStatus, setStorageStatus] = useState<'SAVED' | 'ERROR'>('SAVED');
+  const [lastSaveTime, setLastSaveTime] = useState<string | null>(null);
+
+  // تابع یکپارچه ذخیره‌سازی نشست فعال با اعتبارسنجی قطعی خروجی
+  const persistSession = useCallback((updated: PracticeSession, actionName?: string) => {
+    setSession(updated);
+    const res = PracticeSessionManager.saveActiveSession(updated);
+    if (res.success) {
+      setStorageStatus('SAVED');
+      setLastSaveTime(new Date().toLocaleTimeString('fa-IR', { timeZone: 'UTC', hour: '2-digit', minute: '2-digit', second: '2-digit' }));
+    } else {
+      setStorageStatus('ERROR');
+      const errText = res.error || 'خطا در ذخیره‌سازی نشست در مرورگر.';
+      setExecutionMessage(`هشدار ذخیره‌سازی: داده‌های ${actionName || 'نشست'} در حافظه محلی ذخیره نشد (${errText}).`);
+    }
+    return res;
+  }, []);
+
   const provenance: DataProvenance = useMemo(() => ({
     originType: 'SAMPLE_FIXTURE',
     originLabelFa: 'نمونه آزمایشی داخلی (Fixtures)',
@@ -129,27 +149,21 @@ export default function PracticePage() {
     const brokerState = broker.getState();
     setReplayState(nextSnapshot);
 
-    setSession(prev => {
-      const updated: PracticeSession = {
-        ...prev,
-        currentStepIndex: nextSnapshot.currentStepIndex,
-        accountBalance: brokerState.accountBalance,
-        accountEquity: brokerState.accountEquity,
-        orders: brokerState.orders,
-        positions: brokerState.positions,
-        lastMarketTimestamp: nextSnapshot.visibleCandles[nextSnapshot.visibleCandles.length - 1]?.timestamp,
-      };
-      const saveRes = PracticeSessionManager.saveActiveSession(updated);
-      if (!saveRes.success && saveRes.error) {
-        setExecutionMessage(saveRes.error);
-      }
-      return updated;
-    });
+    const updated: PracticeSession = {
+      ...session,
+      currentStepIndex: nextSnapshot.currentStepIndex,
+      accountBalance: brokerState.accountBalance,
+      accountEquity: brokerState.accountEquity,
+      orders: brokerState.orders,
+      positions: brokerState.positions,
+      lastMarketTimestamp: nextSnapshot.visibleCandles[nextSnapshot.visibleCandles.length - 1]?.timestamp,
+    };
+    persistSession(updated, 'گام کندل');
 
     if (nextSnapshot.currentStepIndex >= nextSnapshot.totalSteps - 1) {
       setIsPlaying(false);
     }
-  }, []);
+  }, [session, persistSession]);
 
   // کنترل بازپخش خودکار کندل‌ها (بدون فراخوانی مضاعف در StrictMode)
   useEffect(() => {
@@ -223,6 +237,11 @@ export default function PracticePage() {
 
   // ثبت معامله تمرینی با اعتبارسنجی قطعی
   const handleExecuteTrade = () => {
+    if (isEndOfData) {
+      setExecutionMessage('خطا: به انتهای داده‌های نمونه رسیده‌اید. ثبت معاملهٔ جدید مسدود است. لطفاً ریپلی را مجدداً آغاز کنید یا نشست جدید شروع کنید.');
+      return;
+    }
+
     if (session.isFreezeNewEntries) {
       setExecutionMessage('خطا: ثبت ورودهای جدید متوقف است. برای ثبت معامله، ابتدا دکمه «توقف سفارش جدید» را خاموش کنید.');
       return;
@@ -287,8 +306,7 @@ export default function PracticePage() {
         lastMarketTimestamp: lastCandle?.timestamp,
       };
 
-      setSession(updatedSession);
-      PracticeSessionManager.saveActiveSession(updatedSession);
+      persistSession(updatedSession, 'ثبت معامله');
 
       setExecutionMessage(
         `معامله تمرینی ${tradeDirection === 'BUY' ? 'خرید (BUY)' : 'فروش (SELL)'} با حجم ${lots} لات در قیمت ${entry} با موفقیت ثبت شد (شناسه: ${position.id}).`
@@ -303,7 +321,7 @@ export default function PracticePage() {
     const broker = brokerRef.current;
     if (!broker) return;
 
-    const res = broker.closePosition(positionId, currentPrice, 'MANUAL');
+    const res = broker.closePosition(positionId, currentPrice, 'MANUAL', lastCandle?.timestamp);
     if (res.success) {
       const updatedBrokerState = broker.getState();
       const updatedSession: PracticeSession = {
@@ -313,8 +331,7 @@ export default function PracticePage() {
         orders: updatedBrokerState.orders,
         positions: updatedBrokerState.positions,
       };
-      setSession(updatedSession);
-      PracticeSessionManager.saveActiveSession(updatedSession);
+      persistSession(updatedSession, 'بستن معامله');
       setExecutionMessage(`معامله به شناسه ${positionId} با موفقیت بسته شد (سود/زیان خالص: $${res.netRealizedPnl}).`);
     }
   };
@@ -326,8 +343,7 @@ export default function PracticePage() {
       ...session,
       isFreezeNewEntries: nextFreeze,
     };
-    setSession(updated);
-    PracticeSessionManager.saveActiveSession(updated);
+    persistSession(updated, 'تغییر وضعیت فریز');
     setExecutionMessage(
       nextFreeze
         ? 'حالت «توقف سفارش جدید» فعال شد: پوزیشن‌های باز جاری حفظ می‌شوند، اما ورود جدید مسدود است.'
@@ -355,13 +371,23 @@ export default function PracticePage() {
   const executeNewSessionOrReset = (newSymbol: SymbolId) => {
     setIsPlaying(false);
 
-    // ۱. بایگانی نشست فعلی
-    PracticeSessionManager.archiveSession(session);
+    // ۱. بایگانی نشست فعلی با بررسی صریح نتیجه و سقف ظرفیت
+    const archiveResult = PracticeSessionManager.archiveSession(session);
+    if (!archiveResult.success) {
+      // در صورت بروز خطا یا تکمیل ظرفیت، نشست جاری حفظ شده و شروع نشست تازه لغو می‌شود
+      setExecutionMessage(archiveResult.error || 'خطا در بایگانی نشست قبلی. نشست جاری حفظ شد و نشست جدید آغاز نشد.');
+      return;
+    }
+
     setArchivedSessions(PracticeSessionManager.loadArchivedSessions());
 
     // ۲. ایجاد نشست تازه
     const fresh = PracticeSessionManager.createNewSession(newSymbol, 10000, session.config);
-    PracticeSessionManager.saveActiveSession(fresh);
+    const saveResult = PracticeSessionManager.saveActiveSession(fresh);
+    if (!saveResult.success) {
+      setExecutionMessage(saveResult.error || 'خطا در ذخیره نشست جدید.');
+      return;
+    }
 
     // ۳. بازنشانی موتورها
     const newBroker = new SimulatedBroker(fresh.initialBalance, fresh.config.enablePartialTp);
@@ -373,39 +399,43 @@ export default function PracticePage() {
     setExecutionMessage(`نشست تمرینی جدید برای نماد ${newSymbol} با بالانس اولیه ۱۰۰۰۰ دلار آغاز شد.`);
   };
 
+  // حذف انتخابی یک نشست از آرشیو با تصمیم صریح کاربر
+  const handleDeleteArchivedSession = (sessionId: string) => {
+    const deleted = PracticeSessionManager.deleteArchivedSession(sessionId);
+    if (deleted) {
+      setArchivedSessions(PracticeSessionManager.loadArchivedSessions());
+      setExecutionMessage(`نشست با شناسه ${sessionId} با موفقیت از آرشیو حذف شد.`);
+    }
+  };
+
   // تغییر نماد
   const handleRequestSymbolChange = (newSymbol: SymbolId) => {
     if (newSymbol === session.symbol) return;
     const openCount = session.positions.filter(p => p.isOpen).length;
 
-    if (openCount > 0) {
-      setConfirmModal({
-        isOpen: true,
-        title: 'تغییر نماد و پایان نشست جاری',
-        message: `نشست جاری روی نماد ${session.symbol} دارای ${openCount} معاملهٔ باز است. از آنجا که هر نشست تک‌نمادی است، تغییر نماد نیازمند بایگانی نشست فعلی است. آیا مایلید این نشست را بایگانی کرده و نشست تازه‌ای روی ${newSymbol} آغاز کنید؟`,
-        targetSymbol: newSymbol,
-        action: 'SWITCH_SYMBOL',
-      });
-      return;
-    }
-
-    executeNewSessionOrReset(newSymbol);
+    setConfirmModal({
+      isOpen: true,
+      title: 'تغییر نماد و پایان نشست جاری',
+      message: openCount > 0
+        ? `نشست جاری روی نماد ${session.symbol} دارای ${openCount} معاملهٔ باز است. از آنجا که هر نشست تک‌نمادی است، تغییر نماد نیازمند بایگانی نشست فعلی است. آیا مایلید این نشست را بایگانی کرده و نشست تازه‌ای روی ${newSymbol} آغاز کنید؟`
+        : `آیا مایلید نشست فعلی بایگانی شده و نشست تازه‌ای روی نماد ${newSymbol} آغاز گردد؟`,
+      targetSymbol: newSymbol,
+      action: 'SWITCH_SYMBOL',
+    });
   };
 
-  // شروع نشست جدید
+  // شروع نشست جدید (همواره با تأیید صریح کاربر)
   const handleRequestNewSession = () => {
     const openCount = session.positions.filter(p => p.isOpen).length;
-    if (openCount > 0) {
-      setConfirmModal({
-        isOpen: true,
-        title: 'شروع نشست جدید',
-        message: `این نشست دارای ${openCount} معاملهٔ باز است. شروع نشست جدید سوابق فعلی را در آرشیو بایگانی کرده و حسابی تازه با ۱۰۰۰۰ دلار ایجاد می‌کند. آیا ادامه می‌دهید؟`,
-        targetSymbol: session.symbol,
-        action: 'START_NEW_SESSION',
-      });
-      return;
-    }
-    executeNewSessionOrReset(session.symbol);
+    setConfirmModal({
+      isOpen: true,
+      title: 'شروع نشست جدید',
+      message: openCount > 0
+        ? `این نشست دارای ${openCount} معاملهٔ باز است. شروع نشست جدید سوابق فعلی را در آرشیو بایگانی کرده و حسابی تازه با ۱۰۰۰۰ دلار ایجاد می‌کند. آیا ادامه می‌دهید؟`
+        : 'شروع نشست جدید سوابق فعلی را در آرشیو بایگانی کرده و حسابی تازه با ۱۰۰۰۰ دلار ایجاد می‌کند. آیا ادامه می‌دهید؟',
+      targetSymbol: session.symbol,
+      action: 'START_NEW_SESSION',
+    });
   };
 
   // بازنشانی ریپلی
@@ -429,7 +459,7 @@ export default function PracticePage() {
     if (confirmModal.action === 'CLOSE_ALL_POSITIONS') {
       const broker = brokerRef.current;
       if (broker) {
-        PositionScalingEngine.triggerPanicKillSwitch(broker, 'MANUAL_PANIC');
+        PositionScalingEngine.triggerPanicKillSwitch(broker, 'MANUAL_PANIC', lastCandle?.timestamp);
         const updatedBrokerState = broker.getState();
         const updatedSession: PracticeSession = {
           ...session,
@@ -438,8 +468,7 @@ export default function PracticePage() {
           orders: updatedBrokerState.orders,
           positions: updatedBrokerState.positions,
         };
-        setSession(updatedSession);
-        PracticeSessionManager.saveActiveSession(updatedSession);
+        persistSession(updatedSession, 'بستن همه معاملات');
         setExecutionMessage('تمام معاملات باز با موفقیت بسته شدند.');
       }
       setConfirmModal(null);
@@ -464,8 +493,7 @@ export default function PracticePage() {
         selectedRiskPercent: riskPercent,
       },
     };
-    setSession(updated);
-    PracticeSessionManager.saveActiveSession(updated);
+    persistSession(updated, 'تغییر سقف ریسک');
   };
 
   const openPositions = session.positions.filter(p => p.isOpen);
@@ -475,7 +503,7 @@ export default function PracticePage() {
   const totalFloatingPnl = Number(openPositions.reduce((sum, p) => sum + p.unrealizedPnl, 0).toFixed(2));
 
   return (
-    <main className="min-h-screen bg-[#0a0d14] text-zinc-100 flex flex-col font-sans select-none" dir="rtl">
+    <main className="min-h-screen bg-[#0a0d14] text-zinc-100 flex flex-col font-sans select-none overflow-x-hidden w-full max-w-full" dir="rtl">
       {/* ناوبار سراسری محیط‌ها */}
       <EnvironmentNavBar
         currentEnv="PRACTICE"
@@ -484,7 +512,7 @@ export default function PracticePage() {
         onToggleViewMode={setViewMode}
       />
 
-      <div className="flex-1 p-3 sm:p-5 max-w-[1920px] w-full mx-auto space-y-4">
+      <div className="flex-1 p-3 sm:p-5 max-w-[1920px] w-full mx-auto space-y-4 overflow-x-hidden">
         {/* پیام‌های سیستمی */}
         {executionMessage && (
           <div className="p-3 bg-cyan-500/10 border border-cyan-500/30 rounded-2xl text-xs flex items-center justify-between gap-2 text-cyan-300 shadow-sm animate-in fade-in">
@@ -566,7 +594,7 @@ export default function PracticePage() {
             </div>
           </div>
 
-          <div className="flex items-center gap-3 font-mono text-[11px]">
+          <div className="flex flex-wrap items-center gap-2 font-mono text-[11px]">
             <div className="bg-[#151b2a] px-2.5 py-1 rounded-xl border border-[#222a3d] flex items-center gap-1.5">
               <Layers className="w-3.5 h-3.5 text-amber-400" />
               <span className="text-zinc-400 font-sans">نماد:</span>
@@ -582,13 +610,13 @@ export default function PracticePage() {
             <div className="bg-[#151b2a] px-2.5 py-1 rounded-xl border border-[#222a3d] flex items-center gap-1.5">
               <Clock className="w-3.5 h-3.5 text-zinc-400" />
               <span className="text-zinc-400 font-sans">زمان کندل:</span>
-              <span className="font-bold text-zinc-200">{candleTimeFormatted} UTC</span>
+              <span suppressHydrationWarning className="font-bold text-zinc-200">{candleTimeFormatted} UTC</span>
             </div>
 
             <div className="bg-[#151b2a] px-2.5 py-1 rounded-xl border border-[#222a3d] flex items-center gap-1.5">
               <Database className="w-3.5 h-3.5 text-purple-400" />
               <span className="text-zinc-400 font-sans">نشست:</span>
-              <span className="font-bold text-purple-300">{session.sessionId}</span>
+              <span data-testid="session-id-badge" suppressHydrationWarning className="font-bold text-purple-300">{session.sessionId}</span>
             </div>
 
             {!isGuideOpen && (
@@ -684,11 +712,16 @@ export default function PracticePage() {
               <Database className="w-4 h-4 text-amber-400" />
             </div>
             <div className="text-sm font-bold text-zinc-200 mt-1 flex items-center gap-1.5">
-              <span className="w-2 h-2 rounded-full bg-emerald-400" />
-              <span>ذخیره روی مرورگر</span>
+              <span className={`w-2 h-2 rounded-full ${storageStatus === 'SAVED' ? 'bg-emerald-400' : 'bg-rose-500'}`} />
+              <span>{storageStatus === 'SAVED' ? 'ذخیره روی مرورگر' : 'خطای ذخیره‌سازی'}</span>
+              {lastSaveTime && storageStatus === 'SAVED' && (
+                <span className="text-[10px] text-zinc-500 font-mono">({lastSaveTime})</span>
+              )}
             </div>
             <div className="text-[10px] text-zinc-500 leading-tight">
-              ایزوله و نسخه‌دار (بدون نشت داده به دمو یا پژوهش)
+              {storageStatus === 'SAVED'
+                ? 'ایزوله و نسخه‌دار (بدون نشت داده به دمو یا پژوهش)'
+                : 'هشدار: آخرین تغییرات در حافظه محلی ذخیره نشد.'}
             </div>
           </div>
         </div>
@@ -696,7 +729,7 @@ export default function PracticePage() {
         {/* ۳. نمودار و کنترل بازپخش */}
         <div className="bg-[#101420] border border-[#1d2436] p-3 rounded-2xl flex flex-wrap items-center justify-between gap-3 shadow-md">
           {/* انتخاب نماد تک‌نشستی */}
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <span className="text-xs text-zinc-400 font-medium">نماد معامله:</span>
             {(['XAUUSD', 'EURUSD', 'GBPUSD', 'USDJPY'] as SymbolId[]).map(s => (
               <button
@@ -714,7 +747,7 @@ export default function PracticePage() {
           </div>
 
           {/* کلیدهای پخش و کنترل ریپلی */}
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <button
               onClick={() => setIsPlaying(!isPlaying)}
               className="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-black text-xs font-bold flex items-center gap-1.5 transition-all shadow-md"
@@ -800,7 +833,7 @@ export default function PracticePage() {
         )}
 
         {/* چارت کندل‌استیک با داده‌های هماهنگ با موتور تمرین */}
-        <div className="bg-[#0e121c] border border-[#1b2234] rounded-2xl p-3 overflow-hidden shadow-lg">
+        <div data-testid="chart-container" className="bg-[#0e121c] border border-[#1b2234] rounded-2xl p-3 overflow-hidden shadow-lg w-full max-w-full">
           <ChartCanvas
             candles={replayState.visibleCandles}
             symbol={session.symbol}
@@ -810,11 +843,10 @@ export default function PracticePage() {
         </div>
 
         {/* ۴. فرم معامله (Trade Form) */}
-        <div className="bg-[#0f131f] border border-[#222a3d] rounded-2xl p-4 shadow-xl space-y-3">
+        <div className="bg-[#0f131f] border border-[#222a3d] rounded-2xl p-4 shadow-xl space-y-3 w-full max-w-full">
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#1f273b] pb-3">
             {/* انتخاب جهت معامله */}
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-zinc-400 font-medium">جهت معامله:</span>
+            <div className="flex flex-wrap items-center gap-2">
               <button
                 onClick={() => setTradeDirection('BUY')}
                 className={`px-4 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all ${
@@ -841,7 +873,7 @@ export default function PracticePage() {
             </div>
 
             {/* سقف ریسک قابل ویرایش */}
-            <div className="flex items-center gap-3 bg-[#141926] p-2 rounded-xl border border-[#232d40]">
+            <div className="flex flex-wrap items-center gap-3 bg-[#141926] p-2 rounded-xl border border-[#232d40]">
               <div className="flex items-center gap-1.5">
                 <span className="text-xs text-zinc-400 font-medium">سقف ریسک:</span>
                 <span className="text-xs font-bold text-cyan-400 font-mono">{session.config.selectedRiskPercent}%</span>
@@ -867,7 +899,7 @@ export default function PracticePage() {
             </div>
 
             {/* دکمه‌های کنترل ورود و بستن همه */}
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <button
                 onClick={handleToggleFreeze}
                 className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all border ${
@@ -957,7 +989,12 @@ export default function PracticePage() {
           </div>
 
           {/* پیام راهنما یا خطای مانع ثبت در فرم */}
-          {session.isFreezeNewEntries ? (
+          {isEndOfData ? (
+            <div className="p-2.5 bg-amber-500/15 border border-amber-500/40 rounded-xl text-xs text-amber-300 flex items-center gap-2">
+              <AlertTriangle className="w-4 h-4 shrink-0" />
+              <span>پایان داده‌های نمونه: به آخرین کندل رسیده‌اید. امکان ثبت معاملهٔ جدید مسدود است.</span>
+            </div>
+          ) : session.isFreezeNewEntries ? (
             <div className="p-2.5 bg-amber-500/10 border border-amber-500/30 rounded-xl text-xs text-amber-300 flex items-center gap-2">
               <AlertOctagon className="w-4 h-4 shrink-0" />
               <span>ورود سفارش‌های جدید متوقف است. برای ثبت معامله، حالت توقف را خاموش کنید.</span>
@@ -978,7 +1015,7 @@ export default function PracticePage() {
           <div className="pt-1">
             <button
               onClick={handleExecuteTrade}
-              disabled={session.isFreezeNewEntries || !currentRiskPreview?.isValid}
+              disabled={isEndOfData || session.isFreezeNewEntries || !currentRiskPreview?.isValid}
               className={`w-full py-3 rounded-xl text-sm font-bold flex items-center justify-center gap-2 shadow-xl transition-all ${
                 tradeDirection === 'BUY'
                   ? 'bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 text-white'
@@ -987,8 +1024,11 @@ export default function PracticePage() {
             >
               {tradeDirection === 'BUY' ? <TrendingUp className="w-4 h-4" /> : <TrendingDown className="w-4 h-4" />}
               <span>
-                ثبت معاملهٔ تمرینی {tradeDirection === 'BUY' ? 'خرید (BUY)' : 'فروش (SELL)'}
-                {currentRiskPreview?.isValid ? ` — حجم: ${currentRiskPreview.adjustedVolumeLots} لات` : ''}
+                {isEndOfData
+                  ? 'پایان داده‌ها — ثبت معامله غیرفعال است'
+                  : `ثبت معاملهٔ تمرینی ${tradeDirection === 'BUY' ? 'خرید (BUY)' : 'فروش (SELL)'}${
+                      currentRiskPreview?.isValid ? ` — حجم: ${currentRiskPreview.adjustedVolumeLots} لات` : ''
+                    }`}
               </span>
             </button>
           </div>
@@ -1169,13 +1209,16 @@ export default function PracticePage() {
         {/* ۷. آرشیو نشست‌ها (Sessions Archive) */}
         <div className="bg-[#101420] border border-[#1d2436] rounded-2xl p-4 space-y-3 shadow-md">
           <div
+            data-testid="archive-toggle-btn"
             onClick={() => setIsArchiveOpen(!isArchiveOpen)}
             className="flex items-center justify-between cursor-pointer select-none"
           >
             <div className="flex items-center gap-2">
               <Archive className="w-4 h-4 text-purple-400" />
               <h2 className="text-sm font-bold text-zinc-200">آرشیو نشست‌های پیشین</h2>
-              <span className="text-xs text-zinc-500">({archivedSessions.length} نشست ذخیره‌شده)</span>
+              <span className="text-xs text-zinc-500 font-mono">
+                ({archivedSessions.length} از سقف {MAX_ARCHIVED_SESSIONS} نشست)
+              </span>
             </div>
             <button className="text-zinc-400 hover:text-zinc-200 p-1">
               {isArchiveOpen ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
@@ -1184,13 +1227,22 @@ export default function PracticePage() {
 
           {isArchiveOpen && (
             <div className="pt-2 border-t border-[#1b2234] space-y-2 animate-in fade-in">
+              {archivedSessions.length >= MAX_ARCHIVED_SESSIONS && (
+                <div className="p-2.5 bg-amber-500/15 border border-amber-500/30 rounded-xl text-xs text-amber-300 flex items-center gap-2">
+                  <AlertTriangle className="w-4 h-4 shrink-0" />
+                  <span>
+                    سقف ظرفیت بایگانی ({MAX_ARCHIVED_SESSIONS} نشست) پر شده است. جهت امنیت داده‌ها، نشست‌های قدیمی به صورت خودکار حذف نمی‌شوند؛ برای ثبت نشست‌های تازه، می‌توانید موارد غیرضروری را حذف نمایید.
+                  </span>
+                </div>
+              )}
+
               {archivedSessions.length === 0 ? (
                 <p className="text-xs text-zinc-500 py-3 text-center">
                   هنوز نشستی بایگانی نشده است. با کلیک روی «شروع نشست جدید»، نشست فعلی به این بخش منتقل می‌شود.
                 </p>
               ) : (
                 <div className="overflow-x-auto">
-                  <table className="w-full text-right text-xs">
+                  <table data-testid="archive-table" className="w-full text-right text-xs">
                     <thead>
                       <tr className="border-b border-[#1f2638] text-zinc-400">
                         <th className="py-2 px-3">شناسه نشست</th>
@@ -1200,6 +1252,7 @@ export default function PracticePage() {
                         <th className="py-2 px-3">تعداد کل معاملات</th>
                         <th className="py-2 px-3">معاملات پایان‌یافته</th>
                         <th className="py-2 px-3">یادداشت</th>
+                        <th className="py-2 px-3 text-center">عملیات</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-[#171e2e] font-mono">
@@ -1216,6 +1269,19 @@ export default function PracticePage() {
                             {arch.discardedOpenPositionsCount > 0 ? `${arch.discardedOpenPositionsCount} پوزیشن` : '۰'}
                           </td>
                           <td className="py-2.5 px-3 font-sans text-[11px] text-zinc-400">{arch.archiveNoteFa || '—'}</td>
+                          <td className="py-2.5 px-3 text-center font-sans">
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleDeleteArchivedSession(arch.sessionId);
+                              }}
+                              className="px-2 py-1 bg-rose-950/40 hover:bg-rose-900/60 text-rose-300 rounded text-[10px] border border-rose-800 transition-all flex items-center gap-1 mx-auto"
+                              title="حذف این نشست از آرشیو با تصمیم صریح شما"
+                            >
+                              <Trash2 className="w-3 h-3" />
+                              <span>حذف</span>
+                            </button>
+                          </td>
                         </tr>
                       ))}
                     </tbody>
@@ -1370,3 +1436,27 @@ export default function PracticePage() {
     </main>
   );
 }
+
+const emptySubscribe = () => () => {};
+
+export default function PracticePage() {
+  const isClient = useSyncExternalStore(
+    emptySubscribe,
+    () => true,
+    () => false
+  );
+
+  if (!isClient) {
+    return (
+      <main className="min-h-screen bg-[#0a0d14] text-zinc-100 flex flex-col items-center justify-center font-sans select-none overflow-x-hidden w-full max-w-full" dir="rtl">
+        <div className="text-center space-y-3 p-8">
+          <div className="w-8 h-8 border-2 border-cyan-400 border-t-transparent rounded-full animate-spin mx-auto" />
+          <p className="text-xs text-zinc-400">در حال بارگذاری محیط تمرین...</p>
+        </div>
+      </main>
+    );
+  }
+
+  return <PracticePageContent />;
+}
+

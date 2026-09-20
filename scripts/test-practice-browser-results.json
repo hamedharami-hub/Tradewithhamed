@@ -1,0 +1,249 @@
+{
+  "baseCommit": "3ce1be1",
+  "timestamp": "2026-09-20T14:09:49.530Z",
+  "appUrl": "http://127.0.0.1:3105/practice",
+  "scenarios": [
+    {
+      "id": 1,
+      "name": "ورود به /practice و دیدن هویت محیط و سرمایهٔ اولیه",
+      "passed": true,
+      "detail": {
+        "identity": true,
+        "symbol": true,
+        "hasInitial10000": true,
+        "hasBalanceLabel": true,
+        "hasEquityLabel": true,
+        "sessionId": "practice-xauusd-1789913391108-58o74"
+      }
+    },
+    {
+      "id": 2,
+      "name": "ثبت معاملهٔ خرید با حد ضرر و حد سود (انتخاب جهت و ثبت دو مرحله‌ای)",
+      "passed": true,
+      "detail": {
+        "s2Step1": {
+          "success": true
+        },
+        "s2Step2": {
+          "success": true
+        },
+        "s2Verify": {
+          "hasTable": true,
+          "hasBuyBadge": true,
+          "hasVolume": true,
+          "hasOpenIndicator": true,
+          "contentSample": "نماد\tجهت\tحجم (فعلی / اولیه)\tقیمت ورود\tقیمت لحظه‌ای\tحد ضرر (SL)\tحد سود (TP)\tسود/زیان شناور\tعملیات\nXAUUSD\tخرید\t0.04 Lot\t2655.8\t2655.8\t2649.92\t2667.56\t-$0.24\tبستن معامله"
+        }
+      }
+    },
+    {
+      "id": 3,
+      "name": "جلو بردن چند کندل و تغییر سود/زیان باز به همراه انطباق عددی",
+      "passed": true,
+      "detail": {
+        "before": {
+          "text": true,
+          "samples": [
+            "$10000.00",
+            "$10000.00",
+            "$9999.76",
+            "$0.24",
+            "$2655.80",
+            "$2655.80"
+          ]
+        },
+        "after": {
+          "hasFloatingPnl": true,
+          "matches": [
+            "$10000.00",
+            "$10000.00",
+            "$10033.36",
+            "$33.36",
+            "$2664.20",
+            "$2664.20"
+          ]
+        }
+      }
+    },
+    {
+      "id": 4,
+      "name": "رسیدن به حد سود یا حد ضرر و ثبت معامله در تاریخچه با قیمت خروج و علت واقعی",
+      "passed": true,
+      "detail": {
+        "hasClosedTrades": true,
+        "hasExitReason": true,
+        "hasRealizedPnl": true
+      }
+    },
+    {
+      "id": 5,
+      "name": "ثبت معاملهٔ فروش در دو مرحله همراه با اعتبارسنجی UI",
+      "passed": true,
+      "detail": {
+        "s5Submit": {
+          "success": true
+        },
+        "s5Verify": {
+          "hasSellIndicator": true
+        }
+      }
+    },
+    {
+      "id": 6,
+      "name": "بستن دستی معامله با دکمهٔ بستن و تسویه فوری در موجودی",
+      "passed": true,
+      "detail": {
+        "s6Action": {
+          "clicked": true,
+          "type": "single"
+        },
+        "s6Verify": {
+          "hasManualExit": true,
+          "zeroOpen": true
+        }
+      }
+    },
+    {
+      "id": 7,
+      "name": "جلو بردن تا انتهای واقعی داده و مشاهدهٔ پیام فریز داده و ممنوعیت ورود جدید",
+      "passed": true,
+      "detail": {
+        "s7StepResult": {
+          "clicks": 300,
+          "isBtnDisabled": false
+        },
+        "s7Verify": {
+          "hasEndBanner": true,
+          "isNextDisabled": true,
+          "isSubmitDisabled": true,
+          "hasBlockedText": true
+        }
+      }
+    },
+    {
+      "id": 8,
+      "name": "رفرش صفحه و باقی ماندن شناسه، گام ریپلی و موجودی نشست بدون نشت یا تغییر",
+      "passed": true,
+      "detail": {
+        "before": {
+          "sessionId": "practice-xauusd-1789913391108-58o74",
+          "stepText": "کندل 350 از 350",
+          "balances": [
+            "$10000.00",
+            "$10046.50",
+            "$10046.50",
+            "$0.00"
+          ]
+        },
+        "after": {
+          "sessionId": "practice-xauusd-1789913391108-58o74",
+          "stepText": "کندل 350 از 350",
+          "balances": [
+            "$10000.00",
+            "$10046.50",
+            "$10046.50",
+            "$0.00"
+          ],
+          "identity": true,
+          "storageBadge": true
+        },
+        "matches": {
+          "s8SessionMatch": true,
+          "s8StepMatch": true
+        }
+      }
+    },
+    {
+      "id": 9,
+      "name": "آزمایش هر دو جریان انصراف و تأیید شروع نشست تازه و بازنشانی وضعیت جاری",
+      "passed": true,
+      "detail": {
+        "s9ModalVisible": true,
+        "cancelWorked": true,
+        "confirmWorked": true,
+        "s9ConfirmVerify": {
+          "newSessionId": "practice-xauusd-1789913411205-qxiq4",
+          "has10000": true,
+          "zeroClosed": true
+        }
+      }
+    },
+    {
+      "id": 10,
+      "name": "تغییر نماد به EURUSD و هماهنگ‌سازی نماد نشست، نمودار و فرم معامله",
+      "passed": true,
+      "detail": {
+        "symbolBadge": true,
+        "hasEurusdSession": true,
+        "priceText": "نشست تمرینی جدید برای نماد EURUSD با بالانس اولیه ۱۰۰۰۰ دلار آغاز شد.\nراهنمای سریع: مراحل انجام اولین معاملهٔ تمرینی\nبستن راهنما\n۱. بررسی نمودار\n\nکندل‌های قیمت را روی چارت ببینید و جهت حرکت بازار فرضی را بسنجید.\n\n۲. انتخاب ریسک و حدود\n\nدر فرم معامله، درصد ریسک را انتخاب کنید؛ حد ضرر و حجم خودکار محاسبه می‌شوند.\n\n۳. ثبت معاملهٔ تمرینی\n\nجهت خرید یا فروش را انتخاب کرده و دکمه «ثبت معاملهٔ تمرینی» را بزنید.\n\n۴. جلو بردن کندل‌ها\n\nدکمه «کندل بعد» یا «پخش» را بزنید تا زمان بازار پیش برود و معامله با استاپ یا تارگت برخورد کند.\n\n۵. مشاهده دفتر معاملات\n\nپس از بسته شدن پوزیشن، نتیجه، سود/زیان خالص و قیمت واقعی خروج را در جدول ببینید.\n\nتمرین با دادهٔ نمونه — حساب مجازی — بدون ارسال به بروکر\nنماد:\nEURUSD\nتایم‌فریم:\n۵ دقیقه‌ای (5M)\nزمان کندل:\n۰۴:۴۰ UTC\nنشست:\npractice-eurusd-1789913413600-ygrml\nسرمایهٔ آغاز نشست\n$10000.00\nسرمایه اولیه پایه در شروع این نشست\nموجودی نقدشده (بالانس / Balance)\n$10000.00\nسرمایه تثبیت‌شده پس از تسویه معاملات بسته‌شده\nارزش فعلی حساب (اکوئیتی / Equity)\n$10000.00\nکل سرمایه لحظه‌ای با احتساب سود/زیان باز\nسودوزیان شناور معاملات باز\n$0.00\n(0 معامله باز)\nسود یا زیان غیرنقدی پوزیشن‌های فعال جاری\nوضعیت ذخیره‌سازی\nذخیره روی مرورگر\nایزوله و نسخه‌دار (بدون نشت داده به دمو یا پژوهش)\nنماد معامله:\nXAUUSD\nEURUSD\nGBPUSD\nUSDJPY\nپخش کندل‌ها\nکندل بعد\nسرعت:\n1x\n2x\n4x\nشروع نشست جدید\nکندل 81 از 350\nEURUSD\n$1.10174\n🔄 بازپخش زنده\n📅 کاوش تاریخچه\n1M\n5M\n15M\n1H\n4H\nD1\nW1\n2024\n2025\nبازپخش زنده: ۸۱ کندل جاری\nخط‌کش پیپ\nتک‌چارت\nنمای دوگانه\nپرش به تاریخ\nنمودار زنده بازپخش (همگام با شبیه‌ساز) — 81 کندل\n5M\n$1.10174\n81 کندل\n1.1021\n1.1028\n1.1034\n1.1040\nورود: 1.10174\nحد ضرر: 1.10169\nتارگت سود: 1.10216\nخرید (BUY)\nفروش (SELL)\nسقف ریسک:\n0.25%\nقابل ویرایش\n0.1%\n0.15%\n0.2%\n0.25%\nتوقف سفارش جدید\nبستن همه (0)\nقیمت ورود:\nمحاسبه‌شده\n$1.10174\nحد ضرر (SL):\nبر مبنای نوسان\n$1.10152\nحد سود (TP):\nنسبت 1:2\n$1.10218\nحجم محاسبه‌شده:\nسقف ریسک\n0.89 Lot\nهزینهٔ تخمینی کارمزد:\n$6 هر لات\n$5.34\nریسک دلاری:\nزیان حداکثر\n$24.92\nثبت معاملهٔ تمرینی خرید (BUY) — حجم: 0.89 لات\nمعاملات باز فعال\n(0 معامله در جریان)\n\nدر حال حاضر هیچ معاملهٔ بازی در این نشست وجود ندارد.\n\nاز فرم معامله در بالا برای ثبت یک پوزیشن خرید یا فروش استفاده کنید تا بلافاصله در این جدول ظاهر شود.\n\nدفتر معاملات نشست جاری\n(فقط معاملات تسویه‌شده در این نشست)\n0 معامله بسته شده\n\nهنوز هیچ معامله‌ای در این نشست تمرینی بسته نشده است.\n\nپس از برخورد پوزیشن با حد سود (TP)، حد ضرر (SL) یا بستن دستی، مشخصات واقعی خروج در این جدول ثبت خواهد شد.\n\nآرشیو نشست‌های پیشین\n(2 از سقف 20 نشست)"
+      }
+    },
+    {
+      "id": 11,
+      "name": "دیدن نشست قبلی در آرشیو همراه با اعتبارسنجی شناسه دقیق نشست",
+      "passed": true,
+      "detail": {
+        "hasHeader": true,
+        "hasTargetSession": true,
+        "hasArchiveTable": true,
+        "targetSearched": "practice-xauusd-1789913391108-58o74"
+      }
+    },
+    {
+      "id": 12,
+      "name": "بررسی اندازهٔ صفحه در دسکتاپ (۱۴۴۰)، تبلت (۷۶۸) و موبایل (۳۹۰) با سنجش سرریز و دسترسی به کنترل‌ها",
+      "passed": true,
+      "detail": {
+        "desktop": {
+          "scrollWidth": 1434,
+          "clientWidth": 1434,
+          "hasHorizontalOverflow": false,
+          "controls": {
+            "hasIdentity": true,
+            "hasCards": true,
+            "hasChart": true,
+            "hasForm": true
+          }
+        },
+        "tablet": {
+          "scrollWidth": 762,
+          "clientWidth": 762,
+          "hasHorizontalOverflow": false,
+          "controls": {
+            "hasIdentity": true,
+            "hasCards": true,
+            "hasChart": true,
+            "hasForm": true
+          }
+        },
+        "mobile": {
+          "scrollWidth": 390,
+          "clientWidth": 390,
+          "hasHorizontalOverflow": false,
+          "controls": {
+            "hasIdentity": true,
+            "hasCards": true,
+            "hasChart": true,
+            "hasForm": true
+          }
+        }
+      }
+    }
+  ],
+  "networkAudit": {
+    "totalHttpRequests": 41,
+    "totalWebSocketConnections": 2,
+    "forbiddenRequestsDetected": [],
+    "browserMadeForbiddenRequest": false,
+    "serverOutgoingNetworkMocked": true,
+    "passed": true
+  },
+  "consoleErrors": [],
+  "runtimeExceptions": [],
+  "screenshots": [
+    "practice_desktop_1440_real.png",
+    "practice_tablet_768_real.png",
+    "practice_mobile_390_real.png"
+  ],
+  "overallPassed": true
+}
