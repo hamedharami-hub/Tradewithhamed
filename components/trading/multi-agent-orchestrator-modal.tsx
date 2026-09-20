@@ -252,7 +252,7 @@ export const MultiAgentOrchestratorModal: React.FC<MultiAgentOrchestratorModalPr
                       <div className="pt-2.5 flex flex-wrap items-center justify-between gap-2 text-[11px] text-zinc-400">
                         <div className="flex items-center gap-2">
                           <span className="px-2 py-0.5 rounded-md bg-[#1d222d] text-zinc-300 font-mono">
-                            {selectedOption.type === 'DETERMINISTIC' ? 'قطعی ۱۰۰٪ آفلاین' : 'استنتاج عصبی WebGPU'}
+                            {selectedOption.type === 'DETERMINISTIC' ? 'قواعد قطعی محاسباتی' : 'استنتاج عصبی WebGPU (نیازمند دانلود وزن‌ها)'}
                           </span>
                           <span>{selectedOption.descriptionFa}</span>
                         </div>
@@ -264,12 +264,12 @@ export const MultiAgentOrchestratorModal: React.FC<MultiAgentOrchestratorModalPr
                         </div>
                       </div>
 
-                      {/* سپر دوگانه (تضمین همزمانی هوش قطعی با هوش عصبی) */}
+                      {/* سپر دوگانه (قواعد قطعی همواره لایه پایه هستند) */}
                       {selectedOption.type === 'NEURAL_WEBGPU' && (
                         <div className="mt-2.5 px-2.5 py-1.5 rounded-lg bg-cyan-950/30 border border-cyan-800/40 text-[10px] text-cyan-300 flex items-center gap-1.5">
                           <ShieldCheck className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
                           <span>
-                            <strong>حالت سپر دوگانه (Dual Guard):</strong> هوش محاسباتی قطعی سیستم (S0) هم‌زمان در لایه اول فعال است؛ در صورت کوچک‌ترین تضاد محاسباتی در نسبت R:R یا حد ضرر، معامله وتو می‌شود.
+                            <strong>حالت سپر دوگانه (Dual Guard):</strong> قواعد محاسباتی قطعی سیستم (S0) هم‌زمان در لایه اول فعال است؛ در صورت کوچک‌ترین تضاد محاسباتی در نسبت R:R یا حد ضرر، معامله وتو می‌شود.
                           </span>
                         </div>
                       )}

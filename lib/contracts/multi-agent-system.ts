@@ -551,9 +551,19 @@ export interface AgentReviewResult {
   engineId: string;
   engineNameFa: string;
   engineType: 'DETERMINISTIC' | 'NEURAL_WEBGPU';
+  requestedEngineId: string;
+  executedEngineId: string;
+  executionMode: 'DETERMINISTIC_RULES' | 'NEURAL_INFERENCE' | 'NOT_EXECUTED' | 'ERROR';
+  executionStatusFa: string;
+  isFallback: boolean;
+  fallbackReasonFa?: string;
+  environment: string;
+  dataProvenance: string;
+  isAdvisoryOnly: boolean;
+  advisoryDisclaimerFa: string;
   verdict: 'APPROVED' | 'REJECTED' | 'NEUTRAL';
   verdictTitleFa: string;
-  confidence: number; // بین ۰ تا ۱
+  confidence: number; // بین ۰ تا ۱ (امتیاز انطباق با قوانین استراتژی، نه احتمال برد)
   tradingStyleUsed: TradingStyleId;
   summaryFa: string;
   reasoningBulletsFa: string[];

@@ -43,7 +43,7 @@ export function ExportImportModal({
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `hamed-trading-lab-backup-v2.0-${Date.now()}.json`;
+    a.download = `tradewithhamed-backup-v2.1-sanitized-${Date.now()}.json`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -51,7 +51,7 @@ export function ExportImportModal({
 
     setImportStatus({
       success: true,
-      message: 'دانلود فایل پشتیبان v2.0 به مرورگر سپرده شد. این فایل فقط وضعیت ریپلی محلی را نگه می‌دارد.',
+      message: 'دانلود فایل پشتیبان v2.1-sanitized انجام شد. این فایل با چکسام SHA-256 محافظت شده و کلیه توکن‌ها و کلیدها حذف شده‌اند.',
     });
   };
 
@@ -123,7 +123,7 @@ export function ExportImportModal({
           <div className="flex items-center gap-2">
             <Database className="w-5 h-5 text-cyan-400" />
             <h3 className="font-bold text-zinc-100 text-sm">
-              پشتیبان‌گیری ریپلی محلی (Export / Import JSON v2.0)
+              پشتیبان‌گیری محلی پاک‌سازی‌شده (Export / Import JSON v2.1-sanitized)
             </h3>
           </div>
           <button
@@ -135,7 +135,7 @@ export function ExportImportModal({
         </div>
 
         <p className="text-xs text-zinc-400 leading-relaxed">
-          این فایل نماد و گام ریپلی را بازیابی می‌کند. نمای موجودی حساب آزمایشی فقط برای مرجع در فایل نگه‌داری می‌شود و به حساب بروکر بازگردانی نمی‌شود. سفارش‌های بروکر، توکن‌های ورود و وزن مدل‌های AI عمداً در آن قرار نمی‌گیرند.
+          این فایل وضعیت ریپلی محلی را با امضای چکسام SHA-256 نگه‌داری می‌کند. اقلام مشمول: نماد، گام ریپلی، موجودی مرجع و یادداشت‌های پاک‌سازی‌شده. اقلام نامشمول: توکن‌ها، کلیدها، سفارش‌های بروکر و وزن‌های مدل. بازیابی هرگز سفارشی ارسال نمی‌کند و توقف اضطراری را دور نمی‌زند.
         </p>
 
         {/* بازخورد عملیات */}
@@ -188,7 +188,7 @@ export function ExportImportModal({
               <Download className="w-4 h-4 text-cyan-400" />
             </div>
             <p className="text-[11px] text-zinc-500">
-              دانلود وضعیت ریپلی با اعتبارسنجی اسکیما v2.0
+              دانلود فایل پشتیبان با چکسام SHA-256 (v2.1-sanitized)
             </p>
           </button>
 

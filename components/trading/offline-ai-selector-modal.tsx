@@ -109,7 +109,7 @@ export const OfflineAISelectorModal: React.FC<OfflineAISelectorModalProps> = ({
           <div className="p-3.5 bg-[#12141a] border border-[#262b35] rounded-xl flex items-start gap-3">
             <ShieldCheck className="w-4 h-4 text-cyan-400 shrink-0 mt-0.5" />
             <div className="space-y-0.5 text-xs text-zinc-300 leading-relaxed">
-              <span className="font-bold text-zinc-100">تضمین استقلال و حریم خصوصی:</span>
+              <span className="font-bold text-zinc-100">سیاست حریم خصوصی و پردازش محلی:</span>
               <p className="text-zinc-400 text-[11px]">
                 این سامانه ممیزی ستاپ‌های معاملاتی را بر پایه مدل‌های محاسباتی قطعی درون‌مرورگری و پورت لوکال اجرا می‌کند؛ از این رو هیچ کلید شخصی، دیتای ریپلی یا تصمیم تحلیلی از سیستم خارج نمی‌شود.
               </p>

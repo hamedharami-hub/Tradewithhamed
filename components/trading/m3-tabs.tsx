@@ -47,7 +47,7 @@ export const M3Tabs: React.FC<M3TabsProps> = ({
     },
     {
       key: 'execution' as ActiveTabKey,
-      labelFa: 'اجرا و بازتطبیق W3',
+      labelFa: 'اجرا و بررسی سفارش‌ها',
       labelEn: 'Live Shadow & EMS',
       icon: Zap,
       badge: 'سایه زنده',
@@ -55,7 +55,7 @@ export const M3Tabs: React.FC<M3TabsProps> = ({
     },
     {
       key: 'guardian' as ActiveTabKey,
-      labelFa: 'محافظ ریسک و سبد W4',
+      labelFa: 'کنترل ریسک و محافظ سبد',
       labelEn: 'Risk Guardian & PMS',
       icon: ShieldCheck,
       badge: 'هوشیار',
@@ -63,10 +63,10 @@ export const M3Tabs: React.FC<M3TabsProps> = ({
     },
     {
       key: 'journal' as ActiveTabKey,
-      labelFa: 'ژورنال و ممیزی W5',
-      labelEn: 'Journal & Analytics W5',
+      labelFa: 'دفتر معاملات و بررسی عملکرد',
+      labelEn: 'Journal & Analytics',
       icon: BookOpen,
-      badge: 'W5 فعال',
+      badge: 'ژورنال فعال',
       badgeColor: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40',
     },
     {
@@ -79,7 +79,7 @@ export const M3Tabs: React.FC<M3TabsProps> = ({
     },
     {
       key: 'security' as ActiveTabKey,
-      labelFa: 'صندوق امنیت cTrader',
+      labelFa: 'وضعیت ارسال سفارش‌ها به بروکر',
       labelEn: 'Outbox & Security',
       icon: ShieldAlert,
       badge: outboxPendingCount > 0 ? `${outboxPendingCount} در صف` : undefined,

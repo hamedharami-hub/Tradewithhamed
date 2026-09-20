@@ -183,7 +183,8 @@ export class PostTradeAnalyticsEngine {
       }
 
       // ۳. بررسی ورود در فومو و لغزش بالا (FOMO / Chasing Entry)
-      if (trade.slippagePips > 3.0 || (trade.behavioralTags && trade.behavioralTags.includes('CHASING_ENTRY'))) {
+      const hasHighSlippage = trade.slippagePips !== undefined && trade.slippagePips > 3.0;
+      if (hasHighSlippage || (trade.behavioralTags && trade.behavioralTags.includes('CHASING_ENTRY'))) {
         flags.push({
           id: `BIAS-FOMO-${trade.tradeId}`,
           tradeId: trade.tradeId,
@@ -193,8 +194,8 @@ export class PostTradeAnalyticsEngine {
           symbol: trade.symbol,
           titleFa: 'تعقیب شتاب‌زده قیمت (FOMO Chasing)',
           titleEn: 'FOMO Chasing Entry',
-          descriptionFa: `ورود با لغزش ${trade.slippagePips.toFixed(1)} پیپ بالاتر از محدوده امن FVG نشان‌دهنده ورود شتاب‌زده ناشی از ترس جا ماندن است.`,
-          metricDetails: `لغزش نرخ: ${trade.slippagePips.toFixed(1)} پیپ (سقف تحمل: ۱.۵ پیپ)`,
+          descriptionFa: `ورود با لغزش ${trade.slippagePips !== undefined ? trade.slippagePips.toFixed(1) : 'نامشخص'} پیپ بالاتر از محدوده امن FVG نشان‌دهنده ورود شتاب‌زده ناشی از ترس جا ماندن است.`,
+          metricDetails: `لغزش نرخ: ${trade.slippagePips !== undefined ? `${trade.slippagePips.toFixed(1)} پیپ` : 'ناموجود'} (سقف تحمل: ۱.۵ پیپ)`,
           coolingAdviceFa: 'توصیه: همیشه از سفارشات لیمیت استفاده کنید و هرگز به دنبال قیمت در حال جهش حرکت نکنید.',
         });
       }
@@ -207,6 +208,7 @@ export class PostTradeAnalyticsEngine {
         trade.exitReason === 'MANUAL_CLOSE' &&
         trade.realizedRMultiple > 0 &&
         trade.realizedRMultiple < 1.0 &&
+        trade.maxFavorableExcursionPips !== undefined &&
         trade.maxFavorableExcursionPips >= targetGainPips * 0.9
       ) {
         flags.push({
@@ -219,7 +221,7 @@ export class PostTradeAnalyticsEngine {
           titleFa: 'خروج شتاب‌زده و کم‌طاقتی (Premature Exit)',
           titleEn: 'Premature Early Exit',
           descriptionFa: `پوزیشن به صورت دستی در سود ${trade.realizedRMultiple.toFixed(2)}R بسته شد، در حالی که قیمت تا هدف کامل سود (TP) ادامه داد.`,
-          metricDetails: `سود محقق: ${trade.realizedRMultiple.toFixed(2)}R | پتانسیل بازار: ${trade.maxFavorableExcursionPips.toFixed(1)} پیپ`,
+          metricDetails: `سود محقق: ${trade.realizedRMultiple.toFixed(2)}R | پتانسیل بازار: ${trade.maxFavorableExcursionPips !== undefined ? `${trade.maxFavorableExcursionPips.toFixed(1)} پیپ` : 'ناموجود'}`,
           coolingAdviceFa: 'توصیه: به قوانین سیستم خود اعتماد کنید و اجازه دهید حد سود یا انتقال به سربه‌سر وظیفه خروج را انجام دهند.',
         });
       }
@@ -279,7 +281,7 @@ export class PostTradeAnalyticsEngine {
     for (const t of trades) {
       grossAlphaDollar += t.realizedGrossPnL;
       totalCommissionsDollar += t.brokerCommission;
-      totalSlippageDollar += t.slippageCostDollar;
+      totalSlippageDollar += (t.slippageCostDollar ?? 0);
       netRealizedProfitDollar += t.realizedNetPnL;
       netRealizedR += t.realizedRMultiple;
 

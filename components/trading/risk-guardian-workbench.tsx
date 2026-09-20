@@ -579,8 +579,8 @@ export const RiskGuardianWorkbench: React.FC = () => {
               <span className="font-semibold text-white block">انتقال خودکار به سربه‌سر (Auto Breakeven Migration):</span>
               <ul className="space-y-1.5 text-slate-300 list-disc list-inside">
                 <li>شرط فعال‌سازی: رسیدن سود شناور به حداقل ۱.۵R (ریوارد به ریسک).</li>
-                <li>بافر سود تضمینی: ۱ پیپ بالاتر از نقطه ورود خرید (یا پایین‌تر در فروش) جهت پوشش کارمزد بروکر.</li>
-                <li>تضمین عدم بازگشت معامله سودده به وضعیت زیان‌ده.</li>
+                <li>بافر پوشش کارمزد: ۱ پیپ فراتر از نقطه ورود جهت جبران هزینه اسپرد و کمیسیون (بدون تضمین سود).</li>
+                <li>کاهش ریسک بازگشت معامله سودده به محدوده زیان اولیه.</li>
               </ul>
             </div>
 

@@ -300,14 +300,14 @@ export const ShareableTradeCardModal: React.FC<ShareableTradeCardModalProps> = (
       },
       {
         label: 'MAE (MAX ADVERSE)',
-        value: data.maePips !== undefined ? `${data.maePips.toFixed(1)} pips` : '0.0 pips',
-        sub: data.maeDollar !== undefined ? `-$${Math.abs(data.maeDollar).toFixed(1)}` : 'Low Drift',
+        value: data.maePips !== undefined && data.maePips !== null ? `${data.maePips.toFixed(1)} pips` : 'N/A (ناموجود)',
+        sub: data.maeDollar !== undefined && data.maeDollar !== null ? `-$${Math.abs(data.maeDollar).toFixed(1)}` : 'ناموجود',
         color: '#f43f5e',
       },
       {
         label: 'MFE / EFFICIENCY',
-        value: data.mfePips !== undefined ? `${data.mfePips.toFixed(1)} pips` : 'Peak',
-        sub: data.exitEfficiencyPercent !== undefined ? `${data.exitEfficiencyPercent}% Efficiency` : 'High Capture',
+        value: data.mfePips !== undefined && data.mfePips !== null ? `${data.mfePips.toFixed(1)} pips` : 'N/A (ناموجود)',
+        sub: data.exitEfficiencyPercent !== undefined && data.exitEfficiencyPercent !== null ? `${data.exitEfficiencyPercent}% Efficiency` : 'ناموجود',
         color: '#10b981',
       },
     ];

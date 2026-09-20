@@ -45,7 +45,7 @@ export interface CircuitBreakerConfig {
 export interface ProtectionRuleConfig {
   enableAutoBreakeven: boolean;               // فعال بودن انتقال خودکار حد ضرر به نقطه ورود
   breakevenTriggerR: number;                  // ضریب سود جهت انتقال به سربه‌سر (مثلاً ۱.۵R یا ۲.۰R)
-  breakevenBufferPips: number;                // بافر سود تضمینی بالای نقطه ورود برای پوشش کارمزد (مثلاً ۱ پیپ)
+  breakevenBufferPips: number;                // بافر انتقال به نقطه ورود برای پوشش کارمزد (بدون تضمین سود) (مثلاً ۱ پیپ)
   enableTrailingStop: boolean;                // فعال بودن حد ضرر شناور
   trailingStepPips: number;                   // گام پیشروی تریلینگ استاپ
   trailingTriggerR: number;                   // ضریب سود جهت آغاز تریلینگ استاپ (مثلاً ۲.۵R)

@@ -51,6 +51,7 @@ export function JournalWorkbenchW5({ positions }: JournalWorkbenchW5Props = {}) 
   const [testResults, setTestResults] = useState<W5AcceptanceTestResult[]>([]);
   const [isRunningTests, setIsRunningTests] = useState(false);
   const [selectedFilterSymbol, setSelectedFilterSymbol] = useState<'ALL' | 'XAUUSD' | 'EURUSD' | 'GBPUSD' | 'USDJPY'>('ALL');
+  const [selectedEnvironment, setSelectedEnvironment] = useState<'ALL' | 'PRACTICE' | 'RESEARCH' | 'DEMO'>('ALL');
 
   // واکشی داده‌های زنده سرور (در صورت موجود بودن)
   useEffect(() => {
@@ -105,8 +106,8 @@ export function JournalWorkbenchW5({ positions }: JournalWorkbenchW5Props = {}) 
                 plannedRiskAmount: plannedRisk,
                 realizedGrossPnL: grossPnl,
                 brokerCommission: commission,
-                slippagePips: 0.3,
-                slippageCostDollar: 0.15,
+                slippagePips: p.slippagePips, // عدم جعل اگر اندازه‌گیری نشده
+                slippageCostDollar: p.slippageCostDollar,
                 realizedNetPnL: netPnl,
                 realizedRMultiple: rMult,
                 maxAdverseExcursionPips: excursion.maePips,
@@ -116,6 +117,8 @@ export function JournalWorkbenchW5({ positions }: JournalWorkbenchW5Props = {}) 
                 exitEfficiencyPercent: excursion.exitEfficiencyPercent,
                 setupGrade: rMult >= 2 ? 'A+' : rMult > 0 ? 'A' : 'B',
                 traderNotesFa: p.notes || 'ثبت خودکار از سرور cTrader Demo',
+                environment: 'DEMO',
+                dataProvenance: 'حساب دموی بروکر cTrader',
               };
             });
             if (mapped.length > 0) {
@@ -160,20 +163,22 @@ export function JournalWorkbenchW5({ positions }: JournalWorkbenchW5Props = {}) 
         plannedRiskAmount: Number(plannedRisk.toFixed(2)),
         realizedGrossPnL: Number((p.realizedPnl + p.commissionPaid).toFixed(2)),
         brokerCommission: p.commissionPaid,
-        slippagePips: 0.2,
-        slippageCostDollar: 0.1,
+        slippagePips: undefined, // لغزش در شبیه‌ساز محلی محاسبه نشده؛ نمایش ناموجود به جای جعل
+        slippageCostDollar: undefined,
         realizedNetPnL: p.realizedPnl,
         realizedRMultiple: rMult,
-        maxAdverseExcursionPips: p.maePips ?? 0,
-        maxAdverseExcursionDollar: Number(((p.maePips ?? 0) * (p.symbol === 'XAUUSD' ? 10 : 10) * p.volumeLots).toFixed(2)),
-        maxFavorableExcursionPips: p.mfePips ?? 0,
-        maxFavorableExcursionDollar: Number(((p.mfePips ?? 0) * (p.symbol === 'XAUUSD' ? 10 : 10) * p.volumeLots).toFixed(2)),
-        exitEfficiencyPercent: p.exitEfficiencyPercent ?? (p.realizedPnl > 0 ? 80 : 20),
+        maxAdverseExcursionPips: p.maePips, // عدم فال‌بک جعلی به 0
+        maxAdverseExcursionDollar: p.maePips !== undefined ? Number((p.maePips * (p.symbol === 'XAUUSD' ? 10 : 10) * p.volumeLots).toFixed(2)) : undefined,
+        maxFavorableExcursionPips: p.mfePips, // عدم فال‌بک جعلی به 0
+        maxFavorableExcursionDollar: p.mfePips !== undefined ? Number((p.mfePips * (p.symbol === 'XAUUSD' ? 10 : 10) * p.volumeLots).toFixed(2)) : undefined,
+        exitEfficiencyPercent: p.exitEfficiencyPercent, // عدم جعل به ۸۰ یا ۲۰
         setupGrade: p.realizedPnl > 0 ? 'A+' : 'B',
         traderNotesFa: p.psychologyMood ? `حالت روحی: ${p.psychologyMood}` : 'ثبت خودکار از شبیه‌ساز اجرای زنده',
         behavioralTags: p.psychologyMood ? [p.psychologyMood] : [],
         psychologyMood: p.psychologyMood,
         propFirmId: p.propFirmId,
+        environment: 'PRACTICE',
+        dataProvenance: 'شبیه‌ساز حساب مجازی محلی',
       };
     });
 
@@ -182,11 +187,20 @@ export function JournalWorkbenchW5({ positions }: JournalWorkbenchW5Props = {}) 
     return [...liveMapped, ...remainingPrev];
   }, [positions, serverTrades]);
 
-  // فیلتر معاملات
+  // فیلتر معاملات بر اساس نماد و محیط
   const filteredTrades = useMemo(() => {
-    if (selectedFilterSymbol === 'ALL') return trades;
-    return trades.filter(t => t.symbol === selectedFilterSymbol);
-  }, [trades, selectedFilterSymbol]);
+    let result = trades;
+    if (selectedFilterSymbol !== 'ALL') {
+      result = result.filter(t => t.symbol === selectedFilterSymbol);
+    }
+    if (selectedEnvironment !== 'ALL') {
+      result = result.filter(t => {
+        const env = t.environment || (t.brokerOrderId?.startsWith('CT') ? 'DEMO' : 'PRACTICE');
+        return env === selectedEnvironment;
+      });
+    }
+    return result;
+  }, [trades, selectedFilterSymbol, selectedEnvironment]);
 
   // تفکیک آلفا و اصطکاک
   const alphaAttribution: AlphaFrictionAttribution = useMemo(() => {
@@ -236,10 +250,10 @@ export function JournalWorkbenchW5({ positions }: JournalWorkbenchW5Props = {}) 
             <div>
               <div className="flex items-center gap-2">
                 <h2 className="text-base sm:text-lg font-semibold text-slate-100">
-                  ژورنال خودکار و ممیزی رفتار معاملاتی (گیت W5)
+                  دفتر معاملات و بررسی عملکرد (ژورنال خودکار)
                 </h2>
                 <span className="text-[11px] font-mono px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-                  Gate W5 Live
+                  دفتر معاملات
                 </span>
               </div>
               <p className="text-xs text-slate-400 mt-0.5 leading-relaxed">
@@ -248,7 +262,31 @@ export function JournalWorkbenchW5({ positions }: JournalWorkbenchW5Props = {}) 
             </div>
           </div>
 
-          <div className="flex items-center gap-2 self-end sm:self-center">
+          <div className="flex flex-wrap items-center gap-2 self-end sm:self-center">
+            {/* تفکیک محیط */}
+            <div className="flex bg-slate-800/80 border border-slate-700/60 rounded-xl p-0.5 text-xs font-sans">
+              {(
+                [
+                  { id: 'ALL', label: 'همه محیط‌ها' },
+                  { id: 'PRACTICE', label: 'تمرین' },
+                  { id: 'RESEARCH', label: 'پژوهش' },
+                  { id: 'DEMO', label: 'دموی بروکر' },
+                ] as const
+              ).map(env => (
+                <button
+                  key={env.id}
+                  onClick={() => setSelectedEnvironment(env.id)}
+                  className={`px-2 py-1 rounded-lg transition-all ${
+                    selectedEnvironment === env.id
+                      ? 'bg-cyan-500/20 text-cyan-300 font-semibold border border-cyan-500/40'
+                      : 'text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  {env.label}
+                </button>
+              ))}
+            </div>
+
             {/* انتخاب فیلتر نماد */}
             <div className="flex bg-slate-800/80 border border-slate-700/60 rounded-xl p-0.5 text-xs font-mono overflow-x-auto max-w-[280px] sm:max-w-none" dir="ltr">
               {(['ALL', 'XAUUSD', 'EURUSD', 'GBPUSD', 'USDJPY'] as const).map(sym => (
@@ -272,12 +310,12 @@ export function JournalWorkbenchW5({ positions }: JournalWorkbenchW5Props = {}) 
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-600/20 text-emerald-300 hover:bg-emerald-600/30 border border-emerald-500/40 text-xs font-medium transition-all"
             >
               <RotateCw className={`w-3.5 h-3.5 ${isRunningTests ? 'animate-spin' : ''}`} />
-              <span>ارزیابی آزمون‌های W5</span>
+              <span>ارزیابی آزمون‌های دفتر معاملات</span>
             </button>
           </div>
         </div>
 
-        {/* منوی زیربخش‌های W5 — دکمه‌های متریال ۳ بدون شلوغی بصری */}
+        {/* منوی بخش‌های دفتر معاملات و بررسی عملکرد — دکمه‌های متریال ۳ بدون شلوغی بصری */}
         <div className="flex flex-wrap gap-2 mt-4 pt-3 border-t border-slate-800/80 text-xs">
           <button
             onClick={() => setSubTab('ALPHA')}
@@ -357,6 +395,19 @@ export function JournalWorkbenchW5({ positions }: JournalWorkbenchW5Props = {}) 
           </button>
         </div>
       </div>
+
+      {/* هشدار محدودیت اعتبار برای نمونه‌های آماری کوچک (< 30) */}
+      {filteredTrades.length < 30 && (
+        <div className="bg-amber-950/30 border border-amber-500/40 rounded-2xl p-3.5 flex items-start gap-3 text-amber-200 text-xs">
+          <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+          <div className="space-y-0.5">
+            <span className="font-semibold block">محدودیت اعتبار آماری (حجم نمونه: {filteredTrades.length} معامله):</span>
+            <p className="text-amber-300/80 text-[11px] leading-relaxed">
+              تعداد معاملات کمتر از حد نصاب استاندارد استنباط آماری (حداقل ۳۰ معامله) است. معیارهای محاسبه‌شده (مانند نرخ برد، نسبت اصطکاک و کارنامه انضباط) صرفاً جنبهٔ توصیفی و اولیه دارند و نباید به عنوان تضمین برتری آماری قطعی در نظر گرفته شوند.
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* ۱. تب تفکیک آلفا و کارنامه انضباط */}
       {subTab === 'ALPHA' && (
@@ -672,21 +723,33 @@ export function JournalWorkbenchW5({ positions }: JournalWorkbenchW5Props = {}) 
                           <div className="text-slate-400">X: {trade.exitPrice}</div>
                         </td>
                         <td className="py-2.5 px-2 font-mono text-rose-400 text-[11px]" dir="ltr">
-                          {trade.maxAdverseExcursionPips}p (${trade.maxAdverseExcursionDollar})
+                          {trade.maxAdverseExcursionPips !== undefined && trade.maxAdverseExcursionPips !== null ? (
+                            `${trade.maxAdverseExcursionPips}p ($${trade.maxAdverseExcursionDollar ?? 0})`
+                          ) : (
+                            <span className="text-slate-500 font-sans">ناموجود</span>
+                          )}
                         </td>
                         <td className="py-2.5 px-2 font-mono text-emerald-400 text-[11px]" dir="ltr">
-                          {trade.maxFavorableExcursionPips}p (${trade.maxFavorableExcursionDollar})
+                          {trade.maxFavorableExcursionPips !== undefined && trade.maxFavorableExcursionPips !== null ? (
+                            `${trade.maxFavorableExcursionPips}p ($${trade.maxFavorableExcursionDollar ?? 0})`
+                          ) : (
+                            <span className="text-slate-500 font-sans">ناموجود</span>
+                          )}
                         </td>
                         <td className="py-2.5 px-2 font-mono text-[11px]" dir="ltr">
-                          <span className={`px-1.5 py-0.5 rounded ${
-                            trade.exitEfficiencyPercent >= 70
-                              ? 'bg-emerald-500/10 text-emerald-300'
-                              : trade.exitEfficiencyPercent >= 40
-                              ? 'bg-amber-500/10 text-amber-300'
-                              : 'bg-slate-800 text-slate-400'
-                          }`}>
-                            {trade.exitEfficiencyPercent}٪
-                          </span>
+                          {trade.exitEfficiencyPercent !== undefined && trade.exitEfficiencyPercent !== null ? (
+                            <span className={`px-1.5 py-0.5 rounded ${
+                              trade.exitEfficiencyPercent >= 70
+                                ? 'bg-emerald-500/10 text-emerald-300'
+                                : trade.exitEfficiencyPercent >= 40
+                                ? 'bg-amber-500/10 text-amber-300'
+                                : 'bg-slate-800 text-slate-400'
+                            }`}>
+                              {trade.exitEfficiencyPercent}٪
+                            </span>
+                          ) : (
+                            <span className="text-slate-500 font-sans">ناموجود</span>
+                          )}
                         </td>
                         <td className="py-2.5 px-2 font-mono font-bold" dir="ltr">
                           <span className={isProfit ? 'text-emerald-400' : 'text-rose-400'}>
@@ -737,9 +800,29 @@ export function JournalWorkbenchW5({ positions }: JournalWorkbenchW5Props = {}) 
                               </div>
 
                               <div className="bg-slate-900/60 rounded-xl p-2.5 border border-slate-800 space-y-1">
-                                <span className="text-slate-400 text-[11px] block">کیفیت اجرا و لغزش:</span>
+                                <span className="text-slate-400 text-[11px] block">کیفیت اجرا، محیط و منشأ:</span>
                                 <div className="text-slate-300 text-[11px]">
-                                  لغزش نرخ ورود: <span className="font-mono text-cyan-300">{trade.slippagePips} پیپ</span>
+                                  لغزش نرخ ورود:{' '}
+                                  {trade.slippagePips !== undefined && trade.slippagePips !== null ? (
+                                    <span className="font-mono text-cyan-300">{trade.slippagePips} پیپ</span>
+                                  ) : (
+                                    <span className="text-slate-500 font-sans">ناموجود (اندازه‌گیری نشده)</span>
+                                  )}
+                                </div>
+                                <div className="text-slate-300 text-[11px]">
+                                  محیط:{' '}
+                                  <span className="text-cyan-300 font-semibold">
+                                    {trade.environment === 'PRACTICE'
+                                      ? 'تمرین (Practice)'
+                                      : trade.environment === 'RESEARCH'
+                                      ? 'پژوهش (Research)'
+                                      : trade.environment === 'DEMO'
+                                      ? 'دموی بروکر (Demo)'
+                                      : 'شبیه‌ساز محلی'}
+                                  </span>
+                                </div>
+                                <div className="text-slate-400 text-[10px]">
+                                  منشأ داده: <span className="text-slate-300">{trade.dataProvenance || 'نامشخص'}</span>
                                 </div>
                                 <div className="text-slate-300 text-[11px]">
                                   رتبه کیفیت ستاپ: <span className="font-mono text-emerald-400 font-bold">{trade.setupGrade || 'A'}</span>

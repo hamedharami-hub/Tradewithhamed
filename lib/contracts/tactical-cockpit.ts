@@ -13,7 +13,7 @@ export interface PartialTPConfig {
   tp2Ratio: number;          // درصد حجم باقیمانده (۵۰٪)
   tp2RRMultiplier: number;   // ضریب R:R تارگت دوم (مثلاً 2.5R یا 3.0R)
   autoBreakevenOnTP1: boolean; // جابجایی خودکار استاپ به نقطه ورود در زمان تاچ TP1
-  breakevenBufferPips: number; // بافر اضافی اسپرد جهت تضمین سود صفر خالص (۰٫۱ پیپ)
+  breakevenBufferPips: number; // بافر اضافی اسپرد جهت پوشش کارمزد در نقطه ورود (۰٫۱ پیپ)
 }
 
 export interface InstantOrderIntent {

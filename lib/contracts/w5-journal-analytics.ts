@@ -30,17 +30,21 @@ export interface TradeLifecycleRecord {
   plannedRiskAmount: number;         // ریسک برنامه‌ریزی‌شده دلاری (1R)
   realizedGrossPnL: number;          // سود/زیان ناخالص دلاری
   brokerCommission: number;          // کارمزد پرداختی بروکر (دلار)
-  slippagePips: number;              // لغزش نرخ در ورود و خروج (پیپ)
-  slippageCostDollar: number;        // هزینه مالی لغزش نرخ (دلار)
+  slippagePips?: number;             // لغزش نرخ در ورود و خروج (پیپ) - اختیاری در صورت عدم اندازه‌گیری
+  slippageCostDollar?: number;       // هزینه مالی لغزش نرخ (دلار) - اختیاری در صورت عدم اندازه‌گیری
   realizedNetPnL: number;            // سود/زیان خالص نهایی پس از کسر کارمزد و لغزش
   realizedRMultiple: number;         // ضریب بازدهی نسبت به ریسک خالص (R-Multiple)
 
   // معیارهای نوسان نامطلوب و مطلوب در طول حیات معامله (Excursion Analytics)
-  maxAdverseExcursionPips: number;   // MAE: حداکثر نوسان در جهت زیان پیش از خروج
-  maxAdverseExcursionDollar: number; // MAE دلاری
-  maxFavorableExcursionPips: number; // MFE: حداکثر نوسان در جهت سود پیش از خروج
-  maxFavorableExcursionDollar: number;// MFE دلاری
-  exitEfficiencyPercent: number;     // نسبت بهره‌وری خروج = سود حاصله تقسیم بر حداکثر سود ممکن در معامله (۰ تا ۱۰۰٪)
+  maxAdverseExcursionPips?: number;   // MAE: حداکثر نوسان در جهت زیان پیش از خروج (اختیاری)
+  maxAdverseExcursionDollar?: number; // MAE دلاری (اختیاری)
+  maxFavorableExcursionPips?: number; // MFE: حداکثر نوسان در جهت سود پیش از خروج (اختیاری)
+  maxFavorableExcursionDollar?: number;// MFE دلاری (اختیاری)
+  exitEfficiencyPercent?: number;     // نسبت بهره‌وری خروج (اختیاری)
+
+  // شفافیت محیط و منشأ داده
+  environment?: 'PRACTICE' | 'RESEARCH' | 'DEMO';
+  dataProvenance?: string;
 
   // یادداشت‌های فنی و برچسب‌های ستاپ
   setupGrade?: 'A+' | 'A' | 'B' | 'C';

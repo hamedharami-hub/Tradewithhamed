@@ -13,6 +13,7 @@ import {
   AGENT_ENGINE_OPTIONS,
   DEFAULT_MULTI_AGENT_CONFIG,
   TradingStyleId,
+  AgentRole,
 } from '../contracts/multi-agent-system';
 
 export class MultiAgentOrchestrator {
@@ -54,23 +55,29 @@ export class MultiAgentOrchestrator {
    */
   public static evaluateCandidate(
     candidate: StrategyCandidate | null,
-    config: MultiAgentConfiguration = DEFAULT_MULTI_AGENT_CONFIG
+    config: MultiAgentConfiguration = DEFAULT_MULTI_AGENT_CONFIG,
+    options?: {
+      environment?: string;
+      dataProvenance?: string;
+    }
   ): MultiAgentPipelineResult {
     const styleInfo =
       TRADING_STYLES.find(s => s.id === config.activeTradingStyle) || TRADING_STYLES[0];
     const now = Date.now();
+    const env = options?.environment || 'PRACTICE';
+    const prov = options?.dataProvenance || 'نمونه آزمایشی (Fixtures)';
 
     // ۱. ارزیابی ایجنت ۱: اسکنر ساختار بازار
-    const scannerReview = this.runScannerAgent(candidate, config, styleInfo.id, now);
+    const scannerReview = this.runScannerAgent(candidate, config, styleInfo.id, now, env, prov);
 
     // ۲. ارزیابی ایجنت ۲: تحلیل‌گر بستر و روند
-    const analystReview = this.runAnalystAgent(candidate, config, styleInfo.id, scannerReview, now);
+    const analystReview = this.runAnalystAgent(candidate, config, styleInfo.id, scannerReview, now, env, prov);
 
     // ۳. ارزیابی ایجنت ۳: منتقد سخت‌گیر ریسک
-    const criticReview = this.runCriticAgent(candidate, config, styleInfo.id, analystReview, now);
+    const criticReview = this.runCriticAgent(candidate, config, styleInfo.id, analystReview, now, env, prov);
 
     // ۴. ارزیابی ایجنت ۴: داور نهایی و دیده‌بان قوانین
-    const judgeReview = this.runJudgeAgent(candidate, config, styleInfo.id, analystReview, criticReview, now);
+    const judgeReview = this.runJudgeAgent(candidate, config, styleInfo.id, analystReview, criticReview, now, env, prov);
 
     // محاسبه ماتریس اجماع شورای عالی آلفا (Alpha Consensus Quorum Matrix)
     const agentWeights = {
@@ -105,10 +112,10 @@ export class MultiAgentOrchestrator {
       : (judgeReview.verdict === 'REJECTED' ? judgeReview.summaryFa : undefined);
 
     const verdictPersian = vetoTriggered
-      ? `توقف معامله توسط وتوی منتقد/داور (امتیاز اجماع: ${alphaConsensusScore}٪)`
+      ? `توقف معامله توسط وتوی منتقد/داور (امتیاز انطباق با قوانین: ${alphaConsensusScore}٪)`
       : (quorumReached
-        ? `اجماع قاطع شورا با امتیاز آلفا ${alphaConsensusScore}٪ (تایید ۳+ ایجنت)`
-        : `عدم حصول حدنصاب ۷۵٪ (امتیاز فعلی: ${alphaConsensusScore}٪)`);
+        ? `اجماع قاطع شورا با امتیاز انطباق ${alphaConsensusScore}٪ (تایید ۳+ ایجنت)`
+        : `عدم حصول حدنصاب ۷۵٪ (امتیاز انطباق فعلی: ${alphaConsensusScore}٪)`);
 
     const councilConsensus: CouncilConsensusReport = {
       alphaConsensusScore,
@@ -133,9 +140,9 @@ export class MultiAgentOrchestrator {
 
     let finalRecommendationFa = '';
     if (hasUnexecutedNeuralEngine) {
-      finalRecommendationFa = 'یک یا چند موتور عصبی انتخاب شده‌اند اما مسیر همگام فقط نتیجه قطعی را تولید می‌کند؛ تا اجرای advisory عصبی و کنترل‌های مستقل، ارسال سفارش مسدود است.';
+      finalRecommendationFa = 'یک یا چند مدل عصبی درخواست شده‌اند اما در این مسیر همگام بارگذاری نشده و اجرا نگردیدند (فال‌بک به قواعد قطعی). برای جلوگیری از تکیه نادرست، ارسال سفارش مسدود است.';
     } else if (isApprovedForTrading) {
-      finalRecommendationFa = `اجماع کامل هر ۴ ایجنت در سبک «${styleInfo.nameFa}» حاصل شد (شاخص آلفا: ${alphaConsensusScore}٪). مجوز ارسال سفارش لیمیت صادر گردید.`;
+      finalRecommendationFa = `اجماع کامل هر ۴ ایجنت در سبک «${styleInfo.nameFa}» حاصل شد (امتیاز انطباق: ${alphaConsensusScore}٪). خروجی مشورتی است و ارسال سفارش نیازمند تایید کاربر است.`;
     } else if (failClosedTriggered) {
       finalRecommendationFa = `توقف بر اساس قاعده شکست امن (Fail-Closed): منتقد به دلیل ${criticReview.summaryFa} ورود را متوقف کرد. هیچ سفارشی ارسال نمی‌شود.`;
     } else {
@@ -163,25 +170,74 @@ export class MultiAgentOrchestrator {
   }
 
   /**
+   * کمکی جهت تفکیک صادقانه موتور درخواستی و موتور واقعاً اجراشده
+   */
+  private static resolveEngineHonesty(
+    configuredEngineId: string,
+    role: AgentRole,
+    env: string,
+    prov: string
+  ) {
+    const requestedEngine =
+      AGENT_ENGINE_OPTIONS.find(e => e.id === configuredEngineId) ||
+      AGENT_ENGINE_OPTIONS.find(e => e.role === role)!;
+    const isNeuralRequested = requestedEngine.type === 'NEURAL_WEBGPU';
+
+    // در خط لوله محاسباتی همگام فعلی، مدل‌های عصبی WebGPU بدون بارگذاری ناهمگام وزن‌ها اجرا نمی‌شوند.
+    // بنابراین برای حفظ صداقت اطلاعات، فال‌بک قطعی معادل اجرا می‌شود و به دروغ مدل عصبی نامیده نمی‌شود.
+    const executedEngine = isNeuralRequested
+      ? (AGENT_ENGINE_OPTIONS.find(e => e.role === role && e.type === 'DETERMINISTIC') || requestedEngine)
+      : requestedEngine;
+
+    const isFallback = isNeuralRequested;
+    const fallbackReasonFa = isNeuralRequested
+      ? 'موتور عصبی درخواستی نیازمند استنتاج ناهمگام WebGPU است. جهت صداقت اطلاعات، قوانین قطعی معادل اجرا شده و نتیجه به نام مدل عصبی جعل نمی‌گردد.'
+      : undefined;
+
+    const executionMode: 'DETERMINISTIC_RULES' | 'NEURAL_INFERENCE' | 'NOT_EXECUTED' | 'ERROR' = isNeuralRequested
+      ? 'DETERMINISTIC_RULES'
+      : 'DETERMINISTIC_RULES';
+
+    const executionStatusFa = isNeuralRequested
+      ? 'فال‌بک به قوانین قطعی (مدل عصبی به صورت همگام اجرا نشد)'
+      : 'اجراشده با قوانین قطعی';
+
+    return {
+      requestedEngineId: requestedEngine.id,
+      executedEngineId: executedEngine.id,
+      engineId: requestedEngine.id,
+      engineNameFa: isNeuralRequested ? `${executedEngine.nameFa} (جایگزین قطعی)` : executedEngine.nameFa,
+      engineType: 'DETERMINISTIC' as const,
+      executionMode,
+      executionStatusFa,
+      isFallback,
+      fallbackReasonFa,
+      environment: env,
+      dataProvenance: prov,
+      isAdvisoryOnly: true,
+      advisoryDisclaimerFa: 'این تحلیل صرفاً جنبهٔ مشورتی دارد و هیچ‌گونه تضمین سود یا پیش‌بینی قطعی آینده نیست.',
+      latencyMs: executedEngine.latencyMs,
+    };
+  }
+
+  /**
    * ایجنت ۱: اسکنر و ستاپ‌یاب ساختار بازار
    */
   private static runScannerAgent(
     candidate: StrategyCandidate | null,
     config: MultiAgentConfiguration,
     style: TradingStyleId,
-    now: number
+    now: number,
+    env: string,
+    prov: string
   ): AgentReviewResult {
-    const engine =
-      AGENT_ENGINE_OPTIONS.find(e => e.id === config.scannerEngineId) ||
-      AGENT_ENGINE_OPTIONS.find(e => e.role === 'SCANNER')!;
+    const honesty = this.resolveEngineHonesty(config.scannerEngineId, 'SCANNER', env, prov);
 
     if (!candidate) {
       return {
         agentRole: 'SCANNER',
         roleTitleFa: AGENT_ROLES_INFO.SCANNER.nameFa,
-        engineId: engine.id,
-        engineNameFa: engine.nameFa,
-        engineType: engine.type,
+        ...honesty,
         verdict: 'NEUTRAL',
         verdictTitleFa: 'در انتظار تشکیل ستاپ',
         confidence: 0,
@@ -192,7 +248,6 @@ export class MultiAgentOrchestrator {
           'عدم تشکیل کندل تاییدیه و تثبیت در رنج',
         ],
         timestamp: now,
-        latencyMs: engine.latencyMs,
       };
     }
 
@@ -240,9 +295,7 @@ export class MultiAgentOrchestrator {
     return {
       agentRole: 'SCANNER',
       roleTitleFa: AGENT_ROLES_INFO.SCANNER.nameFa,
-      engineId: engine.id,
-      engineNameFa: engine.nameFa,
-      engineType: engine.type,
+      ...honesty,
       verdict: isStyleEvidenceValid ? 'APPROVED' : 'REJECTED',
       verdictTitleFa: isStyleEvidenceValid ? 'ستاپ کشف شد' : 'شواهد ناکافی',
       confidence: 0.95,
@@ -250,7 +303,6 @@ export class MultiAgentOrchestrator {
       summaryFa: `کاندیدای ${candidate.direction === 'BUY' ? 'خرید (BUY)' : 'فروش (SELL)'} با مشخصات هندسی کامل شناسایی شد.`,
       reasoningBulletsFa: bullets,
       timestamp: now,
-      latencyMs: engine.latencyMs,
     };
   }
 
@@ -262,19 +314,17 @@ export class MultiAgentOrchestrator {
     config: MultiAgentConfiguration,
     style: TradingStyleId,
     scannerReview: AgentReviewResult,
-    now: number
+    now: number,
+    env: string,
+    prov: string
   ): AgentReviewResult {
-    const engine =
-      AGENT_ENGINE_OPTIONS.find(e => e.id === config.analystEngineId) ||
-      AGENT_ENGINE_OPTIONS.find(e => e.role === 'ANALYST')!;
+    const honesty = this.resolveEngineHonesty(config.analystEngineId, 'ANALYST', env, prov);
 
     if (!candidate || scannerReview.verdict !== 'APPROVED') {
       return {
         agentRole: 'ANALYST',
         roleTitleFa: AGENT_ROLES_INFO.ANALYST.nameFa,
-        engineId: engine.id,
-        engineNameFa: engine.nameFa,
-        engineType: engine.type,
+        ...honesty,
         verdict: 'NEUTRAL',
         verdictTitleFa: 'در انتظار خروجی اسکنر',
         confidence: 0,
@@ -282,16 +332,13 @@ export class MultiAgentOrchestrator {
         summaryFa: 'کاندیدایی برای تحلیل ارائه نشده است.',
         reasoningBulletsFa: ['اسکنر ساختار هنوز ستاپ معتبری را تایید نکرده است.'],
         timestamp: now,
-        latencyMs: engine.latencyMs,
       };
     }
 
-    const isNeural = engine.type === 'NEURAL_WEBGPU';
-    const confidence = isNeural ? 0.92 : 0.88;
     const bullets: string[] = [
-      `هم‌راستایی بستر کلان (Context ساختار HTF متناسب با تایم‌فریم ترید) با جهت ${candidate.direction} تایید می‌شود.`,
-      `درجه ابهام (Uncertainty): پایین (حداکثر ۱۲٪ به دلیل شفافیت در سوییپ نقدینگی).`,
-      `سناریوی ابطال تحلیلی: نفوذ قیمت به پشت سطح حد ضرر (${candidate.stopLossPrice}).`,
+      `هم‌راستایی بستر کلان (Context ساختار HTF متناسب با تایم‌فریم ترید) با جهت ${candidate.direction} بررسی شد.`,
+      `درجه ابهام (Uncertainty): پایین (بر مبنای سوییپ نقدینگی و رنج سشن).`,
+      `سطح ابطال تحلیلی: نفوذ قیمت به پشت سطح حد ضرر (${candidate.stopLossPrice}).`,
     ];
 
     if (style === 'S0_SWEEP_FVG') {
@@ -311,17 +358,14 @@ export class MultiAgentOrchestrator {
     return {
       agentRole: 'ANALYST',
       roleTitleFa: AGENT_ROLES_INFO.ANALYST.nameFa,
-      engineId: engine.id,
-      engineNameFa: engine.nameFa,
-      engineType: engine.type,
+      ...honesty,
       verdict: 'APPROVED',
       verdictTitleFa: 'تایید جهت معامله',
-      confidence,
+      confidence: 0.88, // امتیاز انطباق با قوانین استراتژی
       tradingStyleUsed: style,
-      summaryFa: `تحلیل‌گر بر مبنای سبک «${TRADING_STYLES.find(s => s.id === style)?.nameFa}» مجوز ورود را تایید کرد.`,
+      summaryFa: `تحلیل‌گر بر مبنای سبک «${TRADING_STYLES.find(s => s.id === style)?.nameFa}» شروط ورود را منطبق دانست.`,
       reasoningBulletsFa: bullets,
       timestamp: now,
-      latencyMs: engine.latencyMs,
     };
   }
 
@@ -333,19 +377,17 @@ export class MultiAgentOrchestrator {
     config: MultiAgentConfiguration,
     style: TradingStyleId,
     analystReview: AgentReviewResult,
-    now: number
+    now: number,
+    env: string,
+    prov: string
   ): AgentReviewResult {
-    const engine =
-      AGENT_ENGINE_OPTIONS.find(e => e.id === config.criticEngineId) ||
-      AGENT_ENGINE_OPTIONS.find(e => e.role === 'CRITIC')!;
+    const honesty = this.resolveEngineHonesty(config.criticEngineId, 'CRITIC', env, prov);
 
     if (!candidate || analystReview.verdict !== 'APPROVED') {
       return {
         agentRole: 'CRITIC',
         roleTitleFa: AGENT_ROLES_INFO.CRITIC.nameFa,
-        engineId: engine.id,
-        engineNameFa: engine.nameFa,
-        engineType: engine.type,
+        ...honesty,
         verdict: 'NEUTRAL',
         verdictTitleFa: 'عدم نیاز به نقد',
         confidence: 0,
@@ -353,7 +395,6 @@ export class MultiAgentOrchestrator {
         summaryFa: 'تحلیلی برای بررسی انتقادی ثبت نشده است.',
         reasoningBulletsFa: ['هیچ ستاپی تایید نشده که نیاز به غربالگری منتقد داشته باشد.'],
         timestamp: now,
-        latencyMs: engine.latencyMs,
       };
     }
 
@@ -365,8 +406,6 @@ export class MultiAgentOrchestrator {
     let verdict: 'APPROVED' | 'REJECTED' = 'APPROVED';
     let summaryFa = '';
 
-    const isNeural = engine.type === 'NEURAL_WEBGPU';
-
     if (!isRRValid) {
       verdict = 'REJECTED';
       summaryFa = `رد ستاپ توسط منتقد: نسبت سود به زیان (${candidate.riskRewardRatio}) کمتر از حداقل مصوب سبک (${minRequiredRR}) است.`;
@@ -374,30 +413,23 @@ export class MultiAgentOrchestrator {
       bullets.push('اصطکاک و کمیسیون بروکر در این نسبت توجیه‌پذیر نیست.');
     } else {
       verdict = 'APPROVED';
-      summaryFa = isNeural
-        ? `تایید منتقد با سپر دوگانه (انطباق ریاضی قطعی سیستم + تفکر عمیق عصبی).`
-        : `تست استرس منتقد قطعی با موفقیت پشت سر گذاشته شد (R:R برابر ۱ به ${candidate.riskRewardRatio}).`;
+      summaryFa = `تست استرس منتقد با موفقیت پشت سر گذاشته شد (R:R برابر ۱ به ${candidate.riskRewardRatio}).`;
       bullets.push(`🛡️ لایه ۱ (موتور قطعی S0): انطباق کامل R:R برابر ۱ به ${candidate.riskRewardRatio} با معیار مصوب سبک.`);
       if (style === 'SCALP_M1_M5' || style === 'M1_SCALP') {
-        bullets.push('🛡️ لایه ۱ (موتور قطعی S0): تایید فاصله زمانی امن از اخبار اقتصادی قرمز (عدم آسیب‌پذیری اسکلپ در برابر اسپایک).');
+        bullets.push('🛡️ لایه ۱ (موتور قطعی S0): تایید فاصله زمانی امن از اخبار اقتصادی قرمز.');
         bullets.push('🛡️ لایه ۱ (موتور قطعی S0): کنترل اصطکاک اسپرد و اسلیپیج نسبت به دامنه حد سود اسکلپ.');
       } else if (style === 'SWING_MACRO' || style === 'SESSION_SWING') {
-        bullets.push('🛡️ لایه ۱ (موتور قطعی S0): حد ضرر ساختاری فراتر از دامنه نوسان روزانه (ATR) قرار دارد و با سوییپ‌های جعلی شبانه فعال نمی‌شود.');
-        bullets.push('🛡️ لایه ۱ (موتور قطعی S0): کنترل ریسک سواپ شبانه (Overnight Swap Risk).');
+        bullets.push('🛡️ لایه ۱ (موتور قطعی S0): حد ضرر ساختاری فراتر از دامنه نوسان روزانه (ATR) قرار دارد.');
+        bullets.push('🛡️ لایه ۱ (موتور قطعی S0): کنترل ریسک سواپ شبانه.');
       } else {
-        bullets.push('🛡️ لایه ۱ (موتور قطعی S0): فاصله امن از اخبار اقتصادی قرمز (Red Folder News) و عدم وجود سد نقدینگی معارض.');
-      }
-      if (isNeural) {
-        bullets.push(`🧠 لایه ۲ (استدلال عصبی WebGPU): موشکافی تله‌های استاپ‌هانتینگ، عدم وجود هیجان فومو (FOMO) و تایید پاک بودن مسیر تارگت.`);
+        bullets.push('🛡️ لایه ۱ (موتور قطعی S0): فاصله امن از اخبار اقتصادی قرمز و عدم وجود سد نقدینگی معارض.');
       }
     }
 
     return {
       agentRole: 'CRITIC',
       roleTitleFa: AGENT_ROLES_INFO.CRITIC.nameFa,
-      engineId: engine.id,
-      engineNameFa: engine.nameFa,
-      engineType: engine.type,
+      ...honesty,
       verdict,
       verdictTitleFa: verdict === 'APPROVED' ? 'صحت‌سنجی تایید' : 'مردود و خطرناک',
       confidence: verdict === 'APPROVED' ? 0.9 : 0.95,
@@ -405,7 +437,6 @@ export class MultiAgentOrchestrator {
       summaryFa,
       reasoningBulletsFa: bullets,
       timestamp: now,
-      latencyMs: engine.latencyMs,
     };
   }
 
@@ -418,19 +449,17 @@ export class MultiAgentOrchestrator {
     style: TradingStyleId,
     analystReview: AgentReviewResult,
     criticReview: AgentReviewResult,
-    now: number
+    now: number,
+    env: string,
+    prov: string
   ): AgentReviewResult {
-    const engine =
-      AGENT_ENGINE_OPTIONS.find(e => e.id === config.judgeEngineId) ||
-      AGENT_ENGINE_OPTIONS.find(e => e.role === 'JUDGE')!;
+    const honesty = this.resolveEngineHonesty(config.judgeEngineId, 'JUDGE', env, prov);
 
     if (!candidate) {
       return {
         agentRole: 'JUDGE',
         roleTitleFa: AGENT_ROLES_INFO.JUDGE.nameFa,
-        engineId: engine.id,
-        engineNameFa: engine.nameFa,
-        engineType: engine.type,
+        ...honesty,
         verdict: 'NEUTRAL',
         verdictTitleFa: 'در انتظار ورودی',
         confidence: 0,
@@ -438,7 +467,6 @@ export class MultiAgentOrchestrator {
         summaryFa: 'داوری در وضعیت آماده‌باش قرار دارد.',
         reasoningBulletsFa: ['منتظر تشکیل کاندیدای تاییدشده'],
         timestamp: now,
-        latencyMs: engine.latencyMs,
       };
     }
 
@@ -446,10 +474,9 @@ export class MultiAgentOrchestrator {
     let verdict: 'APPROVED' | 'REJECTED' = 'APPROVED';
     let summaryFa = '';
 
-    const isFailClosedEngine = engine.id === 'strict-consensus-fail-closed';
-    const isQuorumEngine = engine.id === 'alpha-consensus-quorum-judge';
-    const isW4GuardianEngine = engine.id === 'risk-guardian-w4-judge';
-    const isWeightedEngine = engine.id === 'weighted-bayesian-judge';
+    const isFailClosedEngine = config.judgeEngineId === 'strict-consensus-fail-closed';
+    const isQuorumEngine = config.judgeEngineId === 'alpha-consensus-quorum-judge';
+    const isW4GuardianEngine = config.judgeEngineId === 'risk-guardian-w4-judge';
 
     if (analystReview.verdict !== 'APPROVED' || criticReview.verdict !== 'APPROVED') {
       verdict = 'REJECTED';
@@ -463,14 +490,14 @@ export class MultiAgentOrchestrator {
         summaryFa = 'دیده‌بان ریسک W4 ورود را متوقف کرد: شواهد تحلیل و نقد با استانداردهای سخت‌گیرانه حساب انطباق ندارد.';
         bullets.push('پایش حساب W4: حفاظت از سرمایه در برابر نوسانات مشکوک.');
       } else {
-        summaryFa = 'داوری وزنی تلفیقی: میانگین امتیاز اعتماد شورا کمتر از آستانه مجاز ۸۵٪ است.';
+        summaryFa = 'داوری وزنی تلفیقی: میانگین امتیاز انطباق شورا کمتر از آستانه مجاز ۸۵٪ است.';
         bullets.push('وزن تحلیلی شورا کفایت لازم برای ورود به پوزیشن را احراز نکرد.');
       }
       bullets.push('دیده‌بان ریسک از ورود سرمایه به شرایط غیرشفاف ممانعت به عمل آورد.');
     } else {
       verdict = 'APPROVED';
       if (isFailClosedEngine) {
-        summaryFa = 'اجماع قطعی و اتفاق آرا (Fail-Closed) تایید شد؛ ارسال سفارش لیمیت با اطمینان حداکثری مجاز است.';
+        summaryFa = 'اجماع قطعی و اتفاق آرا (Fail-Closed) تایید شد؛ ورود مشورتی با رعایت کامل چک‌لیست مجاز است.';
         bullets.push('توافق کامل و بدون استثنای هر ۳ ایجنت اسکنر، تحلیل‌گر و منتقد.');
       } else if (isQuorumEngine) {
         summaryFa = 'کواروم شورای عالی آلفا (حدنصاب بالای ۷۵٪) با موفقیت محقق شد.';
@@ -488,9 +515,7 @@ export class MultiAgentOrchestrator {
     return {
       agentRole: 'JUDGE',
       roleTitleFa: AGENT_ROLES_INFO.JUDGE.nameFa,
-      engineId: engine.id,
-      engineNameFa: engine.nameFa,
-      engineType: engine.type,
+      ...honesty,
       verdict,
       verdictTitleFa: verdict === 'APPROVED' ? 'تایید نهایی و صدور مجوز' : 'توقف معامله (Fail-Closed)',
       confidence: 0.98,
@@ -498,7 +523,6 @@ export class MultiAgentOrchestrator {
       summaryFa,
       reasoningBulletsFa: bullets,
       timestamp: now,
-      latencyMs: engine.latencyMs,
     };
   }
 }
