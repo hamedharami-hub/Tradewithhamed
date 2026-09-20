@@ -16,6 +16,40 @@ import {
   AgentRole,
 } from '../contracts/multi-agent-system';
 
+function unexecutedNeuralReview(
+  role: AgentRole,
+  engine: (typeof AGENT_ENGINE_OPTIONS)[number],
+  style: TradingStyleId,
+  now: number,
+  env: string = 'PRACTICE',
+  prov: string = 'نمونه آزمایشی (Fixtures)'
+): AgentReviewResult {
+  return {
+    agentRole: role,
+    roleTitleFa: AGENT_ROLES_INFO[role].nameFa,
+    requestedEngineId: engine.id,
+    executedEngineId: engine.id,
+    engineId: engine.id,
+    engineNameFa: engine.nameFa,
+    engineType: engine.type,
+    executionMode: 'NOT_EXECUTED',
+    executionStatusFa: 'استنتاج عصبی همگام اجرا نشد (نیازمند استنتاج ناهمگام WebGPU)',
+    isFallback: false,
+    environment: env,
+    dataProvenance: prov,
+    isAdvisoryOnly: true,
+    advisoryDisclaimerFa: 'این تحلیل صرفاً جنبهٔ مشورتی دارد و هیچ‌گونه تضمین سود یا پیش‌بینی قطعی آینده نیست.',
+    verdict: 'NEUTRAL',
+    verdictTitleFa: 'استنتاج اجرا نشده',
+    confidence: 0,
+    tradingStyleUsed: style,
+    summaryFa: 'این مسیر همگام مدل عصبی را اجرا نمی‌کند؛ نتیجه‌ای به نام WebLLM تولید یا گزارش نشد.',
+    reasoningBulletsFa: ['NEURAL_ASYNC_REQUIRED', 'برای نتیجه عصبی واقعی باید مسیر async و Runtime Router فراخوانی شود.'],
+    timestamp: now,
+    latencyMs: 0,
+  };
+}
+
 export class MultiAgentOrchestrator {
   private static STORAGE_KEY = 'hamed_multi_agent_config_v4';
 
@@ -231,6 +265,12 @@ export class MultiAgentOrchestrator {
     env: string,
     prov: string
   ): AgentReviewResult {
+    const engine =
+      AGENT_ENGINE_OPTIONS.find(e => e.id === config.scannerEngineId) ||
+      AGENT_ENGINE_OPTIONS.find(e => e.role === 'SCANNER')!;
+
+    if (engine.type === 'NEURAL_WEBGPU') return unexecutedNeuralReview('SCANNER', engine, style, now, env, prov);
+
     const honesty = this.resolveEngineHonesty(config.scannerEngineId, 'SCANNER', env, prov);
 
     if (!candidate) {
@@ -318,6 +358,12 @@ export class MultiAgentOrchestrator {
     env: string,
     prov: string
   ): AgentReviewResult {
+    const engine =
+      AGENT_ENGINE_OPTIONS.find(e => e.id === config.analystEngineId) ||
+      AGENT_ENGINE_OPTIONS.find(e => e.role === 'ANALYST')!;
+
+    if (engine.type === 'NEURAL_WEBGPU') return unexecutedNeuralReview('ANALYST', engine, style, now, env, prov);
+
     const honesty = this.resolveEngineHonesty(config.analystEngineId, 'ANALYST', env, prov);
 
     if (!candidate || scannerReview.verdict !== 'APPROVED') {
@@ -381,6 +427,12 @@ export class MultiAgentOrchestrator {
     env: string,
     prov: string
   ): AgentReviewResult {
+    const engine =
+      AGENT_ENGINE_OPTIONS.find(e => e.id === config.criticEngineId) ||
+      AGENT_ENGINE_OPTIONS.find(e => e.role === 'CRITIC')!;
+
+    if (engine.type === 'NEURAL_WEBGPU') return unexecutedNeuralReview('CRITIC', engine, style, now, env, prov);
+
     const honesty = this.resolveEngineHonesty(config.criticEngineId, 'CRITIC', env, prov);
 
     if (!candidate || analystReview.verdict !== 'APPROVED') {
@@ -413,7 +465,7 @@ export class MultiAgentOrchestrator {
       bullets.push('اصطکاک و کمیسیون بروکر در این نسبت توجیه‌پذیر نیست.');
     } else {
       verdict = 'APPROVED';
-      summaryFa = `تست استرس منتقد با موفقیت پشت سر گذاشته شد (R:R برابر ۱ به ${candidate.riskRewardRatio}).`;
+      summaryFa = `تست استرس منتقد قطعی با موفقیت پشت سر گذاشته شد (R:R برابر ۱ به ${candidate.riskRewardRatio}).`;
       bullets.push(`🛡️ لایه ۱ (موتور قطعی S0): انطباق کامل R:R برابر ۱ به ${candidate.riskRewardRatio} با معیار مصوب سبک.`);
       if (style === 'SCALP_M1_M5' || style === 'M1_SCALP') {
         bullets.push('🛡️ لایه ۱ (موتور قطعی S0): تایید فاصله زمانی امن از اخبار اقتصادی قرمز.');

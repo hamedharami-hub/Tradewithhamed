@@ -1,5 +1,6 @@
 import { StrategyCandidate } from '../contracts/strategy';
 import { evaluateLoadedLocalAIAgent } from '../ai/webllm-agent-adapter';
+import type { AIInferenceProvenance } from '../ai/offline-ai-contracts';
 
 export type OfflineAIProfileId =
   | 'local-offline-s0-v1'
@@ -189,6 +190,7 @@ export interface ShadowAnalysisPipelineResult {
   criticReview: AICriticReview;
   reasonCode?: string;
   explanation: string;
+  provenance?: AIInferenceProvenance;
 }
 
 export class AnalystCriticPipeline {
@@ -403,7 +405,7 @@ export class AnalystCriticPipeline {
         isEvidenceSufficient: advice.evidenceIds.length >= 2,
         isRiskRewardRealistic: candidate.riskRewardRatio >= 2.5,
         timestamp: now,
-        modelHash: `${advice.modelId}@${advice.modelRevision}`,
+        modelHash: 'deterministic-post-advisory-validator-v1',
       };
       return {
         passed: false,
@@ -414,6 +416,7 @@ export class AnalystCriticPipeline {
         explanation: tradeApproved
           ? `مدل محلی نتیجه advisory ارائه کرد: ${advice.rationaleFa} نتیجه AI به‌تنهایی مجوز سفارش نیست.`
           : `مدل محلی مجوز advisory نداد: ${advice.rationaleFa}`,
+        provenance: advice.provenance,
       };
     } catch (error) {
       return {

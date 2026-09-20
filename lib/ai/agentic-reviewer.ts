@@ -2,9 +2,9 @@ import type { MultiAgentConfiguration } from '@/lib/contracts/multi-agent-system
 import { AGENT_ENGINE_OPTIONS, DEFAULT_MULTI_AGENT_CONFIG } from '@/lib/contracts/multi-agent-system';
 import type { StrategyCandidate } from '@/lib/contracts/strategy';
 import { modelIdForAgentEngine } from './webllm-agent-adapter';
-import { BrowserOfflineAIManager } from './browser-offline-ai';
 import { buildAgentPrompt, evidencePacketFromCandidate, judgeAgentReviews, type AgentEvidencePacket, type AgenticReviewResult, type AgentPromptProfile } from './agentic-review-contracts';
-import type { StructuredCandidateAdvisory } from './offline-ai-contracts';
+import { createInferenceProvenance, type StructuredCandidateAdvisory } from './offline-ai-contracts';
+import { aiRuntimeRouter } from './runtime-router';
 
 function engineType(engineId: string): 'DETERMINISTIC' | 'NEURAL_WEBGPU' {
   return AGENT_ENGINE_OPTIONS.find(engine => engine.id === engineId)?.type || 'DETERMINISTIC';
@@ -18,7 +18,7 @@ function requiredEvidencePresent(candidate: StrategyCandidate): boolean {
   return Boolean(candidate.evidenceIds.sweepId) && Boolean(candidate.evidenceIds.fvgId);
 }
 
-function deterministicReview(modelId: string, packet: AgentEvidencePacket): StructuredCandidateAdvisory {
+async function deterministicReview(modelId: string, packet: AgentEvidencePacket): Promise<StructuredCandidateAdvisory> {
   // SMC has a specialised deterministic advisory; the other executable rules
   // carry different evidence (for example a Donchian channel or a z-score) and
   // must not be falsely rejected merely because they do not contain an FVG.
@@ -42,9 +42,10 @@ function deterministicReview(modelId: string, packet: AgentEvidencePacket): Stru
       evidenceIds,
       latencyMs: 0,
       advisoryOnly: true,
+      provenance: createInferenceProvenance({ provider: 'deterministic', runtime: 'CORE_DETERMINISTIC', requestedModelId: modelId, executedModelId: modelId }),
     };
   }
-  return BrowserOfflineAIManager.buildDeterministicAdvisory(modelId, {
+  const response = await aiRuntimeRouter.generate({ modelId: 's0-deterministic', evidence: {
     symbol: packet.candidate.symbol,
     currentPrice: packet.candidate.entryPrice,
     sweepDetected: Boolean(packet.candidate.evidenceIds.sweepId),
@@ -55,16 +56,32 @@ function deterministicReview(modelId: string, packet: AgentEvidencePacket): Stru
     entryPrice: packet.candidate.entryPrice,
     stopLossPrice: packet.candidate.stopLossPrice,
     takeProfitPrice: packet.candidate.takeProfitPrice,
-  });
+  } });
+  return {
+    ...response.advisory,
+    modelId,
+    evidenceIds: Object.values(packet.candidate.evidenceIds).filter((value): value is string => Boolean(value)),
+    provenance: { ...response.advisory.provenance, requestedModelId: modelId, executedModelId: 's0-deterministic' },
+  };
 }
 
-async function reviewRole(role: 'ANALYST' | 'CRITIC', engineId: string, candidate: StrategyCandidate, packet: AgentEvidencePacket, profile: AgentPromptProfile): Promise<StructuredCandidateAdvisory> {
+export interface AgenticReviewOptions {
+  sequentialCachedNeuralModels?: boolean;
+  timeoutMs?: number;
+  signal?: AbortSignal;
+}
+
+async function reviewRole(role: 'SCANNER' | 'ANALYST' | 'CRITIC', engineId: string, candidate: StrategyCandidate, packet: AgentEvidencePacket, profile: AgentPromptProfile, options: AgenticReviewOptions): Promise<StructuredCandidateAdvisory> {
   const prompt = buildAgentPrompt(role, packet, profile);
   if (engineType(engineId) === 'DETERMINISTIC') return deterministicReview(engineId, packet);
   const mapped = modelIdForAgentEngine(engineId);
-  if (!mapped) return { modelId: 'unmapped', modelRevision: 'none', source: 'WEBLLM_WEBGPU', verdict: 'REVIEW_REQUIRED', confidence: 0, rationaleFa: 'موتور AI نگاشت نشده است.', riskFlags: ['UNMAPPED_AGENT_MODEL'], evidenceIds: [], latencyMs: 0, advisoryOnly: true };
-  if (BrowserOfflineAIManager.getResidentModelId() !== mapped) return { modelId: mapped, modelRevision: 'not-resident', source: 'WEBLLM_WEBGPU', verdict: 'REVIEW_REQUIRED', confidence: 0, rationaleFa: 'مدل آفلاین برای این نقش در حافظه GPU مقیم نیست.', riskFlags: ['MODEL_NOT_RESIDENT'], evidenceIds: [], latencyMs: 0, advisoryOnly: true };
-  return BrowserOfflineAIManager.evaluateCandidateAdvisory(mapped, {
+  if (!mapped) return {
+    modelId: 'unmapped', modelRevision: 'none', source: 'WEBLLM_WEBGPU', verdict: 'REVIEW_REQUIRED', confidence: 0,
+    rationaleFa: 'موتور AI نگاشت نشده است.', riskFlags: ['UNMAPPED_AGENT_MODEL'], evidenceIds: [], latencyMs: 0, advisoryOnly: true,
+    provenance: createInferenceProvenance({ provider: 'webllm', runtime: 'WEBLLM_WEBGPU', requestedModelId: 'unmapped', fallbackReason: 'UNMAPPED_AGENT_MODEL' }),
+  };
+  if (options.sequentialCachedNeuralModels !== false) await aiRuntimeRouter.loadCachedModel(mapped);
+  return (await aiRuntimeRouter.generate({ modelId: mapped, evidence: {
     symbol: candidate.symbol,
     currentPrice: candidate.entryPrice,
     sweepDetected: Boolean(candidate.evidenceIds.sweepId),
@@ -75,24 +92,37 @@ async function reviewRole(role: 'ANALYST' | 'CRITIC', engineId: string, candidat
     entryPrice: candidate.entryPrice,
     stopLossPrice: candidate.stopLossPrice,
     takeProfitPrice: candidate.takeProfitPrice,
-  }, prompt.systemPrompt, prompt.userPrompt);
+  }, systemPrompt: prompt.systemPrompt, userPrompt: prompt.userPrompt, signal: options.signal, timeoutMs: options.timeoutMs })).advisory;
 }
 
-export async function reviewCandidateWithFourAgents(candidate: StrategyCandidate, config: MultiAgentConfiguration = DEFAULT_MULTI_AGENT_CONFIG, context: AgentEvidencePacket['marketContext'] = {}, promptProfile: AgentPromptProfile = 'BASELINE_EVIDENCE_V1'): Promise<AgenticReviewResult> {
+export async function reviewCandidateWithFourAgents(candidate: StrategyCandidate, config: MultiAgentConfiguration = DEFAULT_MULTI_AGENT_CONFIG, context: AgentEvidencePacket['marketContext'] = {}, promptProfile: AgentPromptProfile = 'BASELINE_EVIDENCE_V1', options: AgenticReviewOptions = {}): Promise<AgenticReviewResult> {
   const packet = evidencePacketFromCandidate(candidate, config.activeTradingStyle, context);
-  const scannerApproved = requiredEvidencePresent(candidate);
-  const analyst = await reviewRole('ANALYST', config.analystEngineId, candidate, packet, promptProfile);
-  const critic = await reviewRole('CRITIC', config.criticEngineId, candidate, packet, promptProfile);
+  const deterministicScannerApproved = requiredEvidencePresent(candidate);
+  const scannerAdvisory = await reviewRole('SCANNER', config.scannerEngineId, candidate, packet, promptProfile, options);
+  const scannerApproved = deterministicScannerApproved && scannerAdvisory.verdict === 'TRADE' && scannerAdvisory.riskFlags.length === 0;
+  const analyst = await reviewRole('ANALYST', config.analystEngineId, candidate, packet, promptProfile, options);
+  const critic = await reviewRole('CRITIC', config.criticEngineId, candidate, packet, promptProfile, options);
   const judge = judgeAgentReviews({ analyst, critic, candidate });
-  if (!scannerApproved) judge.reasonCodes.push('SCANNER_EVIDENCE_INCOMPLETE');
-  const finalDecision = !scannerApproved ? 'NO_TRADE' : judge.approved ? 'PAPER_TRADE' : (analyst.verdict === 'REVIEW_REQUIRED' || critic.verdict === 'REVIEW_REQUIRED' ? 'REVIEW_REQUIRED' : 'NO_TRADE');
+  if (!deterministicScannerApproved) judge.reasonCodes.push('SCANNER_EVIDENCE_INCOMPLETE');
+  if (deterministicScannerApproved && !scannerApproved) judge.reasonCodes.push(scannerAdvisory.verdict === 'REVIEW_REQUIRED' ? 'SCANNER_REVIEW_REQUIRED' : 'SCANNER_NOT_APPROVED');
+  const neuralRoles = [
+    ['SCANNER', config.scannerEngineId, scannerAdvisory] as const,
+    ['ANALYST', config.analystEngineId, analyst] as const,
+    ['CRITIC', config.criticEngineId, critic] as const,
+  ].filter(([, engineId]) => engineType(engineId) === 'NEURAL_WEBGPU');
+  const finalDecision = !deterministicScannerApproved ? 'NO_TRADE' : scannerAdvisory.verdict === 'REVIEW_REQUIRED' || analyst.verdict === 'REVIEW_REQUIRED' || critic.verdict === 'REVIEW_REQUIRED' ? 'REVIEW_REQUIRED' : scannerApproved && judge.approved ? 'PAPER_TRADE' : 'NO_TRADE';
   return {
     candidateId: candidate.id,
     config: { scannerEngineId: config.scannerEngineId, analystEngineId: config.analystEngineId, criticEngineId: config.criticEngineId, judgeEngineId: config.judgeEngineId },
-    scanner: { approved: scannerApproved, reasons: scannerApproved ? ['STRUCTURAL_EVIDENCE_PRESENT'] : ['SCANNER_EVIDENCE_INCOMPLETE'] },
+    scanner: { approved: scannerApproved, reasons: scannerApproved ? ['STRUCTURAL_EVIDENCE_PRESENT'] : judge.reasonCodes.filter(code => code.startsWith('SCANNER_')), advisory: scannerAdvisory },
     analyst,
     critic,
     judge: { ...judge, approved: scannerApproved && judge.approved },
+    executionSummary: {
+      neuralRolesRequested: neuralRoles.length,
+      neuralRolesExecuted: neuralRoles.filter(([, , advisory]) => advisory.provenance.inferenceExecuted).length,
+      fallbackRoles: neuralRoles.filter(([, , advisory]) => advisory.provenance.fallbackUsed).map(([role]) => role),
+    },
     finalDecision,
     advisoryOnly: true,
     promptVersion: promptProfile,

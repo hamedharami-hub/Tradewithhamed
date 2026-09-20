@@ -2,6 +2,7 @@ import { DEFAULT_MULTI_AGENT_CONFIG, AGENT_ROLES_INFO } from '@/lib/contracts/mu
 import { buildAgentPrompt, evidencePacketFromCandidate, judgeAgentReviews } from '../agentic-review-contracts';
 import { reviewCandidateWithFourAgents } from '../agentic-reviewer';
 import type { StrategyCandidate } from '@/lib/contracts/strategy';
+import { createInferenceProvenance } from '../offline-ai-contracts';
 
 export interface AgenticReviewTestResult { name: string; passed: boolean; details: string }
 
@@ -19,10 +20,44 @@ export async function runAgenticReviewTests(): Promise<AgenticReviewTestResult[]
   const packet = evidencePacketFromCandidate(candidate, 'S0_SWEEP_FVG');
   const prompts = (['SCANNER', 'ANALYST', 'CRITIC', 'JUDGE'] as const).map(role => buildAgentPrompt(role, packet));
   results.push({ name: 'Role prompts are distinct and versioned', passed: prompts.every(prompt => prompt.promptVersion === 'agent-prompts-v1') && new Set(prompts.map(prompt => prompt.systemPrompt)).size === 4, details: prompts.map(prompt => prompt.role).join(',') });
-  const judged = judgeAgentReviews({ analyst: { modelId: 'a', modelRevision: '1', source: 'DETERMINISTIC', verdict: 'TRADE', confidence: 0.8, rationaleFa: 'ok', riskFlags: [], evidenceIds: [], latencyMs: 0, advisoryOnly: true }, critic: { modelId: 'c', modelRevision: '1', source: 'DETERMINISTIC', verdict: 'NO_TRADE', confidence: 0.9, rationaleFa: 'bad', riskFlags: ['CONTRADICTION'], evidenceIds: [], latencyMs: 0, advisoryOnly: true }, candidate });
+  const judged = judgeAgentReviews({
+    analyst: { modelId: 'a', modelRevision: '1', source: 'DETERMINISTIC', verdict: 'TRADE', confidence: 0.8, rationaleFa: 'ok', riskFlags: [], evidenceIds: [], latencyMs: 0, advisoryOnly: true, provenance: createInferenceProvenance({ provider: 'deterministic', runtime: 'CORE_DETERMINISTIC', requestedModelId: 'a', executedModelId: 'a' }) },
+    critic: { modelId: 'c', modelRevision: '1', source: 'DETERMINISTIC', verdict: 'NO_TRADE', confidence: 0.9, rationaleFa: 'bad', riskFlags: ['CONTRADICTION'], evidenceIds: [], latencyMs: 0, advisoryOnly: true, provenance: createInferenceProvenance({ provider: 'deterministic', runtime: 'CORE_DETERMINISTIC', requestedModelId: 'c', executedModelId: 'c' }) },
+    candidate,
+  });
   results.push({ name: 'Judge vetoes critic disagreement', passed: !judged.approved && judged.reasonCodes.includes('CRITIC_REJECTED'), details: judged.summaryFa });
   const review = await reviewCandidateWithFourAgents(candidate);
   results.push({ name: 'Agentic pipeline approves valid advisory-only candidate', passed: review.advisoryOnly && review.finalDecision === 'PAPER_TRADE' && review.judge.approved, details: `${review.finalDecision}; judge=${review.judge.approved}` });
+  results.push({
+    name: 'Every council role reports truthful execution provenance',
+    passed: review.scanner.advisory.provenance.provider === 'deterministic'
+      && !review.scanner.advisory.provenance.inferenceExecuted
+      && review.analyst.provenance.provider === 'deterministic'
+      && review.critic.provenance.provider === 'deterministic'
+      && review.judge.provenance.provider === 'deterministic'
+      && review.executionSummary.neuralRolesRequested === 0,
+    details: JSON.stringify(review.executionSummary),
+  });
+  const unavailableNeuralReview = await reviewCandidateWithFourAgents(candidate, {
+    ...DEFAULT_MULTI_AGENT_CONFIG,
+    scannerEngineId: 'smollm2-360m-scanner',
+    analystEngineId: 'phi-4-mini-analyst',
+  });
+  results.push({
+    name: 'Requested neural roles remain review-required when inference did not execute',
+    passed: unavailableNeuralReview.executionSummary.neuralRolesRequested === 2
+      && unavailableNeuralReview.executionSummary.neuralRolesExecuted === 0
+      && unavailableNeuralReview.finalDecision === 'REVIEW_REQUIRED'
+      && !unavailableNeuralReview.scanner.advisory.provenance.inferenceExecuted
+      && !unavailableNeuralReview.analyst.provenance.inferenceExecuted,
+    details: JSON.stringify(unavailableNeuralReview.executionSummary),
+  });
+  const unknownEvidenceJudge = judgeAgentReviews({
+    analyst: { modelId: 'a', modelRevision: '1', source: 'WEBLLM_WEBGPU', verdict: 'TRADE', confidence: 0.9, rationaleFa: 'ok', riskFlags: [], evidenceIds: ['HALLUCINATED-ID'], latencyMs: 1, advisoryOnly: true, provenance: createInferenceProvenance({ provider: 'webllm', runtime: 'WEBLLM_WEBGPU', requestedModelId: 'a', executedModelId: 'a', inferenceExecuted: true }) },
+    critic: { modelId: 'c', modelRevision: '1', source: 'DETERMINISTIC', verdict: 'TRADE', confidence: 0.9, rationaleFa: 'ok', riskFlags: [], evidenceIds: ['SWEEP-1'], latencyMs: 0, advisoryOnly: true, provenance: createInferenceProvenance({ provider: 'deterministic', runtime: 'CORE_DETERMINISTIC', requestedModelId: 'c', executedModelId: 'c' }) },
+    candidate,
+  });
+  results.push({ name: 'Judge rejects model-invented evidence IDs', passed: !unknownEvidenceJudge.approved && unknownEvidenceJudge.reasonCodes.includes('UNKNOWN_EVIDENCE_ID'), details: unknownEvidenceJudge.summaryFa });
   const breakoutReview = await reviewCandidateWithFourAgents({
     ...candidate,
     id: 'AGENTIC-TREND-1',
