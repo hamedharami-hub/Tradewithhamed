@@ -11,6 +11,7 @@ export interface BrokerState {
 }
 
 export class SimulatedBroker {
+  private static idCounter = 0;
   private balance: number;
   private equity: number;
   private orders: SimulatedOrder[] = [];
@@ -35,6 +36,13 @@ export class SimulatedBroker {
     this.positions = [];
   }
 
+  public loadState(state: BrokerState): void {
+    this.balance = state.accountBalance;
+    this.equity = state.accountEquity;
+    this.orders = [...state.orders];
+    this.positions = [...state.positions];
+  }
+
   public calculatePnlDollars(symbol: SymbolId, volumeLots: number, priceDiff: number, currentPrice: number): number {
     const contractSize = symbol === 'XAUUSD' ? 100 : symbol === 'BTCUSD' ? 1 : 100000;
     const grossQuotePnl = volumeLots * priceDiff * contractSize;
@@ -51,8 +59,9 @@ export class SimulatedBroker {
   }
 
   public createOrderFromCandidate(candidate: StrategyCandidate, volumeLots: number): SimulatedOrder {
+    SimulatedBroker.idCounter++;
     const order: SimulatedOrder = {
-      id: `ORD-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+      id: `ORD-CANDIDATE-${SimulatedBroker.idCounter}-${Date.now()}`,
       candidateId: candidate.id,
       symbol: candidate.symbol,
       type: 'LIMIT',
@@ -67,6 +76,44 @@ export class SimulatedBroker {
     };
     this.orders.push(order);
     return order;
+  }
+
+  private executePositionClose(
+    pos: SimulatedPosition,
+    exitPrice: number,
+    closeReason: 'SL' | 'TP' | 'MANUAL' | 'PANIC_KILL_SWITCH',
+    timestamp: number
+  ): number {
+    pos.isOpen = false;
+    pos.closedAt = timestamp;
+    pos.closeReason = closeReason;
+    pos.exitPrice = exitPrice;
+    pos.currentPrice = exitPrice;
+
+    const priceDiff =
+      pos.direction === 'BUY'
+        ? exitPrice - pos.entryPrice
+        : pos.entryPrice - exitPrice;
+    const sliceCommission = Number((pos.volumeLots * 6.0).toFixed(2));
+    const grossDollars = this.calculatePnlDollars(pos.symbol, pos.volumeLots, priceDiff, exitPrice);
+    const pnl = Number((grossDollars - sliceCommission).toFixed(2));
+    pos.realizedPnl = Number((pos.realizedPnl + pnl).toFixed(2));
+    pos.unrealizedPnl = 0;
+    this.balance = Number((this.balance + pnl).toFixed(2));
+
+    const metrics = PostTradeAnalyticsEngine.calculateExcursionMetrics({
+      symbol: pos.symbol,
+      direction: pos.direction,
+      entryPrice: pos.entryPrice,
+      exitPrice,
+      highestPriceDuringTrade: pos.highestPriceDuringTrade ?? pos.entryPrice,
+      lowestPriceDuringTrade: pos.lowestPriceDuringTrade ?? pos.entryPrice,
+      volumeLots: pos.initialVolumeLots || pos.volumeLots,
+    });
+    pos.maePips = metrics.maePips;
+    pos.mfePips = metrics.mfePips;
+    pos.exitEfficiencyPercent = metrics.exitEfficiencyPercent;
+    return pnl;
   }
 
   public onNewCandle(candle: Candle, symbol: SymbolId): void {
@@ -95,9 +142,10 @@ export class SimulatedBroker {
           takeProfit: order.takeProfit,
           unrealizedPnl: 0,
           realizedPnl: 0,
-          commissionPaid: order.volumeLots * 6.0,
+          commissionPaid: Number((order.volumeLots * 6.0).toFixed(2)),
           isOpen: true,
           openedAt: candle.timestamp,
+          entryCandleTimestamp: candle.timestamp,
         });
       }
     }
@@ -106,47 +154,38 @@ export class SimulatedBroker {
     const openPositions = this.positions.filter(p => p.symbol === symbol && p.isOpen);
 
     for (const pos of openPositions) {
+      // معامله‌ای که در بسته‌شدن کندل جاری باز شده، نباید با high/low گذشتهٔ همان کندل بسته شود؛ بررسی خروج از کندل بعد آغاز می‌شود
+      if (pos.entryCandleTimestamp !== undefined && candle.timestamp <= pos.entryCandleTimestamp) {
+        continue;
+      }
+
       pos.currentPrice = candle.close;
       pos.highestPriceDuringTrade = Math.max(pos.highestPriceDuringTrade ?? pos.entryPrice, candle.high);
       pos.lowestPriceDuringTrade = Math.min(pos.lowestPriceDuringTrade ?? pos.entryPrice, candle.low);
 
-      // بررسی حد ضرر
+      // بررسی برخورد با حد ضرر و حد سود
       const slHit =
         pos.direction === 'BUY'
           ? candle.low <= pos.stopLoss
           : candle.high >= pos.stopLoss;
 
-      if (slHit) {
-        pos.isOpen = false;
-        pos.closedAt = candle.timestamp;
-        pos.closeReason = 'SL';
-        const lossDiff =
-          pos.direction === 'BUY'
-            ? pos.stopLoss - pos.entryPrice
-            : pos.entryPrice - pos.stopLoss;
-        const sliceCommission = Number((pos.volumeLots * 6.0).toFixed(2));
-        const grossLossDollars = this.calculatePnlDollars(pos.symbol, pos.volumeLots, lossDiff, pos.stopLoss);
-        const slicePnl = Number((grossLossDollars - sliceCommission).toFixed(2));
-        pos.realizedPnl = Number((pos.realizedPnl + slicePnl).toFixed(2));
-        pos.unrealizedPnl = 0;
-        this.balance = Number((this.balance + slicePnl).toFixed(2));
+      const tpHit =
+        pos.direction === 'BUY'
+          ? candle.high >= pos.takeProfit
+          : candle.low <= pos.takeProfit;
 
-        const metrics = PostTradeAnalyticsEngine.calculateExcursionMetrics({
-          symbol: pos.symbol,
-          direction: pos.direction,
-          entryPrice: pos.entryPrice,
-          exitPrice: pos.stopLoss,
-          highestPriceDuringTrade: pos.highestPriceDuringTrade ?? pos.entryPrice,
-          lowestPriceDuringTrade: pos.lowestPriceDuringTrade ?? pos.entryPrice,
-          volumeLots: pos.initialVolumeLots || pos.volumeLots,
-        });
-        pos.maePips = metrics.maePips;
-        pos.mfePips = metrics.mfePips;
-        pos.exitEfficiencyPercent = metrics.exitEfficiencyPercent;
+      // سیاست برخورد همزمان SL و TP در یک کندل: سیاست محافظه‌کارانه (Conservative) - اصابت اول به SL فرض می‌شود
+      if (slHit && tpHit) {
+        this.executePositionClose(pos, pos.stopLoss, 'SL', candle.timestamp);
         continue;
       }
 
-      // بررسی خروج پله‌ای ۵۰٪ در ۱.۲R و انتقال خودکار حد ضرر به نقطه ورود (Breakeven)
+      if (slHit) {
+        this.executePositionClose(pos, pos.stopLoss, 'SL', candle.timestamp);
+        continue;
+      }
+
+      // بررسی خروج پله‌ای (فقط در صورت فعال‌سازی صریح)
       const riskDistance = Math.abs(pos.entryPrice - pos.stopLoss);
       const isBuy = pos.direction === 'BUY';
       const partialTarget = isBuy ? pos.entryPrice + 1.2 * riskDistance : pos.entryPrice - 1.2 * riskDistance;
@@ -172,6 +211,8 @@ export class SimulatedBroker {
               pos.isOpen = false;
               pos.closedAt = candle.timestamp;
               pos.closeReason = 'TP';
+              pos.exitPrice = partialTarget;
+              pos.currentPrice = partialTarget;
               pos.unrealizedPnl = 0;
               const metrics = PostTradeAnalyticsEngine.calculateExcursionMetrics({
                 symbol: pos.symbol,
@@ -191,39 +232,8 @@ export class SimulatedBroker {
         }
       }
 
-      // بررسی حد سود
-      const tpHit =
-        pos.direction === 'BUY'
-          ? candle.high >= pos.takeProfit
-          : candle.low <= pos.takeProfit;
-
       if (tpHit) {
-        pos.isOpen = false;
-        pos.closedAt = candle.timestamp;
-        pos.closeReason = 'TP';
-        const winDiff =
-          pos.direction === 'BUY'
-            ? pos.takeProfit - pos.entryPrice
-            : pos.entryPrice - pos.takeProfit;
-        const sliceCommission = Number((pos.volumeLots * 6.0).toFixed(2));
-        const grossWinDollars = this.calculatePnlDollars(pos.symbol, pos.volumeLots, winDiff, pos.takeProfit);
-        const slicePnl = Number((grossWinDollars - sliceCommission).toFixed(2));
-        pos.realizedPnl = Number((pos.realizedPnl + slicePnl).toFixed(2));
-        pos.unrealizedPnl = 0;
-        this.balance = Number((this.balance + slicePnl).toFixed(2));
-
-        const metrics = PostTradeAnalyticsEngine.calculateExcursionMetrics({
-          symbol: pos.symbol,
-          direction: pos.direction,
-          entryPrice: pos.entryPrice,
-          exitPrice: pos.takeProfit,
-          highestPriceDuringTrade: pos.highestPriceDuringTrade ?? pos.entryPrice,
-          lowestPriceDuringTrade: pos.lowestPriceDuringTrade ?? pos.entryPrice,
-          volumeLots: pos.initialVolumeLots || pos.volumeLots,
-        });
-        pos.maePips = metrics.maePips;
-        pos.mfePips = metrics.mfePips;
-        pos.exitEfficiencyPercent = metrics.exitEfficiencyPercent;
+        this.executePositionClose(pos, pos.takeProfit, 'TP', candle.timestamp);
         continue;
       }
 
@@ -254,12 +264,19 @@ export class SimulatedBroker {
     currentPrice: number,
     stopLoss: number,
     takeProfit: number,
-    meta?: { mood?: string; propFirmId?: string }
+    meta?: {
+      mood?: string;
+      propFirmId?: string;
+      candleTimestamp?: number;
+      sessionId?: string;
+    }
   ): { order: SimulatedOrder; position: SimulatedPosition } {
     const now = Date.now();
+    SimulatedBroker.idCounter++;
+    const orderId = `MKT-ORD-${meta?.sessionId || 'LOCAL'}-${SimulatedBroker.idCounter}-${now}`;
     const order: SimulatedOrder = {
-      id: `MKT-ORD-${now}`,
-      candidateId: `INSTANT-${now}`,
+      id: orderId,
+      candidateId: `INSTANT-${orderId}`,
       symbol,
       type: 'MARKET',
       direction,
@@ -268,14 +285,15 @@ export class SimulatedBroker {
       stopLoss,
       takeProfit,
       status: 'FILLED',
-      createdAt: now,
-      updatedAt: now,
+      createdAt: meta?.candleTimestamp ?? now,
+      updatedAt: meta?.candleTimestamp ?? now,
     };
     this.orders.push(order);
 
     const position: SimulatedPosition = {
       id: `POS-${order.id}`,
       orderId: order.id,
+      sessionId: meta?.sessionId,
       symbol,
       direction,
       volumeLots,
@@ -286,9 +304,11 @@ export class SimulatedBroker {
       takeProfit,
       unrealizedPnl: 0,
       realizedPnl: 0,
-      commissionPaid: volumeLots * 6.0,
+      commissionPaid: Number((volumeLots * 6.0).toFixed(2)),
       isOpen: true,
-      openedAt: now,
+      openedAt: meta?.candleTimestamp ?? now,
+      entryCandleTimestamp: meta?.candleTimestamp,
+      clientSubmittedAt: now,
       partialCloseCount: 0,
       isBreakevenActive: false,
       highestPriceDuringTrade: currentPrice,
@@ -312,7 +332,7 @@ export class SimulatedBroker {
     const pos = this.positions.find(p => p.id === positionId && p.isOpen);
     if (!pos) return { success: false, realizedPnl: 0, remainingLots: 0 };
 
-    if (!this.enablePartialTp || pos.volumeLots < 0.02) {
+    if (pos.volumeLots < 0.02) {
       return { success: false, realizedPnl: 0, remainingLots: pos.volumeLots };
     }
 
@@ -344,6 +364,7 @@ export class SimulatedBroker {
       pos.isOpen = false;
       pos.closedAt = Date.now();
       pos.closeReason = 'TP';
+      pos.exitPrice = pos.currentPrice;
       pos.unrealizedPnl = 0;
     } else {
       // به‌روزرسانی سود شناور با حجم باقی‌مانده پس از بستن پله‌ای همراه با کسر کارمزد باقیمانده
@@ -376,34 +397,7 @@ export class SimulatedBroker {
 
     const now = Date.now();
     const finalPrice = exitPrice ?? pos.currentPrice;
-    pos.isOpen = false;
-    pos.closedAt = now;
-    pos.closeReason = closeReason;
-    pos.currentPrice = finalPrice;
-
-    const priceDiff =
-      pos.direction === 'BUY'
-        ? finalPrice - pos.entryPrice
-        : pos.entryPrice - finalPrice;
-    const sliceCommission = Number((pos.volumeLots * 6.0).toFixed(2));
-    const grossDollars = this.calculatePnlDollars(pos.symbol, pos.volumeLots, priceDiff, finalPrice);
-    const pnl = Number((grossDollars - sliceCommission).toFixed(2));
-    pos.realizedPnl = Number((pos.realizedPnl + pnl).toFixed(2));
-    pos.unrealizedPnl = 0;
-    this.balance = Number((this.balance + pnl).toFixed(2));
-
-    const metrics = PostTradeAnalyticsEngine.calculateExcursionMetrics({
-      symbol: pos.symbol,
-      direction: pos.direction,
-      entryPrice: pos.entryPrice,
-      exitPrice: finalPrice,
-      highestPriceDuringTrade: pos.highestPriceDuringTrade ?? pos.entryPrice,
-      lowestPriceDuringTrade: pos.lowestPriceDuringTrade ?? pos.entryPrice,
-      volumeLots: pos.initialVolumeLots || pos.volumeLots,
-    });
-    pos.maePips = metrics.maePips;
-    pos.mfePips = metrics.mfePips;
-    pos.exitEfficiencyPercent = metrics.exitEfficiencyPercent;
+    const pnl = this.executePositionClose(pos, finalPrice, closeReason, now);
 
     const stillOpen = this.positions.filter(p => p.isOpen);
     if (stillOpen.length === 0) {
@@ -434,21 +428,7 @@ export class SimulatedBroker {
 
     // بستن تمام پوزیشن‌های باز
     for (const pos of this.positions.filter(p => p.isOpen)) {
-      pos.isOpen = false;
-      pos.closedAt = now;
-      pos.closeReason = 'PANIC_KILL_SWITCH';
-
-      const priceDiff =
-        pos.direction === 'BUY'
-          ? pos.currentPrice - pos.entryPrice
-          : pos.entryPrice - pos.currentPrice;
-
-      const sliceCommission = Number((pos.volumeLots * 6.0).toFixed(2));
-      const grossDollars = this.calculatePnlDollars(pos.symbol, pos.volumeLots, priceDiff, pos.currentPrice);
-      const pnl = Number((grossDollars - sliceCommission).toFixed(2));
-      pos.realizedPnl = Number((pos.realizedPnl + pnl).toFixed(2));
-      pos.unrealizedPnl = 0;
-      this.balance = Number((this.balance + pnl).toFixed(2));
+      const pnl = this.executePositionClose(pos, pos.currentPrice, 'PANIC_KILL_SWITCH', now);
       netRealizedPnl += pnl;
       closedPositionsCount++;
     }

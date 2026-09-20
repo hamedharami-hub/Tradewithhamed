@@ -45,8 +45,12 @@ export interface SimulatedPosition {
   commissionPaid: number;
   isOpen: boolean;
   openedAt: number;
+  entryCandleTimestamp?: number;
+  clientSubmittedAt?: number;
   closedAt?: number;
-  closeReason?: 'SL' | 'TP' | 'MANUAL' | 'PARTIAL_TP' | 'PANIC_KILL_SWITCH';
+  exitPrice?: number;
+  closeReason?: 'SL' | 'TP' | 'MANUAL' | 'PARTIAL_TP' | 'PANIC_KILL_SWITCH' | 'SESSION_ENDED';
+  sessionId?: string;
   isBreakevenActive?: boolean;
   partialCloseCount?: number;
   highestPriceDuringTrade?: number;

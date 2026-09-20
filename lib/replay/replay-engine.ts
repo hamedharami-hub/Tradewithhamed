@@ -30,11 +30,17 @@ export class ReplayEngine {
   private broker: SimulatedBroker;
   private activeStyleFilter: TradingStyleType | 'ALL' = 'ALL';
 
-  constructor(symbol: SymbolId, broker: SimulatedBroker) {
+  constructor(symbol: SymbolId, broker: SimulatedBroker, initialStepIndex?: number) {
     this.symbol = symbol;
     this.broker = broker;
     this.allCandles = this.getFixtureForSymbol(symbol);
-    this.currentStepIndex = this.getInitialStepIndex(symbol);
+    this.currentStepIndex = initialStepIndex !== undefined
+      ? Math.max(0, Math.min(initialStepIndex, this.allCandles.length - 1))
+      : this.getInitialStepIndex(symbol);
+  }
+
+  public getCurrentStepIndex(): number {
+    return this.currentStepIndex;
   }
 
   private getFixtureForSymbol(symbol: SymbolId): Candle[] {
