@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { EnvironmentNavBar } from '@/components/navigation/environment-nav-bar';
 import { DataProvenance, evaluateDataFreshness } from '@/lib/contracts/provenance';
 import { SymbolId } from '@/lib/contracts/market';
@@ -37,6 +37,7 @@ export default function DemoPage() {
   const [lastFetchTime, setLastFetchTime] = useState<number>(0);
   const [gatewayStatus, setGatewayStatus] = useState<string>('DISCONNECTED');
   const [isConfigured, setIsConfigured] = useState<boolean>(true);
+  const [isBrokerConnected, setIsBrokerConnected] = useState<boolean>(false);
   const [isOperatorAuthenticated, setIsOperatorAuthenticated] = useState<boolean>(false);
   const [accessKey, setAccessKey] = useState<string>('');
   const [authError, setAuthError] = useState<string | null>(null);
@@ -61,28 +62,67 @@ export default function DemoPage() {
   const [isSimulateTimeout, setIsSimulateTimeout] = useState<boolean>(false);
   const [isSimulateRejection, setIsSimulateRejection] = useState<boolean>(false);
 
-  // آستانه تازگی داده (۶۰ ثانیه)
-  const stalenessThresholdMs = 60_000;
+  // آستانه تازگی تحمیل‌شده سرور (۵ ثانیه)
+  const stalenessThresholdMs = 5000;
 
-  // واکشی وضعیت دروازه و مظنه‌های زنده
+  // مرجع نماد فعال جهت جلوگیری از نشستن پاسخ‌های دیررس نماد قبلی
+  const symbolRef = useRef<SymbolId>(symbol);
+  useEffect(() => {
+    symbolRef.current = symbol;
+  }, [symbol]);
+
+  // تغییر نماد با ابطال آنی کوت قبلی و خروج فوری از قابلیت سفارش‌گذاری
+  const handleSymbolChange = (newSymbol: SymbolId) => {
+    if (newSymbol === symbol) return;
+    setQuote(null);
+    setLastFetchTime(0);
+    symbolRef.current = newSymbol;
+    setSymbol(newSymbol);
+  };
+
+  // تایمر فعال یک‌ثانیه‌ای برای ارزیابی پویا و بلادرنگ تازگی داده با گذشت زمان
+  const [currentTime, setCurrentTime] = useState<number>(() => Date.now());
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setCurrentTime(Date.now());
+    }, 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  // واکشی وضعیت دروازه و مظنه‌های زنده منحصراً از Gateway با mode=demo
   const fetchMarketData = useCallback(async () => {
+    const requestedSymbol = symbolRef.current;
     try {
-      const res = await fetch(`/api/market/quotes?symbol=${symbol}`, { cache: 'no-store' });
+      const res = await fetch(`/api/market/quotes?symbol=${requestedSymbol}&mode=demo`, { cache: 'no-store' });
       if (res.ok) {
         const data = await res.json();
-        if (data.quote) {
-          setQuote(data.quote);
-          setLastFetchTime(Date.now());
+        // بررسی عدم تداخل پاسخ دیررس با نماد تغییریافته
+        if (symbolRef.current === requestedSymbol) {
+          if (data.quote && data.source === 'CTRADER_DEMO') {
+            setQuote(data.quote);
+            setLastFetchTime(Date.now());
+          } else {
+            setQuote(null);
+          }
+          if (data.gatewayStatus) {
+            setGatewayStatus(data.gatewayStatus.state || 'DISCONNECTED');
+            setIsConfigured(Boolean(data.gatewayStatus.configured));
+            setIsBrokerConnected(Boolean(data.gatewayStatus.connected && data.gatewayStatus.state === 'SUBSCRIBED'));
+          }
         }
-        if (data.gatewayStatus) {
-          setGatewayStatus(data.gatewayStatus.state || 'DISCONNECTED');
-          setIsConfigured(data.gatewayStatus.isConfigured ?? true);
+      } else {
+        if (symbolRef.current === requestedSymbol) {
+          setQuote(null);
         }
       }
     } catch {
-      setGatewayStatus('DISCONNECTED');
+      if (symbolRef.current === requestedSymbol) {
+        setQuote(null);
+        setGatewayStatus('DISCONNECTED');
+        setIsBrokerConnected(false);
+      }
     }
-  }, [symbol]);
+  }, []);
 
   // واکشی وضعیت مجری، سوئیچ اضطراری و صندوق سفارش‌ها
   const fetchSessionAndOutbox = useCallback(async () => {
@@ -126,7 +166,7 @@ export default function DemoPage() {
     void runSync();
     const interval = setInterval(() => {
       void runSync();
-    }, 5000);
+    }, 4000);
 
     return () => {
       isCancelled = true;
@@ -136,9 +176,10 @@ export default function DemoPage() {
 
   const provenance: DataProvenance = useMemo(() => {
     const lastRec = quote?.timestamp || lastFetchTime || 0;
+    const isActuallyLive = Boolean(quote && isBrokerConnected);
     const prov: DataProvenance = {
       originType: 'BROKER_DEMO_FEED',
-      originLabelFa: 'فید مستقیم cTrader Demo',
+      originLabelFa: isActuallyLive ? 'فید مستقیم cTrader Demo' : 'دادهٔ بروکر در دسترس نیست',
       datasetId: 'ctrader-demo-gateway',
       symbol,
       timeframe: '5M',
@@ -146,15 +187,25 @@ export default function DemoPage() {
       lastReceivedAt: lastRec,
       freshnessStatus: 'UNKNOWN',
       stalenessThresholdMs,
-      isVerifiedRealData: true,
+      isVerifiedRealData: isActuallyLive,
       notesFa: 'محیط دموی بروکر با اعتبارسنجی مستقل سرور و منع فال‌بک به داده ساختگی.',
     };
-    prov.freshnessStatus = evaluateDataFreshness(prov);
+    if (!quote || !isBrokerConnected || lastRec <= 0) {
+      prov.freshnessStatus = 'DISCONNECTED';
+    } else {
+      prov.freshnessStatus = evaluateDataFreshness(prov, currentTime);
+    }
     return prov;
-  }, [quote, lastFetchTime, symbol]);
+  }, [quote, lastFetchTime, symbol, isBrokerConnected, currentTime]);
 
-  const isDataStale = provenance.freshnessStatus === 'STALE' || provenance.freshnessStatus === 'DISCONNECTED';
-  const isBrokerOnline = gatewayStatus === 'CONNECTED';
+  const isDataStale =
+    !quote ||
+    !isBrokerConnected ||
+    provenance.freshnessStatus === 'STALE' ||
+    provenance.freshnessStatus === 'DISCONNECTED' ||
+    provenance.freshnessStatus === 'UNKNOWN';
+
+  const isBrokerOnline = isBrokerConnected;
 
   // بازگشایی نشست اپراتور
   const handleUnlockOperator = async (e: React.FormEvent) => {
@@ -226,31 +277,6 @@ export default function DemoPage() {
       }
     } catch {
       setSubmitMessage({ type: 'error', text: 'خطا در ارتباط با سرور.' });
-    }
-  };
-
-  // ۲. بستن فوری پوزیشن‌ها (Emergency Flatten / Close All)
-  const handleEmergencyCloseAll = async () => {
-    if (
-      !confirm(
-        '⚠️ هشدار بسیار مهم: آیا از «بستن فوری تمامی پوزیشن‌ها (خروج اضطراری)» اطمینان دارید؟\n\nاین عملیات درخواست بستن فوری تمامی معاملات باز در حساب دموی بروکر را به سرور ارسال می‌کند و معاملات در قیمت لحظه‌ای بازار بسته خواهند شد.'
-      )
-    )
-      return;
-
-    try {
-      const res = await fetch('/api/orders/reconcile', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({}),
-      });
-      setSubmitMessage({
-        type: 'info',
-        text: 'درخواست بررسی و بستن اضطراری به سرور بروکر ارسال شد.',
-      });
-      await fetchSessionAndOutbox();
-    } catch {
-      setSubmitMessage({ type: 'error', text: 'خطا در ارسال درخواست بستن اضطراری به سرور.' });
     }
   };
 
@@ -387,12 +413,12 @@ export default function DemoPage() {
           </div>
 
           {/* دو دکمه اضطراری کاملاً متمایز با توضیحات صریح */}
-          <div className="flex flex-wrap items-center gap-2 w-full lg:w-auto">
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full lg:w-auto">
             {/* ۱. توقف ورودهای جدید (Circuit Breaker / Pause) */}
             <button
               onClick={handleToggleKillSwitch}
               title="توقف ورودهای جدید: معاملات باز جاری حفظ می‌شوند، اما هیچ سفارش جدیدی ارسال نمی‌شود."
-              className={`px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 border transition-all ${
+              className={`px-3 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 border transition-all ${
                 isKillNewEntriesActive
                   ? 'bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border-amber-500/50 shadow-sm shadow-amber-950'
                   : 'bg-[#182030] hover:bg-[#202a40] text-zinc-300 border-[#2b3952]'
@@ -402,16 +428,23 @@ export default function DemoPage() {
               <span>{isKillNewEntriesActive ? 'رفع توقف ورود جدید' : 'توقف ورودهای جدید (Pause)'}</span>
             </button>
 
-            {/* ۲. بستن فوری پوزیشن‌ها (Emergency Flatten / Close All) */}
+            {/* ۲. بستن فوری پوزیشن‌ها (غیرفعال به دلیل عدم پیاده‌سازی در رابط) */}
             <button
-              onClick={handleEmergencyCloseAll}
-              title="بستن فوری پوزیشن‌ها: تمام معاملات باز در حساب دمو را در قیمت فعلی بازار فوراً نقد می‌کند."
-              className="px-3 py-2 rounded-xl bg-rose-600/20 hover:bg-rose-600/30 text-rose-300 text-xs font-bold flex items-center gap-1.5 border border-rose-500/40 transition-all shadow-sm shadow-rose-950"
+              type="button"
+              disabled={true}
+              title="بستن همهٔ پوزیشن‌ها هنوز پیاده‌سازی نشده است. برای بستن معاملات از cTrader استفاده کنید."
+              className="px-3 py-2 rounded-xl bg-zinc-800/40 text-zinc-400 text-xs font-bold flex items-center justify-center gap-1.5 border border-zinc-700/40 cursor-not-allowed opacity-60"
             >
-              <PowerOff className="w-4 h-4 text-rose-400" />
-              <span>بستن فوری تمام پوزیشن‌ها (خروج اضطراری)</span>
+              <PowerOff className="w-4 h-4 text-zinc-500" />
+              <span>بستن فوری تمام پوزیشن‌ها (غیرفعال)</span>
             </button>
           </div>
+        </div>
+
+        {/* توضیح صریح درباره عدم امکان بستن سراسری پوزیشن‌ها در رابط فعلی */}
+        <div className="p-3 bg-[#111622] border border-[#1e2738] rounded-xl text-xs text-amber-300/90 flex items-center gap-2">
+          <Info className="w-4 h-4 text-amber-400 shrink-0" />
+          <span>بستن همهٔ پوزیشن‌ها هنوز پیاده‌سازی نشده است. برای بستن معاملات از cTrader استفاده کنید.</span>
         </div>
 
         {/* پیام‌های سیستمی */}
@@ -543,13 +576,13 @@ export default function DemoPage() {
                 <h2 className="text-sm font-bold text-zinc-100">مظنه لحظه‌ای و ارسال سفارش تستی به بروکر</h2>
               </div>
 
-              {/* انتخاب نماد مجاز */}
+              {/* انتخاب نمادهای مجاز با پشتیبانی در Gateway */}
               <div className="flex items-center gap-1 bg-[#141a28] p-1 rounded-xl border border-[#243048]">
-                {(['XAUUSD', 'EURUSD', 'GBPUSD', 'USDJPY'] as SymbolId[]).map(s => (
+                {(['XAUUSD', 'EURUSD'] as SymbolId[]).map(s => (
                   <button
                     key={s}
                     type="button"
-                    onClick={() => setSymbol(s)}
+                    onClick={() => handleSymbolChange(s)}
                     className={`px-2.5 py-1 rounded-lg text-xs font-mono font-bold transition-all ${
                       symbol === s
                         ? 'bg-cyan-500 text-black shadow-xs'
@@ -600,7 +633,7 @@ export default function DemoPage() {
                 <button
                   type="button"
                   onClick={() => handleOrderSubmit('BUY')}
-                  disabled={isSubmitting || isDataStale || !isOperatorAuthenticated || isKillNewEntriesActive}
+                  disabled={isSubmitting || isDataStale || !isOperatorAuthenticated || isKillNewEntriesActive || !quote}
                   className="px-4 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold text-xs flex items-center justify-center gap-2 transition-all shadow-md shadow-emerald-950"
                 >
                   <TrendingUp className="w-4 h-4" />
@@ -610,7 +643,7 @@ export default function DemoPage() {
                 <button
                   type="button"
                   onClick={() => handleOrderSubmit('SELL')}
-                  disabled={isSubmitting || isDataStale || !isOperatorAuthenticated || isKillNewEntriesActive}
+                  disabled={isSubmitting || isDataStale || !isOperatorAuthenticated || isKillNewEntriesActive || !quote}
                   className="px-4 py-3 rounded-xl bg-rose-600 hover:bg-rose-500 disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold text-xs flex items-center justify-center gap-2 transition-all shadow-md shadow-rose-950"
                 >
                   <TrendingDown className="w-4 h-4" />
@@ -703,11 +736,51 @@ export default function DemoPage() {
         <OutboxExecutionCard
           records={outboxRecords}
           onReconcile={async (id: string) => {
-            await fetch('/api/orders/reconcile', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ intentId: id, clientOrderId: id }),
-            });
+            setSubmitMessage({ type: 'info', text: 'درخواست بررسی وضعیت سفارش ارسال شد...' });
+            try {
+              const res = await fetch('/api/orders/reconcile', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ intentId: id, clientOrderId: id }),
+              });
+              const data = await res.json().catch(() => null);
+              if (res.ok && data?.reconciled) {
+                setSubmitMessage({
+                  type: 'success',
+                  text: `عملیات تأیید شد: وضعیت سفارش ${id} با موفقیت با بروکر بازتطبیق و تأیید شد.`,
+                });
+              } else if (res.ok && data) {
+                setSubmitMessage({
+                  type: 'info',
+                  text: `درخواست پذیرفته شد: سفارش ${id} در صف بررسی وضعیت قرار دارد (${data.message || 'در انتظار تطبیق'}).`,
+                });
+              } else if (res.status === 401) {
+                setSubmitMessage({
+                  type: 'error',
+                  text: 'خطای احراز هویت (۴۰۱): نشست اپراتور منقضی شده یا نامعتبر است.',
+                });
+              } else if (res.status === 403) {
+                setSubmitMessage({
+                  type: 'error',
+                  text: 'خطای دسترسی (۴۰۳): مجوز بازتطبیق سفارش صادر نشد.',
+                });
+              } else if (res.status === 503) {
+                setSubmitMessage({
+                  type: 'error',
+                  text: 'خطای سرویس بروکر (۵۰۳): سرویس بازتطبیق بروکر در دسترس نیست.',
+                });
+              } else {
+                setSubmitMessage({
+                  type: 'error',
+                  text: `خطا در بررسی وضعیت سفارش: ${data?.error || `کد خطا ${res.status}`}`,
+                });
+              }
+            } catch (err) {
+              setSubmitMessage({
+                type: 'error',
+                text: `خطای شبکه در ارتباط با سرور: ${(err as Error).message}`,
+              });
+            }
             await fetchSessionAndOutbox();
           }}
           onRefreshOutbox={fetchSessionAndOutbox}

@@ -4,11 +4,20 @@ import { OrderSubmissionRequest } from '@/lib/contracts/execution';
 import { RateLimiter } from '@/lib/server/rate-limiter';
 import { getOperatorSession } from '@/lib/server/operator-session';
 import { registerDemoExecutionBridge } from '@/lib/server/demo-execution-bridge';
+import { CTraderDemoGateway } from '@/lib/gateway/ctrader-gateway';
+
+// نمادهای دارای پشتیبانی رسمی در Gateway و پل اتصال دمو
+const SUPPORTED_GATEWAY_SYMBOLS = ['XAUUSD', 'EURUSD'];
+// حداکثر زمان کهنگی مجاز به ثانیه/میلی‌ثانیه تحمیل‌شده توسط سرور (۵ ثانیه)
+const SERVER_MAX_STALENESS_MS = 5000;
 
 export async function POST(request: NextRequest) {
   registerDemoExecutionBridge();
   if (!getOperatorSession(request)) {
-    return NextResponse.json({ success: false, error: 'UNAUTHENTICATED_SESSION: ثبت سفارش به نشست اپراتور نیاز دارد.' }, { status: 401 });
+    return NextResponse.json(
+      { success: false, error: 'UNAUTHENTICATED_SESSION: ثبت سفارش به نشست اپراتور نیاز دارد.' },
+      { status: 401 }
+    );
   }
 
   const clientIp = RateLimiter.extractClientIdentifier(request.headers);
@@ -22,6 +31,7 @@ export async function POST(request: NextRequest) {
     const body = (await request.json()) as OrderSubmissionRequest & {
       simulateTimeout?: boolean;
       simulateRejection?: boolean;
+      simulateMissingProtection?: boolean;
       dataProvenance?: {
         originType?: string;
         originLabelFa?: string;
@@ -41,62 +51,117 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // ۲. بررسی منشأ داده: سفارش به بروکر دمو فقط روی فید داده مستقیم بروکر دمو مجاز است
-    if (!body.dataProvenance || body.dataProvenance.originType !== 'BROKER_DEMO_FEED') {
+    // ۲. اعتبارسنجی مستقل سرور: وضعیت دروازه اتصال بروکر دمو (Gateway Connection & Status)
+    const gateway = CTraderDemoGateway.getInstance();
+    const gatewayStatus = gateway.getStatus();
+
+    if (!gatewayStatus.configured) {
       return NextResponse.json(
         {
           success: false,
-          error: `INVALID_DATA_ORIGIN: ثبت سفارش بروکر با منبع «${body.dataProvenance?.originLabelFa || body.dataProvenance?.originType || 'نامعتبر'}» مسدود است. استفاده از داده‌های نمونه یا ساختگی برای معامله در بروکر مجاز نیست.`,
+          error: 'GATEWAY_NOT_CONFIGURED: اتصال بروکر در سرور پیکربندی نشده است. ارسال سفارش مسدود است.',
+        },
+        { status: 503 }
+      );
+    }
+
+    if (!gatewayStatus.connected || gatewayStatus.state !== 'SUBSCRIBED') {
+      return NextResponse.json(
+        {
+          success: false,
+          error: `GATEWAY_NOT_READY: ارتباط زنده سرور با دروازه cTrader برقرار نیست (وضعیت فعلی: ${gatewayStatus.state}).`,
+        },
+        { status: 503 }
+      );
+    }
+
+    // ۳. بررسی نمادهای مجاز با پیکربندی سرور
+    if (!SUPPORTED_GATEWAY_SYMBOLS.includes(body.symbol)) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: `SYMBOL_NOT_SUPPORTED: نماد «${body.symbol}» در دروازه بروکر دمو پشتیبانی نمی‌شود. نمادهای مجاز: ${SUPPORTED_GATEWAY_SYMBOLS.join(', ')}`,
         },
         { status: 400 }
       );
     }
 
-    // ۳. بررسی تازگی داده: سفارش بر روی داده منقضی یا قطع‌شده مسدود می‌شود
-    const now = Date.now();
-    const lastReceived = body.dataProvenance.lastReceivedAt || 0;
-    const threshold = body.dataProvenance.stalenessThresholdMs || 300_000;
-    if (now - lastReceived > threshold) {
+    // ۴. اعتبارسنجی مستقل مظنه سرور (Server-Side Quote & Quality Verification)
+    const serverQuotes = gateway.getQuotes();
+    const serverQuote = serverQuotes[body.symbol.toUpperCase()];
+
+    if (!serverQuote) {
       return NextResponse.json(
         {
           success: false,
-          error: `STALE_DATA_REJECTED: داده‌های فید بروکر منقضی شده‌اند (${Math.round((now - lastReceived) / 1000)} ثانیه قبل). معامله روی داده قدیمی یا در زمان قطعی مسدود است.`,
+          error: `BROKER_QUOTE_UNAVAILABLE: مظنه قیمت لحظه‌ای از بروکر برای نماد ${body.symbol} در دسترس نیست.`,
         },
         { status: 400 }
       );
     }
 
-    // ۴. بررسی نمادهای مجاز
-    const allowedSymbols = ['XAUUSD', 'EURUSD', 'GBPUSD', 'USDJPY'];
-    if (!allowedSymbols.includes(body.symbol)) {
+    // ۵. اعتبارسنجی کهنگی و کیفیت داده تحمیل‌شده توسط سرور (سرور به threshold کلاینت تکیه نمی‌کند)
+    const serverNow = Date.now();
+    const quoteAgeMs = serverNow - serverQuote.receivedAt;
+
+    if (
+      serverQuote.quality !== 'LIVE' ||
+      quoteAgeMs > SERVER_MAX_STALENESS_MS ||
+      serverQuote.timestamp > serverNow + 2000
+    ) {
       return NextResponse.json(
-        { success: false, error: `SYMBOL_NOT_SUPPORTED: نماد ${body.symbol} در محیط دمو پشتیبانی نمی‌شود.` },
+        {
+          success: false,
+          error: `STALE_SERVER_DATA_REJECTED: داده‌های مظنه بروکر منقضی یا بی‌کیفیت هستند (کیفیت: ${serverQuote.quality}، کهنگی: ${quoteAgeMs}ms). معامله روی مظنه منقضی مسدود است.`,
+        },
         { status: 400 }
       );
     }
 
+    // ۶. اعتبارسنجی جهت معامله
+    if (body.direction !== 'BUY' && body.direction !== 'SELL') {
+      return NextResponse.json(
+        { success: false, error: 'INVALID_DIRECTION: جهت معامله باید دقیقاً BUY یا SELL باشد.' },
+        { status: 400 }
+      );
+    }
+
+    // ۷. اعتبارسنجی فیلدهای عددی، شناسه و حجم معامله
     if (
       !body.intentId ||
       !body.idempotencyKey ||
       !Number.isFinite(body.limitPrice) ||
       !Number.isFinite(body.stopLossPrice) ||
+      !Number.isFinite(body.takeProfitPrice) ||
       !Number.isFinite(body.volumeLots) ||
       body.volumeLots < 0.01 ||
+      body.volumeLots > 50.0 ||
       body.limitPrice <= 0 ||
-      body.stopLossPrice <= 0
+      body.stopLossPrice <= 0 ||
+      body.takeProfitPrice <= 0
     ) {
       return NextResponse.json(
-        { error: 'پارامترهای ارسالی برای ثبت سفارش ناقص یا غیرمعتبر (NaN/منفی/کمتر از حداقل لات) هستند.' },
+        { success: false, error: 'پارامترهای ارسالی برای ثبت سفارش ناقص یا غیرمعتبر (NaN/منفی/خارج از محدوده حجم یا قیمت) هستند.' },
         { status: 400 }
       );
     }
 
     if (!body.executorSessionId || body.executorEpoch === undefined || !Number.isFinite(body.executorEpoch)) {
       return NextResponse.json(
-        { error: 'شناسه نشست و ایپاک مجری الزامی است (احراز هویت تک‌مجری).' },
+        { success: false, error: 'شناسه نشست و ایپاک مجری الزامی است (احراز هویت تک‌مجری).' },
         { status: 403 }
       );
     }
+
+    // ۸. محدودسازی پرچم‌های شبیه‌سازی خطا (تنها در محیط‌های غیرپروداکشن و تست مجاز هستند)
+    const isProduction = process.env.NODE_ENV === 'production';
+    const simulationOptions = isProduction
+      ? {}
+      : {
+          simulateTimeout: body.simulateTimeout,
+          simulateRejection: body.simulateRejection,
+          simulateMissingProtection: body.simulateMissingProtection,
+        };
 
     const res = await CTraderOMS.submitOrder(
       {
@@ -114,11 +179,7 @@ export async function POST(request: NextRequest) {
         executorEpoch: body.executorEpoch,
         deviceLabel: body.deviceLabel,
       },
-      {
-        simulateTimeout: body.simulateTimeout,
-        simulateRejection: body.simulateRejection,
-        simulateMissingProtection: (body as any).simulateMissingProtection,
-      }
+      simulationOptions
     );
 
     return NextResponse.json(res);

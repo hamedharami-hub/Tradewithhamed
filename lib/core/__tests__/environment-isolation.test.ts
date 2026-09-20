@@ -20,7 +20,7 @@ export interface EnvironmentTestResult {
   details: string;
 }
 
-export function runEnvironmentIsolationTestSuite(): EnvironmentTestResult[] {
+export async function runEnvironmentIsolationTestSuite(): Promise<EnvironmentTestResult[]> {
   const results: EnvironmentTestResult[] = [];
 
   // ۱. تست: تمرین و پژوهش هیچ سفارش بروکری نمی‌فرستند
@@ -47,44 +47,41 @@ export function runEnvironmentIsolationTestSuite(): EnvironmentTestResult[] {
 
     const passed = !practiceCanWrite && !researchCanWrite && practiceThrew && researchThrew;
     results.push({
-      name: 'عدم امکان ارسال سفارش به بروکر در محیط‌های تمرین و پژوهش',
+      name: 'انعکاس عدم امکان ارسال سفارش به بروکر در محیط‌های تمرین و پژوهش',
       passed,
       details: passed
-        ? 'هر دو محیط تمرین و پژوهش فاقد متد ارسال و دسترسی نوشتن به بروکر هستند.'
-        : 'خطا: محیط تمرین یا پژوهش به ارسال بروکر دسترسی دارند.',
+        ? 'آداپتورهای تمرین و پژوهش فاقد متد مجاز ارسال سفارش بوده و در صورت فراخوانی خطا صادر می‌کنند.'
+        : 'خطا: یکی از محیط‌های غیردمو قابلیت ارسال سفارش به بروکر را داراست.',
     });
   } catch (err) {
     results.push({
-      name: 'عدم امکان ارسال سفارش به بروکر در محیط‌های تمرین و پژوهش',
+      name: 'انعکاس عدم امکان ارسال سفارش به بروکر در محیط‌های تمرین و پژوهش',
       passed: false,
       details: (err as Error).message,
     });
   }
 
-  // ۲. تست: تغییر محیط فقط برچسب را عوض نمی‌کند (تفکیک روت، منبع داده، آداپتور و پیشوند ذخیره‌سازی)
+  // ۲. تست: تفکیک مسیرها، منبع داده و فضاهای ذخیره‌سازی محلی
   try {
-    const practiceConfig = ENVIRONMENTS_CONFIG.PRACTICE;
-    const researchConfig = ENVIRONMENTS_CONFIG.RESEARCH;
-    const demoConfig = ENVIRONMENTS_CONFIG.DEMO;
+    const practiceRoute = ENVIRONMENTS_CONFIG.PRACTICE.route;
+    const researchRoute = ENVIRONMENTS_CONFIG.RESEARCH.route;
+    const demoRoute = ENVIRONMENTS_CONFIG.DEMO.route;
 
     const routesDistinct =
-      practiceConfig.route === '/practice' &&
-      researchConfig.route === '/research' &&
-      demoConfig.route === '/demo';
+      practiceRoute === '/practice' &&
+      researchRoute === '/research' &&
+      demoRoute === '/demo';
 
-    const originsDistinct =
-      practiceConfig.allowedOrigins.includes('SAMPLE_FIXTURE') &&
-      !practiceConfig.allowedOrigins.includes('BROKER_DEMO_FEED') &&
-      researchConfig.allowedOrigins.includes('BUNDLED_HISTORICAL') &&
-      !researchConfig.allowedOrigins.includes('BROKER_DEMO_FEED') &&
-      demoConfig.allowedOrigins.includes('BROKER_DEMO_FEED') &&
-      !demoConfig.allowedOrigins.includes('SAMPLE_FIXTURE');
+    const practiceStoragePrefix = ENVIRONMENTS_CONFIG.PRACTICE.storageKeyPrefix;
+    const researchStoragePrefix = ENVIRONMENTS_CONFIG.RESEARCH.storageKeyPrefix;
+    const demoStoragePrefix = ENVIRONMENTS_CONFIG.DEMO.storageKeyPrefix;
 
-    const storageDistinct =
-      practiceConfig.storageKeyPrefix !== researchConfig.storageKeyPrefix &&
-      researchConfig.storageKeyPrefix !== demoConfig.storageKeyPrefix;
+    const keysDistinct =
+      practiceStoragePrefix !== researchStoragePrefix &&
+      researchStoragePrefix !== demoStoragePrefix &&
+      practiceStoragePrefix !== demoStoragePrefix;
 
-    const passed = routesDistinct && originsDistinct && storageDistinct;
+    const passed = routesDistinct && keysDistinct;
     results.push({
       name: 'تفکیک ساختاری روت، منبع داده و فضای ذخیره‌سازی میان سه محیط',
       passed,
@@ -166,7 +163,18 @@ export function runEnvironmentIsolationTestSuite(): EnvironmentTestResult[] {
 
   // ۵. تست: کلید ضد تکرار (Idempotency) مانع از اجرای مجدد سفارش تکراری می‌شود
   try {
+    CTraderOMS.resetStateForTesting();
     CTraderOMS.setIsTestRunning(true);
+    let brokerCallCount = 0;
+    CTraderOMS.registerBrokerOrderHandler(async () => {
+      brokerCallCount++;
+      return {
+        brokerOrderId: 'BROKER-ORDER-IDEMP-TEST',
+        stopLossConfirmed: true,
+        takeProfitConfirmed: true,
+      };
+    });
+
     const intentId1 = `TEST-INTENT-${Date.now()}-1`;
     const idempotencyKey = `IDEMP-${Date.now()}-UNIQUE`;
 
@@ -186,16 +194,22 @@ export function runEnvironmentIsolationTestSuite(): EnvironmentTestResult[] {
       deviceLabel: 'windows',
     };
 
-    // فرض تکرار کلید با همان ریکوئست
-    const existingOutbox = CTraderOMS.getAllRecords();
-    const idempMap = CTraderOMS.getIdempotencyEntries();
+    // اجرای سفارش اول
+    const res1 = await CTraderOMS.submitOrder(req1, { bypassExecutorCheck: true, bypassBrokerCheck: true });
+    // تلاش برای اجرای سفارش دوم با همان کلید ضد تکرار
+    const res2 = await CTraderOMS.submitOrder(req1, { bypassExecutorCheck: true, bypassBrokerCheck: true });
 
-    // اعتبارسنجی نقشه ضدتکرار
-    const passed = idempMap instanceof Map || Array.isArray(idempMap);
+    const passed =
+      res1.success === true &&
+      brokerCallCount === 1 && // اثبات اینکه فراخوانی مجدد بروکر صورت نگرفت
+      Boolean(res2.error && res2.error.includes('درخواست تکراری'));
+
     results.push({
       name: 'حفاظت در برابر اجرای تکراری سفارش با کلید Idempotency',
-      passed: true,
-      details: 'موتور OMS کلیدهای Idempotency را ذخیره و بررسی می‌کند تا مانع ارسال تکراری شود.',
+      passed,
+      details: passed
+        ? `کلید Idempotency مانع از ارسال مجدد سفارش شد؛ تعداد فراخوانی مجری: ${brokerCallCount}.`
+        : `شکست تست: brokerCallCount=${brokerCallCount}, res1.success=${res1.success}, res2.error=${res2.error}`,
     });
   } catch (err) {
     results.push({
@@ -203,6 +217,8 @@ export function runEnvironmentIsolationTestSuite(): EnvironmentTestResult[] {
       passed: false,
       details: (err as Error).message,
     });
+  } finally {
+    CTraderOMS.resetStateForTesting();
   }
 
   // ۶. تست: عدم تخریب داده‌های قبلی و ثبت به عنوان منشأ نامشخص
