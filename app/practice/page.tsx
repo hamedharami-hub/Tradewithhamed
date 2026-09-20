@@ -34,6 +34,15 @@ import {
   AlertTriangle,
   RefreshCw,
   Archive,
+  ChevronDown,
+  ChevronUp,
+  HelpCircle,
+  Database,
+  Layers,
+  Clock,
+  DollarSign,
+  Minus,
+  CheckCircle2,
 } from 'lucide-react';
 
 interface ConfirmModalState {
@@ -41,7 +50,7 @@ interface ConfirmModalState {
   title: string;
   message: string;
   targetSymbol?: SymbolId;
-  action: 'SWITCH_SYMBOL' | 'START_NEW_SESSION' | 'RESET_REPLAY';
+  action: 'SWITCH_SYMBOL' | 'START_NEW_SESSION' | 'RESET_REPLAY' | 'CLOSE_ALL_POSITIONS';
 }
 
 function createInitialPracticeEngine(session: PracticeSession) {
@@ -76,7 +85,19 @@ export default function PracticePage() {
   const [executionMessage, setExecutionMessage] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<'SIMPLE' | 'ADVANCED'>('SIMPLE');
 
-  // مودال تأیید برای تغییر نماد، ریست یا شروع نشست جدید
+  // کنترل راهنمای گام‌به‌گام بالا
+  const [isGuideOpen, setIsGuideOpen] = useState(true);
+
+  // تب جهت معامله در فرم معامله (خرید یا فروش)
+  const [tradeDirection, setTradeDirection] = useState<'BUY' | 'SELL'>('BUY');
+
+  // باز یا بسته بودن پنل آرشیو نشست‌ها
+  const [isArchiveOpen, setIsArchiveOpen] = useState(false);
+  const [archivedSessions, setArchivedSessions] = useState<PracticeSession[]>(() =>
+    PracticeSessionManager.loadArchivedSessions()
+  );
+
+  // مودال تأیید برای تغییر نماد، ریست، شروع نشست جدید یا بستن همه معاملات
   const [confirmModal, setConfirmModal] = useState<ConfirmModalState | null>(null);
 
   const [isCouncilModalOpen, setIsCouncilModalOpen] = useState(false);
@@ -142,6 +163,16 @@ export default function PracticePage() {
   // قیمت و کندل جاری بازار
   const lastCandle = replayState.visibleCandles[replayState.visibleCandles.length - 1];
   const currentPrice = lastCandle ? lastCandle.close : session.symbol === 'XAUUSD' ? 2650 : 1.085;
+  const candleTimeFormatted = lastCandle
+    ? new Date(lastCandle.timestamp).toLocaleTimeString('fa-IR', {
+        timeZone: 'UTC',
+        hour: '2-digit',
+        minute: '2-digit',
+      })
+    : '—';
+
+  // بررسی رسیدن به انتهای دیتای نمونه
+  const isEndOfData = replayState.currentStepIndex >= replayState.totalSteps - 1;
 
   // محاسبه پویای نوسان (Wilder ATR) از کندل‌های بسته قابل مشاهده
   const atrValues = useMemo(() => calculateWilderATR(replayState.visibleCandles, 14), [replayState.visibleCandles]);
@@ -153,39 +184,34 @@ export default function PracticePage() {
     return TimeframeResampler.extractMultiTimeframeLevels(replayState.visibleCandles, session.symbol);
   }, [replayState.visibleCandles, session.symbol]);
 
-  // پیش‌نمایش ریسک برای خرید (BUY)
-  const buyRiskPreview = useMemo(() => {
+  // پیش‌نمایش ریسک متناسب با جهت انتخابی کاربر
+  const currentRiskPreview = useMemo(() => {
     if (!isAtrReady || !currentAtr) return null;
     const slDist = currentAtr * 1.2;
     const tpDist = slDist * 2.0;
     const dec = session.symbol === 'XAUUSD' ? 2 : session.symbol === 'USDJPY' ? 3 : 5;
-    return calculateDeterministicRisk({
-      symbol: session.symbol,
-      direction: 'BUY',
-      entryPrice: currentPrice,
-      stopLossPrice: Number((currentPrice - slDist).toFixed(dec)),
-      takeProfitPrice: Number((currentPrice + tpDist).toFixed(dec)),
-      accountEquity: session.accountEquity,
-      riskPercentage: session.config.selectedRiskPercent,
-    });
-  }, [session.symbol, currentPrice, currentAtr, isAtrReady, session.accountEquity, session.config.selectedRiskPercent]);
 
-  // پیش‌نمایش ریسک برای فروش (SELL)
-  const sellRiskPreview = useMemo(() => {
-    if (!isAtrReady || !currentAtr) return null;
-    const slDist = currentAtr * 1.2;
-    const tpDist = slDist * 2.0;
-    const dec = session.symbol === 'XAUUSD' ? 2 : session.symbol === 'USDJPY' ? 3 : 5;
-    return calculateDeterministicRisk({
+    const entry = currentPrice;
+    const sl = tradeDirection === 'BUY' ? Number((entry - slDist).toFixed(dec)) : Number((entry + slDist).toFixed(dec));
+    const tp = tradeDirection === 'BUY' ? Number((entry + tpDist).toFixed(dec)) : Number((entry - tpDist).toFixed(dec));
+
+    const result = calculateDeterministicRisk({
       symbol: session.symbol,
-      direction: 'SELL',
-      entryPrice: currentPrice,
-      stopLossPrice: Number((currentPrice + slDist).toFixed(dec)),
-      takeProfitPrice: Number((currentPrice - tpDist).toFixed(dec)),
+      direction: tradeDirection,
+      entryPrice: entry,
+      stopLossPrice: sl,
+      takeProfitPrice: tp,
       accountEquity: session.accountEquity,
       riskPercentage: session.config.selectedRiskPercent,
     });
-  }, [session.symbol, currentPrice, currentAtr, isAtrReady, session.accountEquity, session.config.selectedRiskPercent]);
+
+    return {
+      ...result,
+      entryPrice: entry,
+      stopLossPrice: sl,
+      takeProfitPrice: tp,
+    };
+  }, [session.symbol, tradeDirection, currentPrice, currentAtr, isAtrReady, session.accountEquity, session.config.selectedRiskPercent]);
 
   // ارزیابی شورا در حالت پیشرفته
   const councilResult = useMemo(() => {
@@ -195,15 +221,15 @@ export default function PracticePage() {
     });
   }, [replayState.activeCandidate, multiAgentConfig, provenance.originLabelFa]);
 
-  // ثبت معامله تمرینی با اعتبارسنجی مستقل و حذف کامل فال‌بک
-  const handleExecuteTrade = (direction: 'BUY' | 'SELL') => {
+  // ثبت معامله تمرینی با اعتبارسنجی قطعی
+  const handleExecuteTrade = () => {
     if (session.isFreezeNewEntries) {
-      setExecutionMessage('خطا: ثبت ورودهای جدید متوقف است. برای ثبت معامله، ابتدا حالت توقف سفارش جدید را غیرفعال کنید.');
+      setExecutionMessage('خطا: ثبت ورودهای جدید متوقف است. برای ثبت معامله، ابتدا دکمه «توقف سفارش جدید» را خاموش کنید.');
       return;
     }
 
     if (!isAtrReady || !currentAtr) {
-      setExecutionMessage('خطا: تعداد کندل‌های بسته برای محاسبه نوسان (ATR) کافی نیست. لطفاً چند کندل جلوتر بروید.');
+      setExecutionMessage('خطا: تعداد کندل‌های بسته برای محاسبه نوسان (ATR) کافی نیست. لطفاً چند کندل به جلو بروید.');
       return;
     }
 
@@ -216,13 +242,13 @@ export default function PracticePage() {
       const dec = session.symbol === 'XAUUSD' ? 2 : session.symbol === 'USDJPY' ? 3 : 5;
 
       const entry = currentPrice;
-      const sl = direction === 'BUY' ? Number((entry - slDist).toFixed(dec)) : Number((entry + slDist).toFixed(dec));
-      const tp = direction === 'BUY' ? Number((entry + tpDist).toFixed(dec)) : Number((entry - tpDist).toFixed(dec));
+      const sl = tradeDirection === 'BUY' ? Number((entry - slDist).toFixed(dec)) : Number((entry + slDist).toFixed(dec));
+      const tp = tradeDirection === 'BUY' ? Number((entry + tpDist).toFixed(dec)) : Number((entry - tpDist).toFixed(dec));
 
-      // اعتبارسنجی مجدد قطعی ریسک بر مبنای آخرین اکوئیتی حساب
+      // اعتبارسنجی مجدد ریسک بر مبنای آخرین اکوئیتی حساب
       const riskResult = calculateDeterministicRisk({
         symbol: session.symbol,
-        direction,
+        direction: tradeDirection,
         entryPrice: entry,
         stopLossPrice: sl,
         takeProfitPrice: tp,
@@ -230,9 +256,8 @@ export default function PracticePage() {
         riskPercentage: session.config.selectedRiskPercent,
       });
 
-      // رد قطعی بدون هیچ‌گونه فال‌بک به حداقل لات در صورت عدم اعتبار
       if (!riskResult.isValid || riskResult.adjustedVolumeLots <= 0) {
-        setExecutionMessage(`سفارش لغو شد: ${riskResult.explanation || 'حجم معامله مجاز نیست.'}`);
+        setExecutionMessage(`سفارش مجاز نیست: ${riskResult.explanation || 'حجم معامله مجاز نیست.'}`);
         return;
       }
 
@@ -240,7 +265,7 @@ export default function PracticePage() {
 
       const { position } = broker.createMarketBracketOrder(
         session.symbol,
-        direction,
+        tradeDirection,
         lots,
         entry,
         sl,
@@ -266,10 +291,31 @@ export default function PracticePage() {
       PracticeSessionManager.saveActiveSession(updatedSession);
 
       setExecutionMessage(
-        `معامله تمرینی ${direction === 'BUY' ? 'خرید' : 'فروش'} با حجم ${lots} لات در قیمت ${entry} (استاپ: ${sl}، تارگت: ${tp}) در حساب مجازی ثبت شد (شناسه: ${position.id}).`
+        `معامله تمرینی ${tradeDirection === 'BUY' ? 'خرید (BUY)' : 'فروش (SELL)'} با حجم ${lots} لات در قیمت ${entry} با موفقیت ثبت شد (شناسه: ${position.id}).`
       );
     } catch (err) {
       setExecutionMessage(`خطا در ثبت معامله: ${(err as Error).message}`);
+    }
+  };
+
+  // بستن دستی یک پوزیشن معین
+  const handleCloseSinglePosition = (positionId: string) => {
+    const broker = brokerRef.current;
+    if (!broker) return;
+
+    const res = broker.closePosition(positionId, currentPrice, 'MANUAL');
+    if (res.success) {
+      const updatedBrokerState = broker.getState();
+      const updatedSession: PracticeSession = {
+        ...session,
+        accountBalance: updatedBrokerState.accountBalance,
+        accountEquity: updatedBrokerState.accountEquity,
+        orders: updatedBrokerState.orders,
+        positions: updatedBrokerState.positions,
+      };
+      setSession(updatedSession);
+      PracticeSessionManager.saveActiveSession(updatedSession);
+      setExecutionMessage(`معامله به شناسه ${positionId} با موفقیت بسته شد (سود/زیان خالص: $${res.netRealizedPnl}).`);
     }
   };
 
@@ -289,38 +335,29 @@ export default function PracticePage() {
     );
   };
 
-  // بستن فوری کلیه پوزیشن‌ها (Panic Close All)
-  const handleCloseAllPositions = () => {
-    const broker = brokerRef.current;
-    if (!broker) return;
-
-    const openCount = broker.getState().positions.filter(p => p.isOpen).length;
+  // درخواست بستن همه پوزیشن‌ها با تأییدیه
+  const handleRequestCloseAll = () => {
+    const openCount = session.positions.filter(p => p.isOpen).length;
     if (openCount === 0) {
-      setExecutionMessage('هیچ پوزیشن بازی برای بستن وجود ندارد.');
+      setExecutionMessage('هیچ معاملهٔ بازی برای بستن وجود ندارد.');
       return;
     }
-    if (!confirm(`آیا از بستن فوری تمامی ${openCount} پوزیشن باز در قیمت جاری اطمینان دارید؟`)) return;
 
-    PositionScalingEngine.triggerPanicKillSwitch(broker, 'MANUAL_PANIC');
-    const updatedBrokerState = broker.getState();
-    const updatedSession: PracticeSession = {
-      ...session,
-      accountBalance: updatedBrokerState.accountBalance,
-      accountEquity: updatedBrokerState.accountEquity,
-      orders: updatedBrokerState.orders,
-      positions: updatedBrokerState.positions,
-    };
-    setSession(updatedSession);
-    PracticeSessionManager.saveActiveSession(updatedSession);
-    setExecutionMessage(`تمام ${openCount} پوزیشن باز با کلید خروج اضطراری بسته شدند.`);
+    setConfirmModal({
+      isOpen: true,
+      title: 'بستن همه معاملات باز',
+      message: `آیا از بستن فوری تمامی ${openCount} معاملهٔ باز در قیمت لحظه‌ای جاری (${currentPrice}) اطمینان دارید؟ سود یا زیان شناور آنها بلافاصله در موجودی حساب تسویه خواهد شد.`,
+      action: 'CLOSE_ALL_POSITIONS',
+    });
   };
 
-  // آغاز یا تغییر نماد با کنترل و هماهنگی کامل نشست
+  // آغاز یا تغییر نماد با هماهنگی کامل نشست
   const executeNewSessionOrReset = (newSymbol: SymbolId) => {
     setIsPlaying(false);
 
     // ۱. بایگانی نشست فعلی
     PracticeSessionManager.archiveSession(session);
+    setArchivedSessions(PracticeSessionManager.loadArchivedSessions());
 
     // ۲. ایجاد نشست تازه
     const fresh = PracticeSessionManager.createNewSession(newSymbol, 10000, session.config);
@@ -362,7 +399,7 @@ export default function PracticePage() {
       setConfirmModal({
         isOpen: true,
         title: 'شروع نشست جدید',
-        message: `این نشست دارای ${openCount} معاملهٔ باز است. شروع نشست جدید سوابق فعلی را بایگانی کرده و حسابی تازه با ۱۰۰۰۰ دلار ایجاد می‌کند. آیا ادامه می‌دهید؟`,
+        message: `این نشست دارای ${openCount} معاملهٔ باز است. شروع نشست جدید سوابق فعلی را در آرشیو بایگانی کرده و حسابی تازه با ۱۰۰۰۰ دلار ایجاد می‌کند. آیا ادامه می‌دهید؟`,
         targetSymbol: session.symbol,
         action: 'START_NEW_SESSION',
       });
@@ -378,7 +415,7 @@ export default function PracticePage() {
       setConfirmModal({
         isOpen: true,
         title: 'شروع مجدد ریپلی',
-        message: `عقب‌بردن ریپلی با حفظ معاملات باز نشست ممنوع است زیرا نشست دارای ${openCount} معاملهٔ باز است. آیا مایلید این نشست بایگانی شده و از ابتدا آغاز گردد؟`,
+        message: `عقب‌بردن ریپلی با حفظ معاملات باز نشست ممنوع است زیرا نشست دارای ${openCount} معاملهٔ باز است. آیا مایلید این نشست بایگانی شده و ریپلی از ابتدا آغاز گردد؟`,
         targetSymbol: session.symbol,
         action: 'RESET_REPLAY',
       });
@@ -389,6 +426,26 @@ export default function PracticePage() {
 
   const handleConfirmModalAction = () => {
     if (!confirmModal) return;
+    if (confirmModal.action === 'CLOSE_ALL_POSITIONS') {
+      const broker = brokerRef.current;
+      if (broker) {
+        PositionScalingEngine.triggerPanicKillSwitch(broker, 'MANUAL_PANIC');
+        const updatedBrokerState = broker.getState();
+        const updatedSession: PracticeSession = {
+          ...session,
+          accountBalance: updatedBrokerState.accountBalance,
+          accountEquity: updatedBrokerState.accountEquity,
+          orders: updatedBrokerState.orders,
+          positions: updatedBrokerState.positions,
+        };
+        setSession(updatedSession);
+        PracticeSessionManager.saveActiveSession(updatedSession);
+        setExecutionMessage('تمام معاملات باز با موفقیت بسته شدند.');
+      }
+      setConfirmModal(null);
+      return;
+    }
+
     const targetSymbol = confirmModal.targetSymbol || session.symbol;
     setConfirmModal(null);
     executeNewSessionOrReset(targetSymbol);
@@ -414,8 +471,12 @@ export default function PracticePage() {
   const openPositions = session.positions.filter(p => p.isOpen);
   const closedPositions = session.positions.filter(p => !p.isOpen);
 
+  // محاسبه سود/زیان شناور کل معاملات باز
+  const totalFloatingPnl = Number(openPositions.reduce((sum, p) => sum + p.unrealizedPnl, 0).toFixed(2));
+
   return (
     <main className="min-h-screen bg-[#0a0d14] text-zinc-100 flex flex-col font-sans select-none" dir="rtl">
+      {/* ناوبار سراسری محیط‌ها */}
       <EnvironmentNavBar
         currentEnv="PRACTICE"
         provenance={provenance}
@@ -424,39 +485,9 @@ export default function PracticePage() {
       />
 
       <div className="flex-1 p-3 sm:p-5 max-w-[1920px] w-full mx-auto space-y-4">
-        {/* نوار اطلاعات نشست فعال */}
-        <div className="bg-[#101420] border border-[#1b2234] px-4 py-2.5 rounded-2xl flex flex-wrap items-center justify-between gap-3 text-xs shadow-sm">
-          <div className="flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
-            <span className="text-zinc-400">شناسه نشست:</span>
-            <span className="font-mono text-zinc-200 font-bold">{session.sessionId}</span>
-          </div>
-
-          <div className="flex items-center gap-4 font-mono">
-            <div>
-              <span className="text-zinc-400 ml-1.5 font-sans">بالانس:</span>
-              <span className="text-zinc-200 font-bold">${session.accountBalance.toFixed(2)}</span>
-            </div>
-            <div>
-              <span className="text-zinc-400 ml-1.5 font-sans">اکوئیتی:</span>
-              <span className="text-cyan-400 font-bold">${session.accountEquity.toFixed(2)}</span>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <button
-              onClick={handleRequestNewSession}
-              className="px-3 py-1.5 rounded-xl bg-[#182030] hover:bg-[#222c42] text-zinc-300 font-bold flex items-center gap-1.5 border border-[#283550] transition-all"
-            >
-              <RefreshCw className="w-3.5 h-3.5 text-amber-400" />
-              <span>شروع نشست جدید</span>
-            </button>
-          </div>
-        </div>
-
         {/* پیام‌های سیستمی */}
         {executionMessage && (
-          <div className="p-3 bg-cyan-500/10 border border-cyan-500/30 rounded-2xl text-xs flex items-center justify-between gap-2 text-cyan-300 shadow-sm">
+          <div className="p-3 bg-cyan-500/10 border border-cyan-500/30 rounded-2xl text-xs flex items-center justify-between gap-2 text-cyan-300 shadow-sm animate-in fade-in">
             <div className="flex items-center gap-2">
               <ShieldCheck className="w-4 h-4 shrink-0" />
               <span>{executionMessage}</span>
@@ -467,7 +498,202 @@ export default function PracticePage() {
           </div>
         )}
 
-        {/* نوار ابزار کنترل بازپخش کندل و انتخاب نماد */}
+        {/* بنر راهنمای گام‌به‌گام برای کاربران غیرتخصصی */}
+        {isGuideOpen && (
+          <div className="bg-[#121726] border border-[#232d44] rounded-2xl p-4 text-xs space-y-3 shadow-md relative animate-in fade-in">
+            <div className="flex items-center justify-between border-b border-[#1c2438] pb-2">
+              <div className="flex items-center gap-2 text-amber-400 font-bold">
+                <BookOpen className="w-4 h-4" />
+                <span>راهنمای سریع: مراحل انجام اولین معاملهٔ تمرینی</span>
+              </div>
+              <button
+                onClick={() => setIsGuideOpen(false)}
+                className="text-zinc-400 hover:text-zinc-200 text-[11px] flex items-center gap-1 bg-[#182032] px-2 py-1 rounded-lg border border-[#232e48]"
+                title="بستن این راهنما (از دکمه راهنما در بالا مجدداً باز می‌شود)"
+              >
+                <span>بستن راهنما</span>
+                <X className="w-3 h-3" />
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 text-zinc-300">
+              <div className="bg-[#161d30] p-2.5 rounded-xl border border-[#202940] space-y-1">
+                <span className="text-amber-400 font-bold block">۱. بررسی نمودار</span>
+                <p className="text-[11px] text-zinc-400 leading-relaxed">
+                  کندل‌های قیمت را روی چارت ببینید و جهت حرکت بازار فرضی را بسنجید.
+                </p>
+              </div>
+
+              <div className="bg-[#161d30] p-2.5 rounded-xl border border-[#202940] space-y-1">
+                <span className="text-amber-400 font-bold block">۲. انتخاب ریسک و حدود</span>
+                <p className="text-[11px] text-zinc-400 leading-relaxed">
+                  در فرم معامله، درصد ریسک را انتخاب کنید؛ حد ضرر و حجم خودکار محاسبه می‌شوند.
+                </p>
+              </div>
+
+              <div className="bg-[#161d30] p-2.5 rounded-xl border border-[#202940] space-y-1">
+                <span className="text-amber-400 font-bold block">۳. ثبت معاملهٔ تمرینی</span>
+                <p className="text-[11px] text-zinc-400 leading-relaxed">
+                  جهت خرید یا فروش را انتخاب کرده و دکمه «ثبت معاملهٔ تمرینی» را بزنید.
+                </p>
+              </div>
+
+              <div className="bg-[#161d30] p-2.5 rounded-xl border border-[#202940] space-y-1">
+                <span className="text-amber-400 font-bold block">۴. جلو بردن کندل‌ها</span>
+                <p className="text-[11px] text-zinc-400 leading-relaxed">
+                  دکمه «کندل بعد» یا «پخش» را بزنید تا زمان بازار پیش برود و معامله با استاپ یا تارگت برخورد کند.
+                </p>
+              </div>
+
+              <div className="bg-[#161d30] p-2.5 rounded-xl border border-[#202940] space-y-1">
+                <span className="text-amber-400 font-bold block">۵. مشاهده دفتر معاملات</span>
+                <p className="text-[11px] text-zinc-400 leading-relaxed">
+                  پس از بسته شدن پوزیشن، نتیجه، سود/زیان خالص و قیمت واقعی خروج را در جدول ببینید.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ۱. نوار هویت محیط */}
+        <div className="bg-[#101420] border border-[#1b2234] px-4 py-2.5 rounded-2xl flex flex-wrap items-center justify-between gap-3 text-xs shadow-sm">
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2">
+              <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse" />
+              <span className="font-bold text-zinc-200">
+                تمرین با دادهٔ نمونه — حساب مجازی — بدون ارسال به بروکر
+              </span>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-3 font-mono text-[11px]">
+            <div className="bg-[#151b2a] px-2.5 py-1 rounded-xl border border-[#222a3d] flex items-center gap-1.5">
+              <Layers className="w-3.5 h-3.5 text-amber-400" />
+              <span className="text-zinc-400 font-sans">نماد:</span>
+              <span className="font-bold text-zinc-200">{session.symbol}</span>
+            </div>
+
+            <div className="bg-[#151b2a] px-2.5 py-1 rounded-xl border border-[#222a3d] flex items-center gap-1.5">
+              <Clock className="w-3.5 h-3.5 text-cyan-400" />
+              <span className="text-zinc-400 font-sans">تایم‌فریم:</span>
+              <span className="font-bold text-zinc-200">۵ دقیقه‌ای (5M)</span>
+            </div>
+
+            <div className="bg-[#151b2a] px-2.5 py-1 rounded-xl border border-[#222a3d] flex items-center gap-1.5">
+              <Clock className="w-3.5 h-3.5 text-zinc-400" />
+              <span className="text-zinc-400 font-sans">زمان کندل:</span>
+              <span className="font-bold text-zinc-200">{candleTimeFormatted} UTC</span>
+            </div>
+
+            <div className="bg-[#151b2a] px-2.5 py-1 rounded-xl border border-[#222a3d] flex items-center gap-1.5">
+              <Database className="w-3.5 h-3.5 text-purple-400" />
+              <span className="text-zinc-400 font-sans">نشست:</span>
+              <span className="font-bold text-purple-300">{session.sessionId}</span>
+            </div>
+
+            {!isGuideOpen && (
+              <button
+                onClick={() => setIsGuideOpen(true)}
+                className="px-2.5 py-1 bg-[#182030] hover:bg-[#202c44] text-amber-300 rounded-xl border border-amber-500/30 flex items-center gap-1 font-sans text-xs font-bold transition-all"
+                title="نمایش راهنمای مراحل معامله"
+              >
+                <HelpCircle className="w-3.5 h-3.5" />
+                <span>راهنما</span>
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* ۲. خلاصهٔ حساب */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+          {/* سرمایه آغاز نشست */}
+          <div className="bg-[#101420] border border-[#1b2234] p-3.5 rounded-2xl space-y-1 shadow-sm">
+            <div className="flex items-center justify-between text-zinc-400 text-xs">
+              <span>سرمایهٔ آغاز نشست</span>
+              <DollarSign className="w-4 h-4 text-zinc-500" />
+            </div>
+            <div className="text-lg font-bold font-mono text-zinc-200">
+              ${session.initialBalance.toFixed(2)}
+            </div>
+            <div className="text-[10px] text-zinc-500 leading-tight">
+              سرمایه اولیه پایه در شروع این نشست
+            </div>
+          </div>
+
+          {/* موجودی پس از معاملات بسته‌شده */}
+          <div className="bg-[#101420] border border-[#1b2234] p-3.5 rounded-2xl space-y-1 shadow-sm">
+            <div className="flex items-center justify-between text-zinc-400 text-xs">
+              <span>موجودی نقدشده (بالانس / Balance)</span>
+              <CheckCircle2 className="w-4 h-4 text-cyan-400" />
+            </div>
+            <div className="text-lg font-bold font-mono text-cyan-400">
+              ${session.accountBalance.toFixed(2)}
+            </div>
+            <div className="text-[10px] text-zinc-500 leading-tight">
+              سرمایه تثبیت‌شده پس از تسویه معاملات بسته‌شده
+            </div>
+          </div>
+
+          {/* ارزش فعلی حساب */}
+          <div className="bg-[#101420] border border-[#1b2234] p-3.5 rounded-2xl space-y-1 shadow-sm">
+            <div className="flex items-center justify-between text-zinc-400 text-xs">
+              <span>ارزش فعلی حساب (اکوئیتی / Equity)</span>
+              <ShieldCheck className="w-4 h-4 text-emerald-400" />
+            </div>
+            <div className="text-lg font-bold font-mono text-emerald-400">
+              ${session.accountEquity.toFixed(2)}
+            </div>
+            <div className="text-[10px] text-zinc-500 leading-tight">
+              کل سرمایه لحظه‌ای با احتساب سود/زیان باز
+            </div>
+          </div>
+
+          {/* سودوزیان معاملات باز */}
+          <div className="bg-[#101420] border border-[#1b2234] p-3.5 rounded-2xl space-y-1 shadow-sm">
+            <div className="flex items-center justify-between text-zinc-400 text-xs">
+              <span>سودوزیان شناور معاملات باز</span>
+              {totalFloatingPnl > 0 ? (
+                <TrendingUp className="w-4 h-4 text-emerald-400" />
+              ) : totalFloatingPnl < 0 ? (
+                <TrendingDown className="w-4 h-4 text-rose-400" />
+              ) : (
+                <Minus className="w-4 h-4 text-zinc-500" />
+              )}
+            </div>
+            <div className={`text-lg font-bold font-mono flex items-center gap-1 ${
+              totalFloatingPnl > 0
+                ? 'text-emerald-400'
+                : totalFloatingPnl < 0
+                ? 'text-rose-400'
+                : 'text-zinc-400'
+            }`}>
+              <span>{totalFloatingPnl > 0 ? `+$${totalFloatingPnl}` : totalFloatingPnl < 0 ? `-$${Math.abs(totalFloatingPnl)}` : '$0.00'}</span>
+              <span className="text-[10px] font-sans font-normal text-zinc-500">
+                ({openPositions.length} معامله باز)
+              </span>
+            </div>
+            <div className="text-[10px] text-zinc-500 leading-tight">
+              سود یا زیان غیرنقدی پوزیشن‌های فعال جاری
+            </div>
+          </div>
+
+          {/* وضعیت ذخیره‌سازی */}
+          <div className="bg-[#101420] border border-[#1b2234] p-3.5 rounded-2xl space-y-1 shadow-sm">
+            <div className="flex items-center justify-between text-zinc-400 text-xs">
+              <span>وضعیت ذخیره‌سازی</span>
+              <Database className="w-4 h-4 text-amber-400" />
+            </div>
+            <div className="text-sm font-bold text-zinc-200 mt-1 flex items-center gap-1.5">
+              <span className="w-2 h-2 rounded-full bg-emerald-400" />
+              <span>ذخیره روی مرورگر</span>
+            </div>
+            <div className="text-[10px] text-zinc-500 leading-tight">
+              ایزوله و نسخه‌دار (بدون نشت داده به دمو یا پژوهش)
+            </div>
+          </div>
+        </div>
+
+        {/* ۳. نمودار و کنترل بازپخش */}
         <div className="bg-[#101420] border border-[#1d2436] p-3 rounded-2xl flex flex-wrap items-center justify-between gap-3 shadow-md">
           {/* انتخاب نماد تک‌نشستی */}
           <div className="flex items-center gap-2">
@@ -487,11 +713,12 @@ export default function PracticePage() {
             ))}
           </div>
 
-          {/* کلیدهای پخش ریپلی */}
+          {/* کلیدهای پخش و کنترل ریپلی */}
           <div className="flex items-center gap-2">
             <button
               onClick={() => setIsPlaying(!isPlaying)}
               className="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-black text-xs font-bold flex items-center gap-1.5 transition-all shadow-md"
+              title={isPlaying ? 'متوقف کردن حرکت خودکار کندل‌ها' : 'پخش خودکار کندل‌ها'}
             >
               {isPlaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
               <span>{isPlaying ? 'توقف بازپخش' : 'پخش کندل‌ها'}</span>
@@ -499,12 +726,35 @@ export default function PracticePage() {
 
             <button
               onClick={handleStepForward}
-              disabled={isPlaying}
+              disabled={isPlaying || isEndOfData}
               className="px-3.5 py-2 rounded-xl bg-[#181f30] hover:bg-[#222a40] text-zinc-200 text-xs font-bold flex items-center gap-1.5 disabled:opacity-50 transition-all border border-[#28324a]"
+              title="جلو بردن یک کندل ۵ دقیقه‌ای"
             >
               <StepForward className="w-4 h-4" />
               <span>کندل بعد</span>
             </button>
+
+            {/* انتخاب سرعت بازپخش */}
+            <div className="flex items-center bg-[#141926] p-1 rounded-xl border border-[#202738] text-[11px]">
+              <span className="text-zinc-500 px-1.5">سرعت:</span>
+              {[
+                { label: '1x', ms: 1000 },
+                { label: '2x', ms: 500 },
+                { label: '4x', ms: 250 },
+              ].map(sp => (
+                <button
+                  key={sp.ms}
+                  onClick={() => setSpeedMs(sp.ms)}
+                  className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold transition-all ${
+                    speedMs === sp.ms
+                      ? 'bg-amber-500 text-black'
+                      : 'text-zinc-400 hover:text-zinc-200'
+                  }`}
+                >
+                  {sp.label}
+                </button>
+              ))}
+            </div>
 
             <button
               onClick={handleRequestResetReplay}
@@ -514,38 +764,90 @@ export default function PracticePage() {
               <RotateCcw className="w-4 h-4" />
             </button>
 
+            <button
+              onClick={handleRequestNewSession}
+              className="px-3 py-1.5 rounded-xl bg-[#182030] hover:bg-[#222c42] text-amber-300 text-xs font-bold flex items-center gap-1.5 border border-[#283550] transition-all"
+              title="شروع نشست تازه با حساب ۱۰۰۰۰ دلاری و بایگانی نشست جاری"
+            >
+              <RefreshCw className="w-3.5 h-3.5 text-amber-400" />
+              <span>شروع نشست جدید</span>
+            </button>
+
             <div className="text-xs text-zinc-400 font-mono bg-[#141926] px-3 py-1.5 rounded-xl border border-[#202738]">
               کندل {replayState.currentStepIndex + 1} از {replayState.totalSteps}
-            </div>
-
-            {/* وضعیت پویای ATR */}
-            <div className="text-xs font-mono bg-[#141926] px-3 py-1.5 rounded-xl border border-[#202738] flex items-center gap-1">
-              <span className="text-zinc-500">ATR:</span>
-              <span className={isAtrReady ? 'text-amber-400 font-bold' : 'text-zinc-500'}>
-                {isAtrReady ? currentAtr?.toFixed(session.symbol === 'XAUUSD' ? 2 : session.symbol === 'USDJPY' ? 3 : 5) : 'در انتظار'}
-              </span>
             </div>
           </div>
         </div>
 
-        {/* چارت و داک معامله */}
-        <div className="grid grid-cols-1 gap-4">
-          <div className="bg-[#0e121c] border border-[#1b2234] rounded-2xl p-3 overflow-hidden shadow-lg">
-            <ChartCanvas
-              candles={replayState.visibleCandles}
-              symbol={session.symbol}
-              macroLevels={macroLevels}
-              activeCandidate={replayState.activeCandidate}
-            />
+        {/* هشدار اتمام دیتای ریپلی */}
+        {isEndOfData && (
+          <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-2xl text-xs flex items-center justify-between gap-3 text-amber-300 shadow-sm">
+            <div className="flex items-center gap-2">
+              <AlertTriangle className="w-4 h-4 shrink-0" />
+              <span>
+                <strong>پایان داده‌های نمونه:</strong> به آخرین کندل موجود در این مجموعه داده رسیدید. برای ادامه تمرین، می‌توانید ریپلی را مجدداً آغاز کرده یا یک نشست جدید شروع کنید.
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={handleRequestResetReplay}
+                className="px-3 py-1 rounded-lg bg-amber-500 text-black font-bold text-xs hover:bg-amber-400 transition-all"
+              >
+                شروع مجدد ریپلی
+              </button>
+            </div>
           </div>
+        )}
 
-          {/* داک معامله ساده با برچسب‌های کنش‌محور */}
-          <div className="bg-[#0f131f] border border-[#222a3d] rounded-2xl p-3 sm:p-4 shadow-xl flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
-            {/* تنظیم ریسک با توضیحات */}
+        {/* چارت کندل‌استیک با داده‌های هماهنگ با موتور تمرین */}
+        <div className="bg-[#0e121c] border border-[#1b2234] rounded-2xl p-3 overflow-hidden shadow-lg">
+          <ChartCanvas
+            candles={replayState.visibleCandles}
+            symbol={session.symbol}
+            macroLevels={macroLevels}
+            activeCandidate={replayState.activeCandidate}
+          />
+        </div>
+
+        {/* ۴. فرم معامله (Trade Form) */}
+        <div className="bg-[#0f131f] border border-[#222a3d] rounded-2xl p-4 shadow-xl space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#1f273b] pb-3">
+            {/* انتخاب جهت معامله */}
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-zinc-400 font-medium">جهت معامله:</span>
+              <button
+                onClick={() => setTradeDirection('BUY')}
+                className={`px-4 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all ${
+                  tradeDirection === 'BUY'
+                    ? 'bg-emerald-600 text-white shadow-md'
+                    : 'bg-[#181f30] text-zinc-400 hover:text-zinc-200'
+                }`}
+              >
+                <TrendingUp className="w-4 h-4" />
+                <span>خرید (BUY)</span>
+              </button>
+
+              <button
+                onClick={() => setTradeDirection('SELL')}
+                className={`px-4 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all ${
+                  tradeDirection === 'SELL'
+                    ? 'bg-rose-600 text-white shadow-md'
+                    : 'bg-[#181f30] text-zinc-400 hover:text-zinc-200'
+                }`}
+              >
+                <TrendingDown className="w-4 h-4" />
+                <span>فروش (SELL)</span>
+              </button>
+            </div>
+
+            {/* سقف ریسک قابل ویرایش */}
             <div className="flex items-center gap-3 bg-[#141926] p-2 rounded-xl border border-[#232d40]">
               <div className="flex items-center gap-1.5">
                 <span className="text-xs text-zinc-400 font-medium">سقف ریسک:</span>
                 <span className="text-xs font-bold text-cyan-400 font-mono">{session.config.selectedRiskPercent}%</span>
+                <span className="text-[10px] bg-cyan-950/60 text-cyan-300 px-1.5 py-0.5 rounded border border-cyan-800">
+                  قابل ویرایش
+                </span>
               </div>
               <div className="flex items-center gap-1">
                 {[0.1, 0.15, 0.2, 0.25].map(r => (
@@ -562,39 +864,13 @@ export default function PracticePage() {
                   </button>
                 ))}
               </div>
-              <span className="text-[10px] text-zinc-400 font-mono mr-auto">
-                حجم خرید: {buyRiskPreview?.adjustedVolumeLots ?? '—'} Lot | فروش: {sellRiskPreview?.adjustedVolumeLots ?? '—'} Lot
-              </span>
             </div>
 
-            {/* دکمه‌های کنش‌محور خرید و فروش */}
+            {/* دکمه‌های کنترل ورود و بستن همه */}
             <div className="flex items-center gap-2">
               <button
-                onClick={() => handleExecuteTrade('BUY')}
-                disabled={session.isFreezeNewEntries || !buyRiskPreview?.isValid}
-                className="flex-1 sm:flex-none px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 text-white text-xs font-bold flex items-center justify-center gap-2 shadow-lg transition-all"
-                title={buyRiskPreview?.isValid ? `ثبت خرید با حجم ${buyRiskPreview.adjustedVolumeLots} لات` : buyRiskPreview?.explanation || 'محاسبه ریسک آماده نیست'}
-              >
-                <TrendingUp className="w-4 h-4" />
-                <span>خرید (BUY) {buyRiskPreview?.isValid ? `(${buyRiskPreview.adjustedVolumeLots}L)` : ''}</span>
-              </button>
-
-              <button
-                onClick={() => handleExecuteTrade('SELL')}
-                disabled={session.isFreezeNewEntries || !sellRiskPreview?.isValid}
-                className="flex-1 sm:flex-none px-5 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 disabled:opacity-40 text-white text-xs font-bold flex items-center justify-center gap-2 shadow-lg transition-all"
-                title={sellRiskPreview?.isValid ? `ثبت فروش با حجم ${sellRiskPreview.adjustedVolumeLots} لات` : sellRiskPreview?.explanation || 'محاسبه ریسک آماده نیست'}
-              >
-                <TrendingDown className="w-4 h-4" />
-                <span>فروش (SELL) {sellRiskPreview?.isValid ? `(${sellRiskPreview.adjustedVolumeLots}L)` : ''}</span>
-              </button>
-            </div>
-
-            {/* دو اقدام اضطراری مجزا و مشخص */}
-            <div className="flex items-center gap-2 border-t sm:border-t-0 sm:border-r border-[#20293d] pt-2 sm:pt-0 sm:pr-3">
-              <button
                 onClick={handleToggleFreeze}
-                className={`px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all border ${
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all border ${
                   session.isFreezeNewEntries
                     ? 'bg-amber-500/20 text-amber-300 border-amber-500/40'
                     : 'bg-[#181f30] text-zinc-400 hover:text-zinc-200 border-[#28324a]'
@@ -606,25 +882,357 @@ export default function PracticePage() {
               </button>
 
               <button
-                onClick={handleCloseAllPositions}
+                onClick={handleRequestCloseAll}
                 disabled={openPositions.length === 0}
-                className="px-3 py-2 rounded-xl bg-rose-950/40 hover:bg-rose-900/60 disabled:opacity-40 text-rose-300 text-xs font-bold flex items-center gap-1.5 border border-rose-800 transition-all"
-                title="بستن فوری تمامی معاملات باز در قیمت جاری"
+                className="px-3 py-1.5 rounded-xl bg-rose-950/40 hover:bg-rose-900/60 disabled:opacity-40 text-rose-300 text-xs font-bold flex items-center gap-1.5 border border-rose-800 transition-all"
+                title="بستن فوری تمامی معاملات باز"
               >
                 <PowerOff className="w-3.5 h-3.5" />
-                <span>بستن فوری همه ({openPositions.length})</span>
+                <span>بستن همه ({openPositions.length})</span>
               </button>
             </div>
           </div>
+
+          {/* مقادیر فرم: تفکیک فیلدهای ویرایشی و محاسبه‌شده */}
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 text-xs">
+            <div className="bg-[#141926] p-2 rounded-xl border border-[#21293a] space-y-0.5">
+              <div className="text-zinc-500 text-[10px] flex items-center justify-between">
+                <span>قیمت ورود:</span>
+                <span className="text-[9px] text-zinc-500 font-sans">محاسبه‌شده</span>
+              </div>
+              <div className="font-mono font-bold text-zinc-200 text-sm">
+                ${currentPrice}
+              </div>
+            </div>
+
+            <div className="bg-[#141926] p-2 rounded-xl border border-[#21293a] space-y-0.5">
+              <div className="text-zinc-500 text-[10px] flex items-center justify-between">
+                <span>حد ضرر (SL):</span>
+                <span className="text-[9px] text-zinc-500 font-sans">بر مبنای نوسان</span>
+              </div>
+              <div className="font-mono font-bold text-rose-400 text-sm">
+                ${currentRiskPreview?.stopLossPrice ?? '—'}
+              </div>
+            </div>
+
+            <div className="bg-[#141926] p-2 rounded-xl border border-[#21293a] space-y-0.5">
+              <div className="text-zinc-500 text-[10px] flex items-center justify-between">
+                <span>حد سود (TP):</span>
+                <span className="text-[9px] text-zinc-500 font-sans">نسبت 1:2</span>
+              </div>
+              <div className="font-mono font-bold text-emerald-400 text-sm">
+                ${currentRiskPreview?.takeProfitPrice ?? '—'}
+              </div>
+            </div>
+
+            <div className="bg-[#141926] p-2 rounded-xl border border-[#21293a] space-y-0.5">
+              <div className="text-zinc-500 text-[10px] flex items-center justify-between">
+                <span>حجم محاسبه‌شده:</span>
+                <span className="text-[9px] text-cyan-400 font-sans">سقف ریسک</span>
+              </div>
+              <div className="font-mono font-bold text-cyan-400 text-sm">
+                {currentRiskPreview?.adjustedVolumeLots ? `${currentRiskPreview.adjustedVolumeLots} Lot` : '—'}
+              </div>
+            </div>
+
+            <div className="bg-[#141926] p-2 rounded-xl border border-[#21293a] space-y-0.5">
+              <div className="text-zinc-500 text-[10px] flex items-center justify-between">
+                <span>هزینهٔ تخمینی کارمزد:</span>
+                <span className="text-[9px] text-zinc-500 font-sans">$6 هر لات</span>
+              </div>
+              <div className="font-mono font-bold text-zinc-300 text-sm">
+                ${currentRiskPreview?.commissionEstimated ?? '—'}
+              </div>
+            </div>
+
+            <div className="bg-[#141926] p-2 rounded-xl border border-[#21293a] space-y-0.5">
+              <div className="text-zinc-500 text-[10px] flex items-center justify-between">
+                <span>ریسک دلاری:</span>
+                <span className="text-[9px] text-zinc-500 font-sans">زیان حداکثر</span>
+              </div>
+              <div className="font-mono font-bold text-amber-400 text-sm">
+                ${currentRiskPreview?.plannedRiskAmount ?? '—'}
+              </div>
+            </div>
+          </div>
+
+          {/* پیام راهنما یا خطای مانع ثبت در فرم */}
+          {session.isFreezeNewEntries ? (
+            <div className="p-2.5 bg-amber-500/10 border border-amber-500/30 rounded-xl text-xs text-amber-300 flex items-center gap-2">
+              <AlertOctagon className="w-4 h-4 shrink-0" />
+              <span>ورود سفارش‌های جدید متوقف است. برای ثبت معامله، حالت توقف را خاموش کنید.</span>
+            </div>
+          ) : !isAtrReady ? (
+            <div className="p-2.5 bg-zinc-800/40 border border-zinc-700/50 rounded-xl text-xs text-zinc-400 flex items-center gap-2">
+              <Clock className="w-4 h-4 shrink-0 text-amber-400" />
+              <span>تعداد کندل‌های بسته برای محاسبه نوسان کافی نیست (حداقل ۱۵ کندل نیاز است). با کلیک روی «کندل بعد» چارت را پیش ببرید.</span>
+            </div>
+          ) : currentRiskPreview && !currentRiskPreview.isValid ? (
+            <div className="p-2.5 bg-rose-500/10 border border-rose-500/30 rounded-xl text-xs text-rose-300 flex items-center gap-2">
+              <AlertTriangle className="w-4 h-4 shrink-0" />
+              <span>سفارش با پارامترهای جاری مجاز نیست: {currentRiskPreview.explanation}</span>
+            </div>
+          ) : null}
+
+          {/* دکمه اصلی ثبت معامله */}
+          <div className="pt-1">
+            <button
+              onClick={handleExecuteTrade}
+              disabled={session.isFreezeNewEntries || !currentRiskPreview?.isValid}
+              className={`w-full py-3 rounded-xl text-sm font-bold flex items-center justify-center gap-2 shadow-xl transition-all ${
+                tradeDirection === 'BUY'
+                  ? 'bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 text-white'
+                  : 'bg-rose-600 hover:bg-rose-500 disabled:opacity-40 text-white'
+              }`}
+            >
+              {tradeDirection === 'BUY' ? <TrendingUp className="w-4 h-4" /> : <TrendingDown className="w-4 h-4" />}
+              <span>
+                ثبت معاملهٔ تمرینی {tradeDirection === 'BUY' ? 'خرید (BUY)' : 'فروش (SELL)'}
+                {currentRiskPreview?.isValid ? ` — حجم: ${currentRiskPreview.adjustedVolumeLots} لات` : ''}
+              </span>
+            </button>
+          </div>
         </div>
 
-        {/* حالت پیشرفته: بازرسی قواعد شورا و تنظیمات عمیق */}
+        {/* ۵. جدول معاملات باز (Open Positions) */}
+        <div className="bg-[#101420] border border-[#1d2436] rounded-2xl p-4 space-y-3 shadow-md">
+          <div className="flex items-center justify-between border-b border-[#1b2234] pb-3">
+            <div className="flex items-center gap-2">
+              <ShieldAlert className="w-4 h-4 text-cyan-400" />
+              <h2 className="text-sm font-bold text-zinc-200">معاملات باز فعال</h2>
+              <span className="text-xs text-zinc-500">({openPositions.length} معامله در جریان)</span>
+            </div>
+
+            {openPositions.length > 0 && (
+              <button
+                onClick={handleRequestCloseAll}
+                className="px-3 py-1 rounded-xl bg-rose-950/40 hover:bg-rose-900/60 text-rose-300 text-xs font-bold border border-rose-800 transition-all flex items-center gap-1.5"
+              >
+                <PowerOff className="w-3.5 h-3.5" />
+                <span>بستن همه معاملات ({openPositions.length})</span>
+              </button>
+            )}
+          </div>
+
+          {openPositions.length === 0 ? (
+            <div className="py-6 text-center space-y-1.5 text-zinc-500">
+              <Info className="w-7 h-7 mx-auto text-zinc-600" />
+              <p className="text-xs font-bold text-zinc-400">در حال حاضر هیچ معاملهٔ بازی در این نشست وجود ندارد.</p>
+              <p className="text-[11px] text-zinc-500">
+                از فرم معامله در بالا برای ثبت یک پوزیشن خرید یا فروش استفاده کنید تا بلافاصله در این جدول ظاهر شود.
+              </p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-right text-xs">
+                <thead>
+                  <tr className="border-b border-[#1f2638] text-zinc-400">
+                    <th className="py-2 px-3">نماد</th>
+                    <th className="py-2 px-3">جهت</th>
+                    <th className="py-2 px-3">حجم (فعلی / اولیه)</th>
+                    <th className="py-2 px-3">قیمت ورود</th>
+                    <th className="py-2 px-3">قیمت لحظه‌ای</th>
+                    <th className="py-2 px-3">حد ضرر (SL)</th>
+                    <th className="py-2 px-3">حد سود (TP)</th>
+                    <th className="py-2 px-3">سود/زیان شناور</th>
+                    <th className="py-2 px-3 text-center">عملیات</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-[#171e2e] font-mono">
+                  {openPositions.map(p => (
+                    <tr key={p.id} className="hover:bg-[#141926]">
+                      <td className="py-2.5 px-3 font-bold text-zinc-200">{p.symbol}</td>
+                      <td className="py-2.5 px-3">
+                        <span className={`px-2 py-0.5 rounded font-bold text-[10px] ${
+                          p.direction === 'BUY' ? 'bg-emerald-500/20 text-emerald-300' : 'bg-rose-500/20 text-rose-300'
+                        }`}>
+                          {p.direction === 'BUY' ? 'خرید' : 'فروش'}
+                        </span>
+                      </td>
+                      <td className="py-2.5 px-3 text-zinc-300">
+                        {p.volumeLots} {p.initialVolumeLots && p.initialVolumeLots !== p.volumeLots ? `(${p.initialVolumeLots})` : ''} Lot
+                      </td>
+                      <td className="py-2.5 px-3 text-zinc-300">{p.entryPrice}</td>
+                      <td className="py-2.5 px-3 text-cyan-300 font-bold">{p.currentPrice}</td>
+                      <td className="py-2.5 px-3 text-rose-400">{p.stopLoss}</td>
+                      <td className="py-2.5 px-3 text-emerald-400">{p.takeProfit}</td>
+                      <td className={`py-2.5 px-3 font-bold ${p.unrealizedPnl >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                        {p.unrealizedPnl >= 0 ? `+$${p.unrealizedPnl}` : `-$${Math.abs(p.unrealizedPnl)}`}
+                      </td>
+                      <td className="py-2.5 px-3 text-center font-sans">
+                        <button
+                          onClick={() => handleCloseSinglePosition(p.id)}
+                          className="px-2.5 py-1 rounded-lg bg-rose-950/40 hover:bg-rose-900/70 text-rose-300 text-[11px] font-bold border border-rose-800 transition-all"
+                          title="بستن این معامله در قیمت لحظه‌ای"
+                        >
+                          بستن معامله
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+
+        {/* ۶. تاریخچهٔ بستهشده (Closed Trades History) */}
+        <div className="bg-[#101420] border border-[#1d2436] rounded-2xl p-4 space-y-3 shadow-md">
+          <div className="flex items-center justify-between border-b border-[#1b2234] pb-3">
+            <div className="flex items-center gap-2">
+              <BookOpen className="w-4 h-4 text-amber-400" />
+              <h2 className="text-sm font-bold text-zinc-200">دفتر معاملات نشست جاری</h2>
+              <span className="text-xs text-zinc-500">(فقط معاملات تسویه‌شده در این نشست)</span>
+            </div>
+            <span className="text-xs text-zinc-400 font-mono">
+              {closedPositions.length} معامله بسته شده
+            </span>
+          </div>
+
+          {closedPositions.length === 0 ? (
+            <div className="py-6 text-center space-y-1.5 text-zinc-500">
+              <Info className="w-7 h-7 mx-auto text-zinc-600" />
+              <p className="text-xs font-bold text-zinc-400">هنوز هیچ معامله‌ای در این نشست تمرینی بسته نشده است.</p>
+              <p className="text-[11px] text-zinc-500">
+                پس از برخورد پوزیشن با حد سود (TP)، حد ضرر (SL) یا بستن دستی، مشخصات واقعی خروج در این جدول ثبت خواهد شد.
+              </p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-right text-xs">
+                <thead>
+                  <tr className="border-b border-[#1f2638] text-zinc-400">
+                    <th className="py-2 px-3">زمان ورود</th>
+                    <th className="py-2 px-3">زمان خروج</th>
+                    <th className="py-2 px-3">نماد</th>
+                    <th className="py-2 px-3">جهت</th>
+                    <th className="py-2 px-3">حجم</th>
+                    <th className="py-2 px-3">قیمت ورود</th>
+                    <th className="py-2 px-3">قیمت واقعی خروج</th>
+                    <th className="py-2 px-3">علت خروج</th>
+                    <th className="py-2 px-3">کارمزد</th>
+                    <th className="py-2 px-3">سود/زیان خالص</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-[#171e2e] font-mono">
+                  {closedPositions.map(p => {
+                    const openTimeStr = p.openedAt
+                      ? new Date(p.openedAt).toLocaleTimeString('fa-IR', { timeZone: 'UTC', hour: '2-digit', minute: '2-digit' })
+                      : 'ثبت نشده';
+                    const closeTimeStr = p.closedAt
+                      ? new Date(p.closedAt).toLocaleTimeString('fa-IR', { timeZone: 'UTC', hour: '2-digit', minute: '2-digit' })
+                      : 'ثبت نشده';
+
+                    return (
+                      <tr key={p.id} className="hover:bg-[#141926]">
+                        <td className="py-2.5 px-3 text-zinc-400 text-[11px]">{openTimeStr}</td>
+                        <td className="py-2.5 px-3 text-zinc-400 text-[11px]">{closeTimeStr}</td>
+                        <td className="py-2.5 px-3 font-bold text-zinc-200">{p.symbol}</td>
+                        <td className="py-2.5 px-3">
+                          <span className={`px-2 py-0.5 rounded font-bold text-[10px] ${
+                            p.direction === 'BUY' ? 'bg-emerald-500/20 text-emerald-300' : 'bg-rose-500/20 text-rose-300'
+                          }`}>
+                            {p.direction === 'BUY' ? 'خرید' : 'فروش'}
+                          </span>
+                        </td>
+                        <td className="py-2.5 px-3 text-zinc-300">{p.volumeLots} Lot</td>
+                        <td className="py-2.5 px-3 text-zinc-300">{p.entryPrice}</td>
+                        <td className="py-2.5 px-3 font-bold text-cyan-300">
+                          {p.exitPrice !== undefined ? p.exitPrice : p.currentPrice}
+                        </td>
+                        <td className="py-2.5 px-3 font-sans text-[11px]">
+                          {p.closeReason === 'TP' ? (
+                            <span className="text-emerald-400">تارگت سود (TP)</span>
+                          ) : p.closeReason === 'SL' ? (
+                            <span className="text-rose-400">حد ضرر (SL)</span>
+                          ) : p.closeReason === 'PARTIAL_TP' ? (
+                            <span className="text-cyan-400">خروج پله‌ای</span>
+                          ) : p.closeReason === 'SESSION_ENDED' ? (
+                            <span className="text-zinc-500">پایان نشست (بایگانی)</span>
+                          ) : (
+                            <span className="text-zinc-300">خروج دستی</span>
+                          )}
+                        </td>
+                        <td className="py-2.5 px-3 text-zinc-400">${p.commissionPaid}</td>
+                        <td className={`py-2.5 px-3 font-bold ${p.realizedPnl >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                          {p.realizedPnl >= 0 ? `+$${p.realizedPnl}` : `-$${Math.abs(p.realizedPnl)}`}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+
+        {/* ۷. آرشیو نشست‌ها (Sessions Archive) */}
+        <div className="bg-[#101420] border border-[#1d2436] rounded-2xl p-4 space-y-3 shadow-md">
+          <div
+            onClick={() => setIsArchiveOpen(!isArchiveOpen)}
+            className="flex items-center justify-between cursor-pointer select-none"
+          >
+            <div className="flex items-center gap-2">
+              <Archive className="w-4 h-4 text-purple-400" />
+              <h2 className="text-sm font-bold text-zinc-200">آرشیو نشست‌های پیشین</h2>
+              <span className="text-xs text-zinc-500">({archivedSessions.length} نشست ذخیره‌شده)</span>
+            </div>
+            <button className="text-zinc-400 hover:text-zinc-200 p-1">
+              {isArchiveOpen ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+            </button>
+          </div>
+
+          {isArchiveOpen && (
+            <div className="pt-2 border-t border-[#1b2234] space-y-2 animate-in fade-in">
+              {archivedSessions.length === 0 ? (
+                <p className="text-xs text-zinc-500 py-3 text-center">
+                  هنوز نشستی بایگانی نشده است. با کلیک روی «شروع نشست جدید»، نشست فعلی به این بخش منتقل می‌شود.
+                </p>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-right text-xs">
+                    <thead>
+                      <tr className="border-b border-[#1f2638] text-zinc-400">
+                        <th className="py-2 px-3">شناسه نشست</th>
+                        <th className="py-2 px-3">تاریخ ایجاد</th>
+                        <th className="py-2 px-3">نماد</th>
+                        <th className="py-2 px-3">موجودی نهایی</th>
+                        <th className="py-2 px-3">تعداد کل معاملات</th>
+                        <th className="py-2 px-3">معاملات پایان‌یافته</th>
+                        <th className="py-2 px-3">یادداشت</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-[#171e2e] font-mono">
+                      {archivedSessions.map(arch => (
+                        <tr key={arch.sessionId} className="hover:bg-[#141926]">
+                          <td className="py-2.5 px-3 text-purple-300 font-bold">{arch.sessionId}</td>
+                          <td className="py-2.5 px-3 text-zinc-400 text-[11px]">
+                            {new Date(arch.createdAt).toLocaleDateString('fa-IR')}
+                          </td>
+                          <td className="py-2.5 px-3 text-zinc-200 font-bold">{arch.symbol}</td>
+                          <td className="py-2.5 px-3 text-cyan-400 font-bold">${arch.accountBalance.toFixed(2)}</td>
+                          <td className="py-2.5 px-3 text-zinc-300">{arch.positions.length}</td>
+                          <td className="py-2.5 px-3 text-zinc-400">
+                            {arch.discardedOpenPositionsCount > 0 ? `${arch.discardedOpenPositionsCount} پوزیشن` : '۰'}
+                          </td>
+                          <td className="py-2.5 px-3 font-sans text-[11px] text-zinc-400">{arch.archiveNoteFa || '—'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* حالت پیشرفته: بازرسی شورا و تنظیمات تخصصی */}
         {viewMode === 'ADVANCED' && (
           <div className="bg-[#121624] border border-purple-500/30 rounded-2xl p-4 space-y-3">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2 text-purple-300">
                 <Sliders className="w-4 h-4" />
-                <h3 className="text-xs font-bold">بخش پیشرفته: فیلترهای استراتژی و قواعد ورود</h3>
+                <h3 className="text-xs font-bold">بخش پیشرفته: فیلترهای استراتژی و بازرسی شورا</h3>
               </div>
               <button
                 onClick={() => setIsCouncilModalOpen(true)}
@@ -641,17 +1249,17 @@ export default function PracticePage() {
                   {councilResult.councilConsensus?.alphaConsensusScore ?? 0}٪
                 </span>
                 <span className="text-[10px] text-zinc-500 block mt-1">
-                  میزان تطابق ستاپ جاری با شروط اسکنر، تحلیل‌گر و منتقد
+                  صرفاً تطابق آماری با چک‌لیست استراتژی، بدون تضمین سود
                 </span>
               </div>
 
               <div className="bg-[#161c2c] p-2.5 rounded-xl border border-[#232c42]">
                 <span className="text-zinc-500 text-[11px] block">وضعیت وتوی منتقد:</span>
                 <span className={`text-xs font-bold mt-1 block ${councilResult.councilConsensus?.vetoTriggered ? 'text-rose-400' : 'text-emerald-400'}`}>
-                  {councilResult.councilConsensus?.vetoTriggered ? 'توقف معامله توسط منتقد' : 'بدون وتو (تأیید قواعد)'}
+                  {councilResult.councilConsensus?.vetoTriggered ? 'توقف معامله توسط منتقد' : 'بدون وتوی فعال (نیازمند انطباق کامل)'}
                 </span>
                 <span className="text-[10px] text-zinc-500 block mt-1">
-                  {councilResult.councilConsensus?.vetoReasonFa || 'قواعد ریسک و رژیم بازار تأیید هستند'}
+                  توجه: «نبود وتو» به معنای تأیید صددرصدی سودآوری نیست.
                 </span>
               </div>
 
@@ -666,7 +1274,7 @@ export default function PracticePage() {
               </div>
             </div>
 
-            {/* کارت‌های ۴ ایجنت شورا با شناسنامه شفاف */}
+            {/* کارت‌های ۴ ایجنت شورا */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5 pt-2 border-t border-[#1e2535]">
               {[councilResult.scannerReview, councilResult.analystReview, councilResult.criticReview, councilResult.judgeReview].map(rev => (
                 <div key={rev.agentRole} className="p-3 bg-[#0d1017] border border-[#1e2535] rounded-xl space-y-1.5 text-[11px]">
@@ -716,82 +1324,9 @@ export default function PracticePage() {
             </div>
           </div>
         )}
-
-        {/* دفتر معاملات و بررسی عملکرد این نشست */}
-        <div className="bg-[#101420] border border-[#1d2436] rounded-2xl p-4 space-y-3 shadow-md">
-          <div className="flex items-center justify-between border-b border-[#1b2234] pb-3">
-            <div className="flex items-center gap-2">
-              <BookOpen className="w-4 h-4 text-amber-400" />
-              <h2 className="text-sm font-bold text-zinc-200">دفتر معاملات نشست جاری</h2>
-              <span className="text-[10px] text-zinc-500">(فقط معاملات این نشست تمرینی)</span>
-            </div>
-            <span className="text-xs text-zinc-400 font-mono">
-              {closedPositions.length} معامله بسته شده
-            </span>
-          </div>
-
-          {closedPositions.length === 0 ? (
-            <div className="py-10 text-center space-y-2 text-zinc-500">
-              <Info className="w-8 h-8 mx-auto text-zinc-600" />
-              <p className="text-xs font-bold text-zinc-400">هنوز هیچ معامله‌ای در این نشست تمرینی بسته نشده است.</p>
-              <p className="text-[11px] text-zinc-500 max-w-md mx-auto leading-relaxed">
-                با دکمه‌های «خرید» یا «فروش» در داک بالا معامله باز کنید. پس از برخورد با حد سود (TP) یا حد ضرر (SL)، سوابق و قیمت دقیق خروج در این جدول نمایش می‌یابد.
-              </p>
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-right text-xs">
-                <thead>
-                  <tr className="border-b border-[#1f2638] text-zinc-400">
-                    <th className="py-2 px-3">جهت</th>
-                    <th className="py-2 px-3">حجم</th>
-                    <th className="py-2 px-3">قیمت ورود</th>
-                    <th className="py-2 px-3">قیمت واقعی خروج</th>
-                    <th className="py-2 px-3">حد ضرر</th>
-                    <th className="py-2 px-3">حد سود</th>
-                    <th className="py-2 px-3">سود/زیان</th>
-                    <th className="py-2 px-3">علت خروج</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-[#171e2e] font-mono">
-                  {closedPositions.map(p => (
-                    <tr key={p.id} className="hover:bg-[#141926]">
-                      <td className="py-2 px-3">
-                        <span className={`px-2 py-0.5 rounded font-bold text-[10px] ${
-                          p.direction === 'BUY' ? 'bg-emerald-500/20 text-emerald-300' : 'bg-rose-500/20 text-rose-300'
-                        }`}>
-                          {p.direction === 'BUY' ? 'خرید' : 'فروش'}
-                        </span>
-                      </td>
-                      <td className="py-2 px-3">{p.volumeLots} Lot</td>
-                      <td className="py-2 px-3">{p.entryPrice}</td>
-                      <td className="py-2 px-3 font-bold text-cyan-300">
-                        {p.exitPrice !== undefined ? p.exitPrice : p.currentPrice}
-                      </td>
-                      <td className="py-2 px-3 text-rose-400">{p.stopLoss}</td>
-                      <td className="py-2 px-3 text-emerald-400">{p.takeProfit}</td>
-                      <td className={`py-2 px-3 font-bold ${p.realizedPnl >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-                        ${p.realizedPnl}
-                      </td>
-                      <td className="py-2 px-3 font-sans text-[11px] text-zinc-400">
-                        {p.closeReason === 'TP'
-                          ? 'تارگت سود (TP)'
-                          : p.closeReason === 'SL'
-                          ? 'حد ضرر (SL)'
-                          : p.closeReason === 'SESSION_ENDED'
-                          ? 'پایان نشست (بایگانی)'
-                          : 'خروج دستی'}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
       </div>
 
-      {/* مودال تأیید تغییر نماد / ریست / شروع نشست جدید */}
+      {/* مودال تأیید تغییر نماد / ریست / شروع نشست جدید / بستن همه */}
       {confirmModal && (
         <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-[#121624] border border-[#232d44] rounded-2xl p-5 max-w-md w-full space-y-4 shadow-2xl animate-in fade-in zoom-in duration-150">
@@ -815,7 +1350,7 @@ export default function PracticePage() {
                 onClick={handleConfirmModalAction}
                 className="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-black text-xs font-bold transition-all shadow-md"
               >
-                تأیید و بایگانی نشست
+                {confirmModal.action === 'CLOSE_ALL_POSITIONS' ? 'تأیید و بستن معاملات' : 'تأیید و بایگانی نشست'}
               </button>
             </div>
           </div>
