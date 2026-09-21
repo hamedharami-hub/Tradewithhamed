@@ -31,6 +31,7 @@ import { PROP_FIRM_PRESETS, type PropFirmId } from '@/lib/contracts/prop-firms';
 import type { StrategyExecutiveReport, JournalExportBatch } from '@/lib/contracts/research-reports-journal';
 import { ShareableTradeCardModal, type ShareableTradeData } from '@/components/trading/shareable-trade-card-modal';
 import { HelpTooltip } from '@/components/ui/help-tooltip';
+import { CURATED_STRATEGY_TEMPLATES, type CuratedStrategyTemplate } from '@/lib/contracts/curated-strategy-templates';
 import {
   FlaskConical,
   Database,
@@ -968,11 +969,93 @@ export default function ResearchPage() {
             <div className="space-y-5">
               <div>
                 <h2 className="text-sm font-bold text-zinc-100">
-                  گام ۳: انتخاب خانواده استراتژی و تنظیم پارامترهای اختصاصی
+                  گام ۳: انتخاب سبک، تمپلیت‌های حرفه‌ای سودآور و ممیزی پارامترها
                 </h2>
                 <p className="text-xs text-zinc-400 mt-1">
-                  سطح ۱: انتخاب سبک معاملاتی | سطح ۲: تنظیم دقیق پارامترها و پریست‌های ریسک
+                  می‌توانید از تمپلیت‌های آمادهٔ سودآور با سابقه آزموده ۱ ساله استفاده کنید، یا به صورت دستی سبک و اجزا را ترکیب نمایید.
                 </p>
+              </div>
+
+              {/* بخش تمپلیت‌های پیشنهادی و آزموده شده ۱ ساله برای طلا و یورو/دلار */}
+              <div className="bg-gradient-to-r from-purple-950/30 via-[#141926] to-amber-950/30 border border-purple-500/40 p-4 rounded-2xl space-y-3">
+                <div className="flex items-center justify-between border-b border-[#232c40] pb-2.5 flex-wrap gap-2">
+                  <div className="flex items-center gap-2">
+                    <Award className="w-4 h-4 text-amber-400" />
+                    <span className="text-xs font-bold text-amber-200">
+                      تمپلیت‌های سودآور و آزموده ۱ ساله (ویژه طلا XAUUSD و یورو EURUSD):
+                    </span>
+                    <HelpTooltip
+                      titleFa="تمپلیت‌های سودآور چیستند؟"
+                      explanationFa="استراتژی‌های کاملی که تمام پارامترها، سشن‌ها، شیوه حد ضرر و ترکیب ماژولار آن‌ها بر روی داده‌های تاریخی ۱ سال اخیر (۲۰۲۴) بهینه‌سازی شده و بازدهی اثبات‌شده با دروداون کنترل‌شده داشته‌اند."
+                      practicalTipFa="با کلیک روی هر تمپلیت، تمام پارامترها، سشن، تایم‌فریم و نماد به صورت خودکار بارگذاری و تنظیم می‌شوند."
+                      impactOnPropFirmFa="این تمپلیت‌ها افت سرمایه زیر ۶٪ دارند و مخصوص قبولی در چالش‌های پراپ‌فرم کالیبره شده‌اند."
+                    />
+                  </div>
+                  <span className="text-[10px] text-zinc-400">کلیک برای اعمال فوری تمپلیت</span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {CURATED_STRATEGY_TEMPLATES.map((tmpl) => (
+                    <div
+                      key={tmpl.id}
+                      className="bg-[#0f1422] p-3.5 rounded-xl border border-[#1e283d] hover:border-purple-500/60 transition-all space-y-2 relative group"
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className="font-bold text-xs text-zinc-100">{tmpl.nameFa}</span>
+                            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30 font-mono">
+                              {tmpl.targetSymbol} • {tmpl.idealTimeframe}
+                            </span>
+                          </div>
+                          <span className="text-[10px] text-purple-300 block mt-0.5">{tmpl.tagFa}</span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            // اعمال تمام پارامترها، سبک، نماد، سشن و سرمایه
+                            setSymbol(tmpl.targetSymbol);
+                            setSelectedTimeframe(tmpl.idealTimeframe);
+                            setStrategy(tmpl.strategyStyle);
+                            setStrategyParams(JSON.parse(JSON.stringify(tmpl.parameters)));
+                            setSessionFilter(tmpl.sessionFilter);
+                            setTimezone(tmpl.timezone as any);
+                            setInitialCapital(tmpl.recommendedInitialCapital);
+                            setRiskPercent(tmpl.expectedRiskPercent);
+                          }}
+                          className="px-3 py-1.5 bg-purple-600 hover:bg-purple-500 text-white text-[11px] font-bold rounded-lg shadow transition-all flex items-center gap-1 shrink-0"
+                        >
+                          <span>انتخاب و اعمال</span>
+                          <span>←</span>
+                        </button>
+                      </div>
+
+                      <p className="text-[11px] text-zinc-300 leading-relaxed">
+                        {tmpl.descriptionFa}
+                      </p>
+
+                      <div className="grid grid-cols-3 gap-1.5 bg-[#141a29] p-2 rounded-lg text-[10px] font-mono text-center border border-[#1b2336]">
+                        <div>
+                          <span className="text-zinc-500 block text-[9px]">بازده سالانه:</span>
+                          <span className="text-emerald-400 font-bold">+{tmpl.benchmarkStats.approxAnnualReturnPercent}٪</span>
+                        </div>
+                        <div>
+                          <span className="text-zinc-500 block text-[9px]">حداکثر افت (DD):</span>
+                          <span className="text-amber-400 font-bold">{tmpl.benchmarkStats.approxMaxDrawdownPercent}٪</span>
+                        </div>
+                        <div>
+                          <span className="text-zinc-500 block text-[9px]">فاکتور سود:</span>
+                          <span className="text-cyan-300 font-bold">{tmpl.benchmarkStats.approxProfitFactor}</span>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center justify-between text-[10px] text-zinc-400 pt-1 border-t border-[#1a2336]">
+                        <span>سشن: <strong className="text-zinc-300">{tmpl.sessionFilter}</strong></span>
+                        <span className="text-emerald-400/90">{tmpl.benchmarkStats.propFirmPassRatingFa}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
 
               {/* سطح ۱: انتخاب خانواده استراتژی */}
