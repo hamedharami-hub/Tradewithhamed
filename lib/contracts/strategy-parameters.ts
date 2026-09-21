@@ -197,6 +197,20 @@ export interface SwingParameters {
   confirmationBars: number;
 }
 
+export type SlippageModelType = 'FIXED' | 'VOLATILITY_SCALED' | 'VOLUME_WEIGHTED';
+export type SpreadModelType = 'FIXED' | 'DYNAMIC_SESSION' | 'NEWS_VOLATILITY';
+export type IntrabarAmbiguityMode = 'PESSIMISTIC' | 'OPTIMISTIC' | 'BAR_POLARITY';
+
+export interface ExecutionFrictionParameters {
+  slippageModelType: SlippageModelType;
+  baseSlippagePips: number;
+  volatilityMultiplier: number;
+  additionalSlippagePips: number;
+  spreadModelType: SpreadModelType;
+  intrabarAmbiguityPolicy: IntrabarAmbiguityMode;
+  randomSkippedFillsPercent: number;
+}
+
 export interface StrategyParameters {
   common: CommonStrategyParameters;
   trendBreakout: TrendBreakoutParameters;
@@ -204,6 +218,7 @@ export interface StrategyParameters {
   smc: SmcParameters;
   scalp: ScalpParameters;
   swing: SwingParameters;
+  executionFriction?: ExecutionFrictionParameters;
 }
 
 export const DEFAULT_COMMON_PARAMETERS: Record<StrategyPreset, CommonStrategyParameters> = {
@@ -425,6 +440,36 @@ export const DEFAULT_SWING_PARAMETERS: Record<StrategyPreset, SwingParameters> =
   },
 };
 
+export const DEFAULT_EXECUTION_FRICTION_PARAMETERS: Record<StrategyPreset, ExecutionFrictionParameters> = {
+  BALANCED: {
+    slippageModelType: 'VOLATILITY_SCALED',
+    baseSlippagePips: 0.2,
+    volatilityMultiplier: 0.1,
+    additionalSlippagePips: 0.0,
+    spreadModelType: 'FIXED',
+    intrabarAmbiguityPolicy: 'PESSIMISTIC',
+    randomSkippedFillsPercent: 0,
+  },
+  CONSERVATIVE: {
+    slippageModelType: 'VOLATILITY_SCALED',
+    baseSlippagePips: 0.4,
+    volatilityMultiplier: 0.2,
+    additionalSlippagePips: 0.2,
+    spreadModelType: 'DYNAMIC_SESSION',
+    intrabarAmbiguityPolicy: 'PESSIMISTIC',
+    randomSkippedFillsPercent: 1.0,
+  },
+  AGGRESSIVE: {
+    slippageModelType: 'FIXED',
+    baseSlippagePips: 0.1,
+    volatilityMultiplier: 0.0,
+    additionalSlippagePips: 0.0,
+    spreadModelType: 'FIXED',
+    intrabarAmbiguityPolicy: 'BAR_POLARITY',
+    randomSkippedFillsPercent: 0,
+  },
+};
+
 export function getDefaultStrategyParameters(preset: StrategyPreset = 'BALANCED'): StrategyParameters {
   return {
     common: { ...DEFAULT_COMMON_PARAMETERS[preset] },
@@ -433,5 +478,6 @@ export function getDefaultStrategyParameters(preset: StrategyPreset = 'BALANCED'
     smc: { ...DEFAULT_SMC_PARAMETERS[preset] },
     scalp: { ...DEFAULT_SCALP_PARAMETERS[preset] },
     swing: { ...DEFAULT_SWING_PARAMETERS[preset] },
+    executionFriction: { ...DEFAULT_EXECUTION_FRICTION_PARAMETERS[preset] },
   };
 }

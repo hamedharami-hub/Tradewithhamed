@@ -2469,6 +2469,147 @@ export default function ResearchPage() {
                   </div>
                 </div>
 
+                {/* ۴. کارت موتور شبیه‌ساز اجرای سفارش و اسلیپیج نوسان‌پذیر (Package C) */}
+                <div className="pt-2 border-t border-[#1f2738] space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2 text-xs font-bold text-cyan-300">
+                      <SlidersHorizontal className="w-4 h-4" />
+                      <span>اصطکاک اجرا و اسلیپیج نوسان‌پذیر (Execution & Slippage Friction):</span>
+                    </div>
+                    <span className="text-[9px] text-cyan-400 font-bold bg-cyan-500/10 px-2 py-0.5 rounded border border-cyan-500/30">
+                      فعال (Package C)
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 text-xs">
+                    <div className="space-y-1">
+                      <span className="text-zinc-400 text-[11px] block">مدل اسلیپیج اجرا:</span>
+                      <select
+                        value={strategyParams.executionFriction?.slippageModelType || 'VOLATILITY_SCALED'}
+                        onChange={(e) =>
+                          setStrategyParams({
+                            ...strategyParams,
+                            executionFriction: {
+                              ...strategyParams.executionFriction!,
+                              slippageModelType: e.target.value as any,
+                            },
+                          })
+                        }
+                        className="w-full bg-[#1b2234] border border-[#2d3a54] rounded-xl px-2.5 py-1.5 text-zinc-100 text-xs font-mono"
+                      >
+                        <option value="VOLATILITY_SCALED">VOLATILITY_SCALED (اسلیپیج متناسب با نوسان کندل)</option>
+                        <option value="VOLUME_WEIGHTED">VOLUME_WEIGHTED (اسلیپیج وزنی حجم سفارش)</option>
+                        <option value="FIXED">FIXED (اسلیپیج ثابت)</option>
+                      </select>
+                    </div>
+
+                    <div className="space-y-1">
+                      <span className="text-zinc-400 text-[11px] block">اسلیپیج پایه (پیپ):</span>
+                      <input
+                        type="number"
+                        step="0.1"
+                        min="0"
+                        max="5"
+                        value={strategyParams.executionFriction?.baseSlippagePips ?? 0.2}
+                        onChange={(e) =>
+                          setStrategyParams({
+                            ...strategyParams,
+                            executionFriction: {
+                              ...strategyParams.executionFriction!,
+                              baseSlippagePips: Number(e.target.value) || 0,
+                            },
+                          })
+                        }
+                        className="w-full bg-[#1b2234] border border-[#2d3a54] rounded-xl px-2.5 py-1.5 text-zinc-100 font-mono text-xs"
+                      />
+                    </div>
+
+                    <div className="space-y-1">
+                      <span className="text-zinc-400 text-[11px] block">ضریب تشدید نوسان (Multiplier):</span>
+                      <input
+                        type="number"
+                        step="0.05"
+                        min="0"
+                        max="2"
+                        value={strategyParams.executionFriction?.volatilityMultiplier ?? 0.1}
+                        onChange={(e) =>
+                          setStrategyParams({
+                            ...strategyParams,
+                            executionFriction: {
+                              ...strategyParams.executionFriction!,
+                              volatilityMultiplier: Number(e.target.value) || 0,
+                            },
+                          })
+                        }
+                        className="w-full bg-[#1b2234] border border-[#2d3a54] rounded-xl px-2.5 py-1.5 text-zinc-100 font-mono text-xs"
+                      />
+                    </div>
+
+                    <div className="space-y-1">
+                      <span className="text-zinc-400 text-[11px] block">مدل اسپرد:</span>
+                      <select
+                        value={strategyParams.executionFriction?.spreadModelType || 'FIXED'}
+                        onChange={(e) =>
+                          setStrategyParams({
+                            ...strategyParams,
+                            executionFriction: {
+                              ...strategyParams.executionFriction!,
+                              spreadModelType: e.target.value as any,
+                            },
+                          })
+                        }
+                        className="w-full bg-[#1b2234] border border-[#2d3a54] rounded-xl px-2.5 py-1.5 text-zinc-100 text-xs font-mono"
+                      >
+                        <option value="FIXED">FIXED (اسپرد ثابت استاندارد)</option>
+                        <option value="DYNAMIC_SESSION">DYNAMIC_SESSION (اسپرد متغیر با رژیم نوسان)</option>
+                        <option value="NEWS_VOLATILITY">NEWS_VOLATILITY (اسپرد نوسانی هنگام اخبار)</option>
+                      </select>
+                    </div>
+
+                    <div className="space-y-1">
+                      <span className="text-zinc-400 text-[11px] block">رفع ابهام برخورد همزمان SL/TP:</span>
+                      <select
+                        value={strategyParams.executionFriction?.intrabarAmbiguityPolicy || 'PESSIMISTIC'}
+                        onChange={(e) =>
+                          setStrategyParams({
+                            ...strategyParams,
+                            executionFriction: {
+                              ...strategyParams.executionFriction!,
+                              intrabarAmbiguityPolicy: e.target.value as any,
+                            },
+                          })
+                        }
+                        className="w-full bg-[#1b2234] border border-[#2d3a54] rounded-xl px-2.5 py-1.5 text-zinc-100 text-xs font-mono"
+                      >
+                        <option value="PESSIMISTIC">PESSIMISTIC (بدبینانه: برخورد اول به SL)</option>
+                        <option value="BAR_POLARITY">BAR_POLARITY (بر اساس رنگ بدنه کندل)</option>
+                        <option value="OPTIMISTIC">OPTIMISTIC (خوش‌بینانه: برخورد اول به TP)</option>
+                      </select>
+                    </div>
+
+                    <div className="space-y-1">
+                      <span className="text-zinc-400 text-[11px] block">لغو تصادفی اردر لیمیت (%):</span>
+                      <input
+                        type="number"
+                        step="0.5"
+                        min="0"
+                        max="50"
+                        value={strategyParams.executionFriction?.randomSkippedFillsPercent ?? 0}
+                        onChange={(e) =>
+                          setStrategyParams({
+                            ...strategyParams,
+                            executionFriction: {
+                              ...strategyParams.executionFriction!,
+                              randomSkippedFillsPercent: Number(e.target.value) || 0,
+                            },
+                          })
+                        }
+                        className="w-full bg-[#1b2234] border border-[#2d3a54] rounded-xl px-2.5 py-1.5 text-zinc-100 font-mono text-xs"
+                      />
+                    </div>
+                  </div>
+                </div>
+
                 {/* سیاست پایان دیتاست */}
                 <div className="pt-2 border-t border-[#1f2738] space-y-2 text-xs">
                   <span className="text-xs font-bold text-zinc-300 block">سیاست پایان دیتاست (End of Data Policy):</span>
@@ -2678,6 +2819,56 @@ export default function ResearchPage() {
                     {backtestResult.profitFactor}
                   </span>
                   <span className="text-[10px] text-zinc-500 block mt-0.5">نسبت سود به زیان ناخالص</span>
+                </div>
+              </div>
+
+              {/* کارت تفکیک اصطکاک اجرای معامله و درگ اسپرد/اسلیپیج (Package C) */}
+              <div className="bg-[#141926] p-4 rounded-2xl border border-[#232c40] space-y-3 text-xs">
+                <div className="flex items-center justify-between border-b border-[#1f2738] pb-2">
+                  <div className="flex items-center gap-2 font-bold text-cyan-300">
+                    <SlidersHorizontal className="w-4 h-4" />
+                    <span>تفکیک هزینه‌های اصطکاک اجرا و تحلیل درگ (Friction Drag & Cost Breakdown):</span>
+                  </div>
+                  <span className="text-[10px] font-mono text-zinc-400">
+                    نسبت اصطکاک به سود ناخالص: <strong className="text-amber-400">{((backtestResult.frictionToGrossProfitRatio || 0) * 100).toFixed(1)}٪</strong>
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 text-center">
+                  <div className="bg-[#1a2132] p-2.5 rounded-xl border border-[#2a354d]">
+                    <span className="text-[10px] text-zinc-400 block">سود ناخالص (Gross Profit):</span>
+                    <span className="text-xs font-bold font-mono text-emerald-400 mt-0.5 block">
+                      ${(backtestResult.grossProfit ?? 0).toLocaleString('en-US', { minimumFractionDigits: 1 })}
+                    </span>
+                  </div>
+
+                  <div className="bg-[#1a2132] p-2.5 rounded-xl border border-[#2a354d]">
+                    <span className="text-[10px] text-zinc-400 block">کل هزینه اسپرد (Spread Cost):</span>
+                    <span className="text-xs font-bold font-mono text-amber-300 mt-0.5 block">
+                      ${(backtestResult.totalSpreadCostDollar ?? 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                    </span>
+                  </div>
+
+                  <div className="bg-[#1a2132] p-2.5 rounded-xl border border-[#2a354d]">
+                    <span className="text-[10px] text-zinc-400 block">کل هزینه اسلیپیج (Slippage Cost):</span>
+                    <span className="text-xs font-bold font-mono text-orange-400 mt-0.5 block">
+                      ${(backtestResult.totalSlippageCostDollar ?? 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                    </span>
+                  </div>
+
+                  <div className="bg-[#1a2132] p-2.5 rounded-xl border border-[#2a354d]">
+                    <span className="text-[10px] text-zinc-400 block">کمیسیون بروکر:</span>
+                    <span className="text-xs font-bold font-mono text-rose-300 mt-0.5 block">
+                      ${(backtestResult.totalCommissions ?? 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                    </span>
+                  </div>
+
+                  <div className="bg-[#1a2132] p-2.5 rounded-xl border border-[#2a354d]">
+                    <span className="text-[10px] text-zinc-400 block">مجموع اصطکاک اجرایی:</span>
+                    <span className="text-xs font-bold font-mono text-purple-300 mt-0.5 block">
+                      ${(backtestResult.frictionCostDollar ?? 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                    </span>
+                  </div>
                 </div>
               </div>
 

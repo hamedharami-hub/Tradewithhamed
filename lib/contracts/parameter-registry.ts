@@ -439,6 +439,84 @@ export const PARAMETER_EFFECT_REGISTRY: Record<string, ParameterRegistryEntry> =
 };
 
 /**
+ * رجیستری پارامترهای اصطکاک اجرا و اسلیپیج نوسان‌پذیر پکیج C
+ */
+export const EXECUTION_FRICTION_EFFECT_REGISTRY: Record<string, ParameterRegistryEntry> = {
+  'executionFriction.slippageModelType': {
+    parameterKey: 'executionFriction.slippageModelType',
+    nameFa: 'مدل اسلیپیج و لغزش اجرای قیمت',
+    strategyFamily: 'COMMON',
+    defaultValue: 'VOLATILITY_SCALED',
+    implementationStatus: 'ACTIVE',
+    consumedBy: 'EventDrivenExecutionEngine.processCandle',
+    measurableEffects: 'نحوه محاسبه لغزش پر شدن معاملات مارکت/استاپ (ثابت، نوسان‌پذیر بر اساس رنج کندل، یا وزنی حجم).',
+    diagnosticReasonCodes: ['SLIPPAGE_ADJUSTED'],
+    engineVersion: '2.4.0',
+  },
+  'executionFriction.baseSlippagePips': {
+    parameterKey: 'executionFriction.baseSlippagePips',
+    nameFa: 'اسلیپیج پایه (پیپ)',
+    strategyFamily: 'COMMON',
+    defaultValue: 0.2,
+    minimumValue: 0.0,
+    maximumValue: 5.0,
+    implementationStatus: 'ACTIVE',
+    consumedBy: 'EventDrivenExecutionEngine.processCandle & evaluatePositionExitOnCandle',
+    measurableEffects: 'حداقل پیپ لغزش نامطلوب در ورود مارکت/استاپ و خروج‌های تارگت/استاپ‌لاس.',
+    diagnosticReasonCodes: ['BASE_SLIPPAGE_APPLIED'],
+    engineVersion: '2.4.0',
+  },
+  'executionFriction.volatilityMultiplier': {
+    parameterKey: 'executionFriction.volatilityMultiplier',
+    nameFa: 'ضریب تشدید اسلیپیج نوسانی',
+    strategyFamily: 'COMMON',
+    defaultValue: 0.1,
+    minimumValue: 0.0,
+    maximumValue: 2.0,
+    implementationStatus: 'ACTIVE',
+    consumedBy: 'EventDrivenExecutionEngine.processCandle',
+    measurableEffects: 'افزایش تصاعدی اسلیپیج در کندل‌های پرشتاب و واید بر اساس رنج پیپی کندل.',
+    diagnosticReasonCodes: ['VOLATILITY_SLIPPAGE_SPIKE'],
+    engineVersion: '2.4.0',
+  },
+  'executionFriction.spreadModelType': {
+    parameterKey: 'executionFriction.spreadModelType',
+    nameFa: 'مدل رفتار اسپرد بازار',
+    strategyFamily: 'COMMON',
+    defaultValue: 'FIXED',
+    implementationStatus: 'ACTIVE',
+    consumedBy: 'EventDrivenExecutionEngine.processCandle',
+    measurableEffects: 'تعیین پویایی اسپرد بروکر در ساعات پرنوسان و مارک‌آپ متغیر در رژیم‌های فرار.',
+    diagnosticReasonCodes: ['DYNAMIC_SPREAD_EXPANDED'],
+    engineVersion: '2.4.0',
+  },
+  'executionFriction.intrabarAmbiguityPolicy': {
+    parameterKey: 'executionFriction.intrabarAmbiguityPolicy',
+    nameFa: 'سیاست رفع ابهام درون‌کندلی همزمانی SL و TP',
+    strategyFamily: 'COMMON',
+    defaultValue: 'PESSIMISTIC',
+    implementationStatus: 'ACTIVE',
+    consumedBy: 'EventDrivenExecutionEngine.evaluatePositionExitOnCandle',
+    measurableEffects: 'اولویت‌بندی محافظه‌کارانه برخورد همزمان SL و TP (بدبینانه، خوش‌بینانه یا بر اساس قطبیت رنگ کندل).',
+    diagnosticReasonCodes: ['AMBIGUOUS_INTRABAR_EXIT'],
+    engineVersion: '2.4.0',
+  },
+  'executionFriction.randomSkippedFillsPercent': {
+    parameterKey: 'executionFriction.randomSkippedFillsPercent',
+    nameFa: 'درصد لغو تصادفی اردر لیمیت در شبیه‌ساز',
+    strategyFamily: 'COMMON',
+    defaultValue: 0,
+    minimumValue: 0,
+    maximumValue: 50,
+    implementationStatus: 'ACTIVE',
+    consumedBy: 'EventDrivenExecutionEngine.processCandle',
+    measurableEffects: 'شبیه‌سازی عدم نفوذ حجم در بوک اردر با پر نشدن تصادفی N درصد اردرهای لیمیت با سید قطعی.',
+    diagnosticReasonCodes: ['SKIPPED_FILL_RANDOM'],
+    engineVersion: '2.4.0',
+  },
+};
+
+/**
  * ماتریس جامع تطابق سبک‌های معاملاتی با تایم‌فریم‌ها
  */
 export interface StyleTimeframeCompatibility {
@@ -533,3 +611,11 @@ export function checkStyleTimeframeCompatibility(
 export function getAuditedParameterCount(): number {
   return Object.keys(PARAMETER_EFFECT_REGISTRY).length;
 }
+
+/**
+ * شمارش پارامترهای خانواده استراتژی (پکیج ۳ - بدون پارامترهای اصطکاک اجرای پکیج C)
+ */
+export function getStrategyParameterCount(): number {
+  return Object.keys(PARAMETER_EFFECT_REGISTRY).filter(k => !k.startsWith('executionFriction.')).length;
+}
+

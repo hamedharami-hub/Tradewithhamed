@@ -85,6 +85,12 @@ export interface PositionLedgerEntry {
   closeReason?: 'SL' | 'TP' | 'MANUAL' | 'EXPIRED' | 'MARGIN_CALL' | 'END_OF_DATA';
   plannedRiskDollar?: number;
   actualRiskDollar?: number;
+  entrySlippagePips?: number;
+  exitSlippagePips?: number;
+  totalSlippagePips?: number;
+  slippageCostDollar?: number;
+  spreadCostDollar?: number;
+  grossRealizedPnl?: number;
   maePips: number; // Maximum Adverse Excursion
   mfePips: number; // Maximum Favorable Excursion
 }

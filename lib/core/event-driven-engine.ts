@@ -116,6 +116,7 @@ export interface EngineConfig {
   randomSeed?: number;
   gapShockMultiplier?: number;
   slippageModel: {
+    modelType?: 'FIXED' | 'VOLATILITY_SCALED' | 'VOLUME_WEIGHTED';
     baseSlippagePips: number;
     volatilityMultiplier: number;
     additionalSlippagePips?: number;
@@ -186,6 +187,7 @@ export class EventDrivenExecutionEngine implements IExecutionPort {
       randomSeed: config.randomSeed ?? 1337,
       gapShockMultiplier: config.gapShockMultiplier ?? 1.0,
       slippageModel: {
+        modelType: config.slippageModel?.modelType ?? 'VOLATILITY_SCALED',
         baseSlippagePips: config.slippageModel?.baseSlippagePips ?? 0.2,
         volatilityMultiplier: config.slippageModel?.volatilityMultiplier ?? 0.1,
         additionalSlippagePips: config.slippageModel?.additionalSlippagePips ?? 0,
@@ -516,9 +518,18 @@ export class EventDrivenExecutionEngine implements IExecutionPort {
       // ب. سفارش بازار (MARKET) - اجرا در بازگشایی کندل بعد با اسپرد و اسلیپیج
       else if (order.orderType === 'MARKET') {
         const gapShock = this.config.gapShockMultiplier ?? 1.0;
+        const candleRangePips = (candle.high - candle.low) / pipVal;
+        const volMultiplier = this.config.slippageModel.volatilityMultiplier || 0;
+        const modelType = this.config.slippageModel.modelType || 'VOLATILITY_SCALED';
+        const volFactor = modelType === 'VOLATILITY_SCALED'
+          ? (1 + volMultiplier * Math.max(0, candleRangePips / 10))
+          : modelType === 'VOLUME_WEIGHTED'
+          ? (1 + volMultiplier * Math.min(2.0, Math.max(0.5, order.volumeLots / 1.0)))
+          : 1.0;
+
         const totalSlippagePips =
           (this.config.slippageModel.baseSlippagePips +
-          (this.config.slippageModel.additionalSlippagePips || 0)) * gapShock;
+          (this.config.slippageModel.additionalSlippagePips || 0)) * volFactor * gapShock;
         appliedSlippagePips = totalSlippagePips;
         const adverseEntrySlippage = totalSlippagePips * pipVal;
         fillPrice = order.direction === 'BUY'
@@ -533,9 +544,18 @@ export class EventDrivenExecutionEngine implements IExecutionPort {
 
         if (canTriggerBuy || canTriggerSell) {
           const gapShock = this.config.gapShockMultiplier ?? 1.0;
+          const candleRangePips = (candle.high - candle.low) / pipVal;
+          const volMultiplier = this.config.slippageModel.volatilityMultiplier || 0;
+          const modelType = this.config.slippageModel.modelType || 'VOLATILITY_SCALED';
+          const volFactor = modelType === 'VOLATILITY_SCALED'
+            ? (1 + volMultiplier * Math.max(0, candleRangePips / 10))
+            : modelType === 'VOLUME_WEIGHTED'
+            ? (1 + volMultiplier * Math.min(2.0, Math.max(0.5, order.volumeLots / 1.0)))
+            : 1.0;
+
           const totalSlippagePips =
             (this.config.slippageModel.baseSlippagePips +
-            (this.config.slippageModel.additionalSlippagePips || 0)) * gapShock;
+            (this.config.slippageModel.additionalSlippagePips || 0)) * volFactor * gapShock;
           appliedSlippagePips = totalSlippagePips;
           const adverseEntrySlippage = totalSlippagePips * pipVal;
 
@@ -560,6 +580,7 @@ export class EventDrivenExecutionEngine implements IExecutionPort {
 
       if (fillPrice !== null) {
         const commission = order.volumeLots * this.config.commissionPerLot;
+        const entrySlippage = appliedSlippagePips ?? 0;
         const fillEvent: ExecutionEventPayload = {
           eventId: this.nextEventId('FIL'),
           intentId: order.intentId,
@@ -575,7 +596,7 @@ export class EventDrivenExecutionEngine implements IExecutionPort {
         this.eventStore.recordEvent(fillEvent);
         events.push(fillEvent);
 
-        this.openPosition(order, fillPrice, commission);
+        this.openPosition(order, fillPrice, commission, entrySlippage, effectiveSpreadPips);
         this.orderAgeMap.delete(order.intentId);
       } else {
         activePending.push(order);
@@ -586,7 +607,7 @@ export class EventDrivenExecutionEngine implements IExecutionPort {
     // ۲. بررسی پوزیشن‌های باز، Breakeven، Partial TP و خروج با SL/TP
     const openPositions = this.ledger.positions.filter(p => p.symbol === symbol && p.isOpen);
     for (const pos of openPositions) {
-      this.evaluatePositionExitOnCandle(pos, candle, symbol, spreadPoints, events);
+      this.evaluatePositionExitOnCandle(pos, candle, symbol, spreadPoints, events, effectiveSpreadPips);
     }
 
     // ۳. به‌روزرسانی ارزش کل دارایی
@@ -599,7 +620,8 @@ export class EventDrivenExecutionEngine implements IExecutionPort {
     candle: Candle,
     symbol: SymbolId,
     spreadPoints: number,
-    events: ExecutionEventPayload[]
+    events: ExecutionEventPayload[],
+    effectiveSpreadPips: number = this.config.defaultSpreadPips
   ): void {
     const pipVal = SYMBOL_SPECS[symbol].pipSize;
     const contractSize = SYMBOL_SPECS[symbol].contractSize;
@@ -739,16 +761,28 @@ export class EventDrivenExecutionEngine implements IExecutionPort {
         this.diagnostics.gapExitCount++;
       }
 
-      const totalSlippagePips =
-        this.config.slippageModel.baseSlippagePips +
-        (this.config.slippageModel.additionalSlippagePips || 0);
-      const adverseExitSlippage = (totalSlippagePips + this.config.defaultSpreadPips * 0.5) * pipVal;
+      // محاسبه اسلیپیج نوسان‌پذیر هنگام خروج بر حسب مدل اسلیپیج
+      const candleRangePips = (candle.high - candle.low) / pipVal;
+      const volMultiplier = this.config.slippageModel.volatilityMultiplier || 0;
+      const modelType = this.config.slippageModel.modelType || 'VOLATILITY_SCALED';
+      const volFactor = modelType === 'VOLATILITY_SCALED'
+        ? (1 + volMultiplier * Math.max(0, candleRangePips / 10))
+        : modelType === 'VOLUME_WEIGHTED'
+        ? (1 + volMultiplier * Math.min(2.0, Math.max(0.5, pos.volumeLots / 1.0)))
+        : 1.0;
+
+      const exitSlippagePips =
+        (this.config.slippageModel.baseSlippagePips +
+        (this.config.slippageModel.additionalSlippagePips || 0)) * volFactor;
+      const adverseExitSlippage = (exitSlippagePips + effectiveSpreadPips * 0.5) * pipVal;
 
       const finalFillPrice = pos.direction === 'BUY'
         ? exitPrice - adverseExitSlippage
         : exitPrice + adverseExitSlippage;
 
       pos.exitPrice = finalFillPrice;
+      pos.exitSlippagePips = Number(exitSlippagePips.toFixed(2));
+      pos.totalSlippagePips = Number(((pos.entrySlippagePips || 0) + exitSlippagePips).toFixed(2));
 
       const priceDiff =
         pos.direction === 'BUY' ? finalFillPrice - pos.entryPrice : pos.entryPrice - finalFillPrice;
@@ -759,10 +793,21 @@ export class EventDrivenExecutionEngine implements IExecutionPort {
       const remainingRealizedPnl = this.pnlInAccountCurrency(symbol, pos.volumeLots, priceDiff, finalFillPrice);
       pos.finalRealizedPnl = Number(remainingRealizedPnl.toFixed(2));
 
+      // محاسبه دقیق هزینه‌های اصطکاک اجرای معامله
+      const totalVolume = pos.initialVolumeLots || pos.volumeLots;
+      const exitSpreadCost = this.pnlInAccountCurrency(symbol, pos.volumeLots, effectiveSpreadPips * pipVal * 0.5, finalFillPrice);
+      pos.spreadCostDollar = Number(((pos.spreadCostDollar || 0) + exitSpreadCost).toFixed(2));
+
+      const exitSlippageCost = this.pnlInAccountCurrency(symbol, pos.volumeLots, exitSlippagePips * pipVal, finalFillPrice);
+      pos.slippageCostDollar = Number(((pos.slippageCostDollar || 0) + exitSlippageCost).toFixed(2));
+
       // سود کل تحقق‌یافته شامل بخش پله‌ای و بخش نهایی منهای کمیسیون کل است
       const totalTradePnl = (pos.partialRealizedPnl || 0) + remainingRealizedPnl - pos.commissionPaid;
       pos.realizedPnl = Number(totalTradePnl.toFixed(2));
       pos.unrealizedPnl = 0;
+
+      // سود ناخالص پیش از اصطکاک (Gross PnL)
+      pos.grossRealizedPnl = Number((pos.realizedPnl + pos.commissionPaid + (pos.spreadCostDollar || 0) + (pos.slippageCostDollar || 0)).toFixed(2));
 
       this.ledger.cashBalance = Number((this.ledger.cashBalance + remainingRealizedPnl - exitCommission).toFixed(2));
       this.ledger.totalRealizedPnl = Number((this.ledger.totalRealizedPnl + remainingRealizedPnl).toFixed(2));
@@ -782,6 +827,7 @@ export class EventDrivenExecutionEngine implements IExecutionPort {
         status: 'FILLED',
         fillPrice: finalFillPrice,
         filledVolume: pos.volumeLots,
+        slippagePips: exitSlippagePips,
         commissionPaid: exitCommission,
         ambiguityFlag: isAmbiguous,
         notes: isAmbiguous
@@ -799,7 +845,17 @@ export class EventDrivenExecutionEngine implements IExecutionPort {
     }
   }
 
-  private openPosition(order: OrderIntentPayload, fillPrice: number, commission: number): void {
+  private openPosition(
+    order: OrderIntentPayload,
+    fillPrice: number,
+    commission: number,
+    entrySlippagePips: number = 0,
+    effectiveSpreadPips: number = this.config.defaultSpreadPips
+  ): void {
+    const pipVal = SYMBOL_SPECS[order.symbol].pipSize;
+    const entrySpreadCost = this.pnlInAccountCurrency(order.symbol, order.volumeLots, effectiveSpreadPips * pipVal * 0.5, fillPrice);
+    const entrySlippageCost = this.pnlInAccountCurrency(order.symbol, order.volumeLots, entrySlippagePips * pipVal, fillPrice);
+
     const position: PositionLedgerEntry = {
       positionId: `POS-${order.intentId}`,
       intentId: order.intentId,
@@ -818,6 +874,12 @@ export class EventDrivenExecutionEngine implements IExecutionPort {
       financingSwap: 0,
       isOpen: true,
       openedTimestamp: this.clock.now(),
+      entrySlippagePips: Number(entrySlippagePips.toFixed(2)),
+      exitSlippagePips: 0,
+      totalSlippagePips: Number(entrySlippagePips.toFixed(2)),
+      spreadCostDollar: Number(entrySpreadCost.toFixed(2)),
+      slippageCostDollar: Number(entrySlippageCost.toFixed(2)),
+      grossRealizedPnl: 0,
       maePips: 0,
       mfePips: 0,
     };

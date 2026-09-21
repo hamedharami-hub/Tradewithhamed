@@ -133,6 +133,12 @@ export interface PerformanceMetrics {
   expectancyR: number; // امید ریاضی بر حسب واحد ریسک R
   netProfit: number;
   netProfitPercent: number;
+  grossProfit?: number;
+  grossLoss?: number;
+  totalSpreadCostDollar?: number;
+  totalSlippageCostDollar?: number;
+  frictionCostDollar?: number;
+  frictionToGrossProfitRatio?: number;
   maxDrawdownAmount: number;
   maxDrawdownPercent: number;
   recoveryFactor: number;
@@ -373,7 +379,14 @@ export class ResearchLab {
     const evaluationCandlesCount = evaluationEndIndex - evaluationStartIndex + 1;
     const warmupCandlesCount = evaluationStartIndex;
 
-    // ایجاد موتور رویدادمحور با تمام قابلیت‌های پکیج ۳
+    // ایجاد موتور رویدادمحور با تمام قابلیت‌های پکیج ۳ و پکیج C
+    const frictionParams = strategyParameters?.executionFriction;
+    const dynamicSpreadEnabled = frictionParams?.spreadModelType === 'DYNAMIC_SESSION' || frictionParams?.spreadModelType === 'NEWS_VOLATILITY';
+    const baseSlippage = frictionParams?.baseSlippagePips ?? 0.2;
+    const volMult = frictionParams?.volatilityMultiplier ?? 0.1;
+    const frictionExtraSlippage = frictionParams?.additionalSlippagePips ?? 0;
+    const skippedFills = options.stressConfig?.randomSkippedFillsPercent ?? frictionParams?.randomSkippedFillsPercent ?? 0;
+
     const engine = new EventDrivenExecutionEngine({
       environment: 'BACKTEST',
       accountNamespace: 'BACKTEST-RUN',
@@ -381,7 +394,8 @@ export class ResearchLab {
       commissionPerLot: options.commissionPerLot ?? SYMBOL_SPECS[symbol].commissionPerLot,
       defaultSpreadPips: (options.stressConfig?.spreadMultiplier ?? 1)
         * (options.defaultSpreadPips ?? SYMBOL_SPECS[symbol].typicalSpreadPips),
-      ambiguityPolicy: 'PESSIMISTIC',
+      useDynamicSpread: dynamicSpreadEnabled,
+      ambiguityPolicy: frictionParams?.intrabarAmbiguityPolicy || 'PESSIMISTIC',
       endOfDataPolicy,
       enableBreakeven: strategyParameters?.common?.enableBreakeven ?? true,
       breakevenTriggerR: strategyParameters?.common?.breakevenTriggerR ?? 1.0,
@@ -396,12 +410,14 @@ export class ResearchLab {
       maxPendingOrders,
       maxCombinedExposure,
       slippageModel: {
-        baseSlippagePips: 0.2,
-        volatilityMultiplier: 0.1,
+        modelType: frictionParams?.slippageModelType ?? 'VOLATILITY_SCALED',
+        baseSlippagePips: baseSlippage,
+        volatilityMultiplier: volMult,
         additionalSlippagePips: additionalSlippagePips
+          + frictionExtraSlippage
           + (options.stressConfig?.slippageAdditionPips ?? 0),
       },
-      randomSkippedFillsPercent: options.stressConfig?.randomSkippedFillsPercent ?? 0,
+      randomSkippedFillsPercent: skippedFills,
       gapShockMultiplier: options.stressConfig?.gapShockMultiplier ?? 1,
       randomSeed: options.randomSeed ?? 1337,
     });
@@ -854,12 +870,16 @@ export class ResearchLab {
     let grossProfit = 0;
     let grossLoss = 0;
     let totalCommissions = 0;
+    let totalSpreadCostDollar = 0;
+    let totalSlippageCostDollar = 0;
     let totalMae = 0;
     let totalMfe = 0;
     let ambiguousTradesCount = 0;
 
     for (const pos of closed) {
       totalCommissions += pos.commissionPaid;
+      totalSpreadCostDollar += pos.spreadCostDollar || 0;
+      totalSlippageCostDollar += pos.slippageCostDollar || 0;
       totalMae += pos.maePips;
       totalMfe += pos.mfePips;
 
@@ -883,6 +903,9 @@ export class ResearchLab {
     const payoffRatio = Number((avgWin / avgLoss).toFixed(2));
     const expectancyR = Number(((winRatePercent / 100) * payoffRatio - (1 - winRatePercent / 100)).toFixed(2));
 
+    const frictionCostDollar = Number((totalCommissions + totalSpreadCostDollar + totalSlippageCostDollar).toFixed(2));
+    const frictionToGrossProfitRatio = grossProfit > 0 ? Number((frictionCostDollar / grossProfit).toFixed(3)) : 0;
+
     let maxDdAmount = 0;
     let maxDdPercent = 0;
     for (const pt of equityCurve) {
@@ -902,6 +925,12 @@ export class ResearchLab {
       expectancyR,
       netProfit,
       netProfitPercent,
+      grossProfit: Number(grossProfit.toFixed(2)),
+      grossLoss: Number(grossLoss.toFixed(2)),
+      totalSpreadCostDollar: Number(totalSpreadCostDollar.toFixed(2)),
+      totalSlippageCostDollar: Number(totalSlippageCostDollar.toFixed(2)),
+      frictionCostDollar,
+      frictionToGrossProfitRatio,
       maxDrawdownAmount: Number(maxDdAmount.toFixed(2)),
       maxDrawdownPercent: Number(maxDdPercent.toFixed(2)),
       recoveryFactor,
