@@ -641,10 +641,37 @@ export class EventDrivenExecutionEngine implements IExecutionPort {
       pos.mfePips = Math.max(pos.mfePips, favorablePips);
     }
 
-    const riskDistance = Math.abs(pos.entryPrice - pos.stopLossPrice);
+    // مبنای ریسک همواره بر اساس حد ضرر اولیه پوزیشن محاسبه می‌شود تا با فعال شدن بریک‌ایون دستخوش تغییر نشود
+    const riskDistance = pos.initialRiskDistance ?? Math.abs(pos.entryPrice - pos.stopLossPrice);
+
+    // ۳. پیش‌بررسی خروج با استاپ‌لاس و مدل رفع ابهام
+    // در صورتی که در این کندل حد ضرر فعال شود، طبق سیاست PESSIMISTIC خروج با زیان در اولویت قرار دارد
+    // و نباید بریک‌ایون یا خروج پله‌ای با فرض کاذب رسیدن به سود پیش از ضرر ثبت شود
+    const resolutionPolicy =
+      this.config.ambiguityPolicy === 'BAR_POLARITY'
+        ? 'BAR_POLARITY'
+        : this.config.ambiguityPolicy === 'OPTIMISTIC'
+        ? 'OPTIMISTIC'
+        : 'PESSIMISTIC';
+
+    const intraRes = resolveIntraBarExit(
+      candle,
+      pos.direction,
+      pos.stopLossPrice,
+      pos.takeProfitPrice,
+      resolutionPolicy
+    );
+
+    const slHit = intraRes.slHit;
+    const tpHit = intraRes.tpHit;
+    const isAmbiguous = intraRes.isAmbiguous;
+
+    // در صورتی که خروج با حد ضرر در همین کندل اتفاق افتاده باشد (به‌ویژه در سیاست بدبینانه)،
+    // نباید بریک‌ایون یا پارشال‌تی‌پی فعال شوند مگر آنکه سیاست رفع ابهام اولویت را به خروج سودآور یا کندل بعدی بدهد
+    const slTakesPrecedence = slHit && (resolutionPolicy === 'PESSIMISTIC' || intraRes.firstExit === 'SL');
 
     // ۱. بررسی Breakeven (ریسک‌فری خودکار)
-    if (this.config.enableBreakeven && !pos.breakevenActivated && riskDistance > 0) {
+    if (!slTakesPrecedence && this.config.enableBreakeven && !pos.breakevenActivated && riskDistance > 0) {
       const triggerR = this.config.breakevenTriggerR ?? 1.0;
       const currentFavorableDistance = isBuy ? candle.high - pos.entryPrice : pos.entryPrice - candle.low;
 
@@ -671,19 +698,26 @@ export class EventDrivenExecutionEngine implements IExecutionPort {
       }
     }
 
-    // ۲. بررسی خروج پله‌ای (Partial Take Profit)
-    if (this.config.enablePartialTp && !pos.isPartialClosed && riskDistance > 0 && pos.volumeLots >= 0.02) {
+    // ۲. بررسی خروج پله‌ای (Partial Take Profit) با رعایت گام لات و حداقل حجم
+    const lotStep = SYMBOL_SPECS[symbol]?.lotStep ?? 0.01;
+    const minLots = SYMBOL_SPECS[symbol]?.minLots ?? 0.01;
+    if (!slTakesPrecedence && this.config.enablePartialTp && !pos.isPartialClosed && riskDistance > 0 && pos.volumeLots >= minLots * 2) {
       const triggerR = this.config.partialTakeProfitTriggerR ?? 1.2;
       const partialTarget = isBuy ? pos.entryPrice + triggerR * riskDistance : pos.entryPrice - triggerR * riskDistance;
       const hitPartial = isBuy ? candle.high >= partialTarget : candle.low <= partialTarget;
 
       if (hitPartial) {
         const percent = (this.config.partialClosePercent ?? 50) / 100;
-        const originalLots = pos.initialVolumeLots || pos.volumeLots;
-        const closedLots = Number((originalLots * percent).toFixed(2));
-        const remainingLots = Number((pos.volumeLots - closedLots).toFixed(2));
+        const totalSteps = Math.round(pos.volumeLots / lotStep);
+        const closedSteps = Math.floor(totalSteps * percent);
+        const remainingSteps = totalSteps - closedSteps;
+        const minSteps = Math.round(minLots / lotStep);
 
-        if (closedLots >= 0.01 && remainingLots >= 0.01) {
+        const decimals = Math.max(0, Math.round(-Math.log10(lotStep)));
+        const closedLots = Number((closedSteps * lotStep).toFixed(decimals));
+        const remainingLots = Number((remainingSteps * lotStep).toFixed(decimals));
+
+        if (closedSteps >= minSteps && remainingSteps >= minSteps) {
           const priceDiffAtTarget = isBuy ? partialTarget - pos.entryPrice : pos.entryPrice - partialTarget;
           const partialPnl = this.pnlInAccountCurrency(symbol, closedLots, priceDiffAtTarget, partialTarget);
 
@@ -715,26 +749,6 @@ export class EventDrivenExecutionEngine implements IExecutionPort {
         }
       }
     }
-
-    // ۳. بررسی برخورد با حد سود و ضرر با مدل رفع ابهام
-    const resolutionPolicy =
-      this.config.ambiguityPolicy === 'BAR_POLARITY'
-        ? 'BAR_POLARITY'
-        : this.config.ambiguityPolicy === 'OPTIMISTIC'
-        ? 'OPTIMISTIC'
-        : 'PESSIMISTIC';
-
-    const intraRes = resolveIntraBarExit(
-      candle,
-      pos.direction,
-      pos.stopLossPrice,
-      pos.takeProfitPrice,
-      resolutionPolicy
-    );
-
-    const slHit = intraRes.slHit;
-    const tpHit = intraRes.tpHit;
-    const isAmbiguous = intraRes.isAmbiguous;
 
     if (isAmbiguous) {
       this.diagnostics.ambiguousExitCount++;
@@ -867,6 +881,8 @@ export class EventDrivenExecutionEngine implements IExecutionPort {
       entryPrice: fillPrice,
       currentPrice: fillPrice,
       stopLossPrice: order.stopLossPrice,
+      initialStopLossPrice: order.stopLossPrice,
+      initialRiskDistance: Math.abs(fillPrice - order.stopLossPrice),
       takeProfitPrice: order.takeProfitPrice,
       unrealizedPnl: 0,
       realizedPnl: 0,

@@ -66,6 +66,8 @@ export interface PositionLedgerEntry {
   entryPrice: number;
   currentPrice: number;
   stopLossPrice: number;
+  initialStopLossPrice?: number;
+  initialRiskDistance?: number;
   takeProfitPrice: number;
   breakevenActivated?: boolean;
   breakevenActivatedTimestamp?: number;

@@ -1029,5 +1029,203 @@ export function runStrategyMtfIntegrityTestSuite(): StrategyMtfTestResult[] {
     });
   }
 
+  // ۳۱. رد سبدهای ناکامل تایم‌فریم بالاتر در صورت وجود گپ یا کمبود میله‌های درونی
+  try {
+    const baseTs = 1700006400000;
+    // ۵ دقیقه با یک کندل جا افتاده: 00:00, 00:05 (00:10 missing), کل ۳ میله در یک سبد ۱۵ دقیقه به جای ۳ میله در جایگاه صحیح
+    const incomplete5M = [
+      makeCandle(baseTs, 1.2500, 1.2510, 1.2490, 1.2505, true),
+      makeCandle(baseTs + 300000, 1.2505, 1.2515, 1.2500, 1.2510, true),
+      // 00:10 جا افتاده است
+    ];
+    const htf15M = TimeframeAggregator.aggregateCandles(incomplete5M, '15M', false, '5M');
+    // چون میله ناکامل است (۲ میله از ۳ میله)، نباید تولید شده باشد
+    const passed = htf15M.length === 0;
+    results.push({
+      name: 'MTF Completeness: Incomplete higher-timeframe buckets with missing bars are rejected',
+      passed,
+      details: `Aggregated 15M count: ${htf15M.length}, expected: 0 (rejected)`,
+    });
+  } catch (err) {
+    results.push({
+      name: 'MTF Completeness: Incomplete higher-timeframe buckets with missing bars are rejected',
+      passed: false,
+      details: (err as Error).message,
+    });
+  }
+
+  // ۳۲. اعتبارسنجی شبکه زمانی و ناهماهنگی مهرهای زمانی (Grid alignment and out-of-grid detection)
+  try {
+    const baseTs = 1700006400000;
+    const offGridCandles = [
+      makeCandle(baseTs, 1.2500, 1.2510, 1.2490, 1.2505, true),
+      makeCandle(baseTs + 120000, 1.2505, 1.2515, 1.2500, 1.2510, true), // +2 min (not aligned with 5M)
+      makeCandle(baseTs + 600000, 1.2510, 1.2520, 1.2505, 1.2515, true),
+    ];
+    const diag = TimeframeAggregator.validateAlignment(offGridCandles, '15M', '5M');
+    const passed = diag.outOfGridTimestampsFound > 0;
+    results.push({
+      name: 'MTF Grid Integrity: Out-of-grid or unaligned timestamps are detected',
+      passed,
+      details: `Out-of-grid found: ${diag.outOfGridTimestampsFound}, Expected > 0`,
+    });
+  } catch (err) {
+    results.push({
+      name: 'MTF Grid Integrity: Out-of-grid or unaligned timestamps are detected',
+      passed: false,
+      details: (err as Error).message,
+    });
+  }
+
+  // ۳۳. حفظ فاصله ریسک اولیه (initialRiskDistance) پس از فعال‌سازی بریک‌ایون برای خروج پله‌ای
+  try {
+    const engine = new EventDrivenExecutionEngine({
+      initialCash: 10000,
+      enableBreakeven: true,
+      breakevenTriggerR: 1.0,
+      breakevenOffsetPips: 0,
+      enablePartialTp: true,
+      partialTakeProfitTriggerR: 1.5,
+      partialClosePercent: 50,
+      moveStopAfterPartial: false,
+    });
+    const intent: OrderIntentPayload = {
+      intentId: 'INT-BE-PTP-ORDER-1',
+      environment: 'BACKTEST',
+      accountNamespace: 'TEST',
+      candidateId: 'CAND-BE-PTP',
+      symbol: 'GBPUSD',
+      orderType: 'MARKET',
+      direction: 'BUY',
+      volumeLots: 1.0,
+      entryPrice: 1.2500,
+      stopLossPrice: 1.2400, // 100 pips initial risk
+      takeProfitPrice: 1.2800,
+      reasonCode: 'TEST',
+      createdTimestamp: 1700000000000,
+      idempotencyKey: 'IDEMP-BE-PTP-1',
+    };
+    engine.submitOrder(intent);
+    engine.processCandle(makeCandle(1700000000000, 1.2500, 1.2510, 1.2490, 1.2500, true), 'GBPUSD');
+
+    // کندل دوم: صعود تا 1.2610 (> 1.0R سود) -> فعال‌سازی بریک‌ایون و تغییر stopLossPrice به 1.2500
+    engine.processCandle(makeCandle(1700000300000, 1.2510, 1.2610, 1.2500, 1.2605, true), 'GBPUSD');
+    const posAfterBE = engine.getLedger().positions[0];
+    const beOk = posAfterBE && posAfterBE.breakevenActivated && posAfterBE.stopLossPrice === posAfterBE.entryPrice;
+
+    // کندل سوم: صعود تا 1.2660 (> 1.5R سود بر مبنای ریسک اولیه ۱۰۰ پیپ)
+    // اگر ریسک مجدداً با استاپ فعلی (صفر) محاسبه می‌شد، تارگت پله‌ای هرگز زده نمی‌شد!
+    engine.processCandle(makeCandle(1700000600000, 1.2605, 1.2660, 1.2600, 1.2650, true), 'GBPUSD');
+    const posAfterPTP = engine.getLedger().positions[0];
+    const ptpOk = posAfterPTP && posAfterPTP.isPartialClosed && posAfterPTP.volumeLots === 0.5;
+
+    const passed = Boolean(beOk && ptpOk);
+    results.push({
+      name: 'Risk Basis Integrity: Partial TP triggers using initial risk distance after breakeven',
+      passed,
+      details: `BE Activated: ${posAfterBE?.breakevenActivated}, Partial Closed: ${posAfterPTP?.isPartialClosed}, Remaining Lots: ${posAfterPTP?.volumeLots}`,
+    });
+  } catch (err) {
+    results.push({
+      name: 'Risk Basis Integrity: Partial TP triggers using initial risk distance after breakeven',
+      passed: false,
+      details: (err as Error).message,
+    });
+  }
+
+  // ۳۴. اولویت‌بندی وقایع نامتعین درون کندلی بر اساس سیاست PESSIMISTIC
+  try {
+    const engine = new EventDrivenExecutionEngine({
+      initialCash: 10000,
+      ambiguityPolicy: 'PESSIMISTIC',
+      enableBreakeven: true,
+      breakevenTriggerR: 1.0,
+      enablePartialTp: true,
+      partialTakeProfitTriggerR: 1.2,
+    });
+    const intent: OrderIntentPayload = {
+      intentId: 'INT-AMBIG-PESS-1',
+      environment: 'BACKTEST',
+      accountNamespace: 'TEST',
+      candidateId: 'CAND-AMBIG',
+      symbol: 'GBPUSD',
+      orderType: 'MARKET',
+      direction: 'BUY',
+      volumeLots: 1.0,
+      entryPrice: 1.2500,
+      stopLossPrice: 1.2450, // 50 pips risk
+      takeProfitPrice: 1.2650,
+      reasonCode: 'TEST',
+      createdTimestamp: 1700000000000,
+      idempotencyKey: 'IDEMP-AMBIG-1',
+    };
+    engine.submitOrder(intent);
+    engine.processCandle(makeCandle(1700000000000, 1.2500, 1.2510, 1.2490, 1.2500, true), 'GBPUSD');
+
+    // کندل واید با سایه در هر دو جهت: هم سقف 1.2570 (> 1.2R) و هم کف 1.2440 (< SL 1.2450) را لمس می‌کند
+    // تحت سیاست بدبینانه (PESSIMISTIC)، استاپ زیان در اولویت است و نباید ابتدا خروج پله‌ای ثبت شود
+    engine.processCandle(makeCandle(1700000300000, 1.2500, 1.2570, 1.2440, 1.2445, true), 'GBPUSD');
+    const pos = engine.getLedger().positions[0];
+    const passed = Boolean(pos && !pos.isOpen && pos.closeReason === 'SL' && !pos.isPartialClosed);
+    results.push({
+      name: 'Event Priority Integrity: Adverse SL hit takes precedence over partial TP in ambiguous candles',
+      passed,
+      details: `Position closed: ${!pos?.isOpen}, Close reason: ${pos?.closeReason}, Partial triggered: ${pos?.isPartialClosed}`,
+    });
+  } catch (err) {
+    results.push({
+      name: 'Event Priority Integrity: Adverse SL hit takes precedence over partial TP in ambiguous candles',
+      passed: false,
+      details: (err as Error).message,
+    });
+  }
+
+  // ۳۵. محاسبات حجم خروج پله‌ای بر اساس lotStep و minLots و حفاظت بقای حجم
+  try {
+    const engine = new EventDrivenExecutionEngine({
+      initialCash: 10000,
+      enablePartialTp: true,
+      partialTakeProfitTriggerR: 1.0,
+      partialClosePercent: 33, // ۳۳٪ از ۰.۰۵ لات -> گام‌های صحیح ۰.۰۱
+    });
+    const intent: OrderIntentPayload = {
+      intentId: 'INT-LOTSTEP-1',
+      environment: 'BACKTEST',
+      accountNamespace: 'TEST',
+      candidateId: 'CAND-LOT',
+      symbol: 'GBPUSD',
+      orderType: 'MARKET',
+      direction: 'BUY',
+      volumeLots: 0.05,
+      entryPrice: 1.2500,
+      stopLossPrice: 1.2400,
+      takeProfitPrice: 1.2700,
+      reasonCode: 'TEST',
+      createdTimestamp: 1700000000000,
+      idempotencyKey: 'IDEMP-LOT-1',
+    };
+    engine.submitOrder(intent);
+    engine.processCandle(makeCandle(1700000000000, 1.2500, 1.2505, 1.2495, 1.2500, true), 'GBPUSD');
+    engine.processCandle(makeCandle(1700000300000, 1.2500, 1.2620, 1.2500, 1.2610, true), 'GBPUSD');
+    const pos = engine.getLedger().positions[0];
+    const closed = pos?.partialClosedVolume ?? 0;
+    const remaining = pos?.volumeLots ?? 0;
+    // 33% of 5 steps = 1 step (0.01), remaining = 4 steps (0.04). Total = 0.05
+    const volumeConservation = Math.abs((closed + remaining) - 0.05) < 0.0001;
+    const validSteps = (closed * 100) % 1 === 0 && (remaining * 100) % 1 === 0;
+    const passed = Boolean(pos && pos.isPartialClosed && volumeConservation && validSteps && closed === 0.01 && remaining === 0.04);
+    results.push({
+      name: 'Lot Step Quantization: Partial TP rounds strictly to symbol lotStep and conserves volume',
+      passed,
+      details: `Closed lots: ${closed}, Remaining lots: ${remaining}, Conservation: ${volumeConservation}`,
+    });
+  } catch (err) {
+    results.push({
+      name: 'Lot Step Quantization: Partial TP rounds strictly to symbol lotStep and conserves volume',
+      passed: false,
+      details: (err as Error).message,
+    });
+  }
+
   return results;
 }
