@@ -30,6 +30,7 @@ import type { StrategyPropPassport, PropFirmEvaluationVerdict } from '@/lib/cont
 import { PROP_FIRM_PRESETS, type PropFirmId } from '@/lib/contracts/prop-firms';
 import type { StrategyExecutiveReport, JournalExportBatch } from '@/lib/contracts/research-reports-journal';
 import { ShareableTradeCardModal, type ShareableTradeData } from '@/components/trading/shareable-trade-card-modal';
+import { HelpTooltip } from '@/components/ui/help-tooltip';
 import {
   FlaskConical,
   Database,
@@ -1067,7 +1068,14 @@ export default function ResearchPage() {
                 {/* فرم پارامترهای مشترک فعال */}
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
                   <div className="space-y-1">
-                    <span className="text-zinc-400 text-[11px]">جهت معامله (Direction Mode):</span>
+                    <div className="flex items-center justify-between">
+                      <span className="text-zinc-400 text-[11px]">جهت معامله:</span>
+                      <HelpTooltip
+                        titleFa="جهت مجاز معاملات (Direction Mode)"
+                        explanationFa="تعیین می‌کند که الگوریتم اجازه دارد در هر دو جهت خرید (Long) و فروش (Short) پوزیشن باز کند یا تنها در یک جهت خاص فعالیت نماید."
+                        practicalTipFa="در بازارهای با روند صعودی قدرتمند، فعال‌سازی Long Only می‌تواند از ضررهای ضد روند جلوگیری کند."
+                      />
+                    </div>
                     <select
                       value={strategyParams.common.directionMode}
                       onChange={(e) =>
@@ -1089,7 +1097,14 @@ export default function ResearchPage() {
 
                   <div>
                     <div className="flex items-center justify-between mb-1">
-                      <span className="text-zinc-400 text-[11px]">نوع سفارش (Order Type):</span>
+                      <div className="flex items-center">
+                        <span className="text-zinc-400 text-[11px]">نوع سفارش (Order Type):</span>
+                        <HelpTooltip
+                          titleFa="نوع اجرای سفارش (Order Execution Type)"
+                          explanationFa="سفارش لیمیت در پولبک و قیمت بهتر وارد می‌شود اما ممکن است جا بماند. سفارش مارکت فوراً در کلوز کندل وارد می‌شود اما ریسک اسلیپیج دارد. سفارش استاپ هنگام شکست پرایس وارد بازار می‌شود."
+                          practicalTipFa="برای استراتژی‌های شکست از Stop و برای بازگشت به میانگین از Limit استفاده کنید."
+                        />
+                      </div>
                       <span className="text-[9px] text-emerald-400 font-bold bg-emerald-500/10 px-1 py-0.5 rounded border border-emerald-500/30">
                         ACTIVE
                       </span>
@@ -1115,7 +1130,15 @@ export default function ResearchPage() {
 
                     <div className="space-y-1">
                       <div className="flex items-center justify-between">
-                        <span className="text-zinc-400 text-[11px]">شیوه حد ضرر (Stop Loss Mode):</span>
+                        <div className="flex items-center">
+                          <span className="text-zinc-400 text-[11px]">شیوه حد ضرر (Stop Loss):</span>
+                          <HelpTooltip
+                            titleFa="شیوه محاسبه حد ضرر (Stop Loss Mode)"
+                            explanationFa="تعیین مبنای قرارگیری استاپ: پویا بر اساس نوسان ATR، پشت پیوت‌های ساختار بازار، یا فاصله عددی پیپ ثابت."
+                            practicalTipFa="مدل ATR خود را با نوسان روز بازار هماهنگ می‌کند و مانع از استاپ خوردن با نویزهای موقت می‌شود."
+                            impactOnPropFirmFa="برای پراپ فرم‌ها، مدل ATR یا ساختار باعث بقای بسیار بالاتر نسبت به پیپ ثابت است."
+                          />
+                        </div>
                         <span className="text-[9px] text-emerald-400 font-bold bg-emerald-500/10 px-1 py-0.5 rounded border border-emerald-500/30">
                           ACTIVE
                         </span>
@@ -2057,6 +2080,291 @@ export default function ResearchPage() {
                   )}
                 </div>
 
+                {/* پنل ترکیب ماژولار سبک‌ها و وزن‌دهی به عوامل تصمیم‌گیری نهایی (Modular Strategy Engine & Decision Drivers) */}
+                <div className="p-4 bg-[#141926] border border-purple-500/40 rounded-2xl space-y-4">
+                  <div className="flex items-center justify-between border-b border-[#1f2738] pb-3 flex-wrap gap-2">
+                    <div className="flex items-center gap-2">
+                      <Layers className="w-4 h-4 text-purple-400" />
+                      <span className="text-xs font-bold text-purple-300">
+                        ترکیب ماژولار سبک‌ها و عوامل تصمیم‌گیری نهایی (Modular Composition & Decision Drivers):
+                      </span>
+                      <HelpTooltip
+                        titleFa="ترکیب ماژولار استراتژی چیست؟"
+                        explanationFa="این بخش به شما اجازه می‌دهد اجزای استراتژی را مثل پازل بسازید: فیلتر روند از یک سبک، تریگر ورود از سبک دیگر، فیلتر حجم سشن برای تایید، و مدیریت خروج پویا."
+                        practicalTipFa="مثال قدرتمند: ترکیب فیلتر روند EMA با تریگر اردربلاک SMC و خروج پویا بر مبنای ATR."
+                        impactOnPropFirmFa="ترکیب فیلتر روند با تاییدیه سشن، شانس قبولی چالش‌های پراپ را تا ۴۰٪ ارتقا می‌دهد."
+                      />
+                    </div>
+
+                    <label className="flex items-center gap-2 cursor-pointer bg-purple-950/40 px-3 py-1 rounded-xl border border-purple-500/30 text-[11px] text-purple-200">
+                      <input
+                        type="checkbox"
+                        checked={strategyParams.modularComposition?.enabled ?? false}
+                        onChange={(e) =>
+                          setStrategyParams({
+                            ...strategyParams,
+                            modularComposition: {
+                              ...(strategyParams.modularComposition || {
+                                enabled: false,
+                                regimeFilterModule: 'AUTO_REGIME',
+                                entryTriggerModule: 'BREAKOUT_CHANNEL',
+                                confirmationModule: 'SESSION_VOLUME',
+                                riskManagementModule: 'ATR_DYNAMIC',
+                                decisionWeighting: {
+                                  vetoPowerRegime: true,
+                                  minConfidenceScorePercent: 65,
+                                  fvgConfirmationBonusPercent: 15,
+                                  sessionVolumeWeightPercent: 20,
+                                },
+                              }),
+                              enabled: e.target.checked,
+                            },
+                          })
+                        }
+                        className="rounded accent-purple-500"
+                      />
+                      <span>فعال‌سازی حالت ترکیب ماژولار سبک‌ها</span>
+                    </label>
+                  </div>
+
+                  {strategyParams.modularComposition?.enabled && (
+                    <div className="space-y-4 pt-1">
+                      {/* ۴ ماژول ساختار استراتژی */}
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
+                        {/* ۱. ماژول فیلتر رژیم / روند */}
+                        <div className="bg-[#0f1422] p-3 rounded-xl border border-[#1e263c] space-y-1.5">
+                          <div className="flex items-center justify-between">
+                            <span className="text-zinc-300 font-bold text-[11px]">۱. فیلتر روند و رژیم بازار:</span>
+                            <HelpTooltip
+                              titleFa="ماژول فیلتر روند و رژیم"
+                              explanationFa="تعیین می‌کند که معاملات همسو با جهت بازار کلان باشند و در بازارهای رنج و پرنویز، اردرهای پرریسک متوقف گردند."
+                            />
+                          </div>
+                          <select
+                            value={strategyParams.modularComposition.regimeFilterModule}
+                            onChange={(e) =>
+                              setStrategyParams({
+                                ...strategyParams,
+                                modularComposition: {
+                                  ...strategyParams.modularComposition!,
+                                  regimeFilterModule: e.target.value as any,
+                                },
+                              })
+                            }
+                            className="w-full bg-[#1b2234] border border-[#2d3a54] rounded-xl px-2.5 py-1.5 text-zinc-100 text-[11px] font-mono"
+                          >
+                            <option value="AUTO_REGIME">تشخیص خودکار رژیم (ADX + شیب EMA)</option>
+                            <option value="EMA_TREND">روند کلان میانگین متحرک (EMA Trend Filter)</option>
+                            <option value="CHOP_BLOCKER">مسدودساز بازارهای خنثی و فشرده (Chop Blocker)</option>
+                            <option value="OFF">غیرفعال (ورود بدون فیلتر رژیم)</option>
+                          </select>
+                        </div>
+
+                        {/* ۲. ماژول ماشه ورود Entry Trigger */}
+                        <div className="bg-[#0f1422] p-3 rounded-xl border border-[#1e263c] space-y-1.5">
+                          <div className="flex items-center justify-between">
+                            <span className="text-zinc-300 font-bold text-[11px]">۲. ماشه نقطه ورود (Trigger):</span>
+                            <HelpTooltip
+                              titleFa="ماژول ماشه ورود"
+                              explanationFa="الگوی دقیق قیمتی که سیگنال ورود صادر می‌کند. آیا به محض شکست کانال باشد، یا سوییپ نقدینگی اسمارت مانی، یا برگشت از اشباع میانگین؟"
+                            />
+                          </div>
+                          <select
+                            value={strategyParams.modularComposition.entryTriggerModule}
+                            onChange={(e) =>
+                              setStrategyParams({
+                                ...strategyParams,
+                                modularComposition: {
+                                  ...strategyParams.modularComposition!,
+                                  entryTriggerModule: e.target.value as any,
+                                },
+                              })
+                            }
+                            className="w-full bg-[#1b2234] border border-[#2d3a54] rounded-xl px-2.5 py-1.5 text-zinc-100 text-[11px] font-mono"
+                          >
+                            <option value="BREAKOUT_CHANNEL">شکست کانال دانچیان (Donchian Breakout)</option>
+                            <option value="SMC_ORDERBLOCK">اوردر بلاک و نقدینگی SMC (Smart Money)</option>
+                            <option value="MEAN_REVERSION_Z">بازگشت از انحراف باندها (Mean Reversion Z)</option>
+                            <option value="SCALP_MOMENTUM">مومنتوم سریع اسکلپ (Scalp Momentum)</option>
+                            <option value="HYBRID_CONSENSUS">اجماع هیبریدی سبک‌ها (Multi-Style Consensus)</option>
+                          </select>
+                        </div>
+
+                        {/* ۳. ماژول تاییدیه حجم و سشن */}
+                        <div className="bg-[#0f1422] p-3 rounded-xl border border-[#1e263c] space-y-1.5">
+                          <div className="flex items-center justify-between">
+                            <span className="text-zinc-300 font-bold text-[11px]">۳. فیلتر تاییدیه (Confirmation):</span>
+                            <HelpTooltip
+                              titleFa="ماژول تاییدیه دوم"
+                              explanationFa="یک لایه اعتبارسنجی مستقل برای اطمینان از اینکه حجم نقدینگی کافی وجود دارد و ورود در خلاء نقدینگی صورت نمی‌گیرد."
+                            />
+                          </div>
+                          <select
+                            value={strategyParams.modularComposition.confirmationModule}
+                            onChange={(e) =>
+                              setStrategyParams({
+                                ...strategyParams,
+                                modularComposition: {
+                                  ...strategyParams.modularComposition!,
+                                  confirmationModule: e.target.value as any,
+                                },
+                              })
+                            }
+                            className="w-full bg-[#1b2234] border border-[#2d3a54] rounded-xl px-2.5 py-1.5 text-zinc-100 text-[11px] font-mono"
+                          >
+                            <option value="SESSION_VOLUME">نقدینگی سشن معاملاتی لندن/نیویورک</option>
+                            <option value="ADX_MOMENTUM">قدرت شتاب مومنتوم (ADX Momentum)</option>
+                            <option value="MULTI_TIMEFRAME">تاییدیه جهت تایم‌فریم بالاتر (MTF)</option>
+                            <option value="NONE">بدون تاییدیه ثانویه (تک مرحله‌ای)</option>
+                          </select>
+                        </div>
+
+                        {/* ۴. ماژول مدیریت ریسک و خروج */}
+                        <div className="bg-[#0f1422] p-3 rounded-xl border border-[#1e263c] space-y-1.5">
+                          <div className="flex items-center justify-between">
+                            <span className="text-zinc-300 font-bold text-[11px]">۴. مدیریت خروج و ریسک:</span>
+                            <HelpTooltip
+                              titleFa="ماژول مدیریت ریسک و خروج"
+                              explanationFa="نحوه محاسبه استاپ و تارگت معامله. آیا با ATR نوسان‌پذیر باشد یا پشت سطوح ساختار بازار؟"
+                            />
+                          </div>
+                          <select
+                            value={strategyParams.modularComposition.riskManagementModule}
+                            onChange={(e) =>
+                              setStrategyParams({
+                                ...strategyParams,
+                                modularComposition: {
+                                  ...strategyParams.modularComposition!,
+                                  riskManagementModule: e.target.value as any,
+                                },
+                              })
+                            }
+                            className="w-full bg-[#1b2234] border border-[#2d3a54] rounded-xl px-2.5 py-1.5 text-zinc-100 text-[11px] font-mono"
+                          >
+                            <option value="ATR_DYNAMIC">پویا بر مبنای ATR نوسان روزانه</option>
+                            <option value="STRUCTURE_PROTECTED">محافظت پشت پیوت‌های ساختار قیمت</option>
+                            <option value="FIXED_CONSERVATIVE">محافظه‌کارانه با استاپ و تارگت استاندارد</option>
+                          </select>
+                        </div>
+                      </div>
+
+                      {/* پنل شخصی‌سازی عوامل وزن‌دهی و تصمیم‌گیری نهایی */}
+                      <div className="bg-[#0d121f] p-3.5 rounded-xl border border-[#222c42] space-y-3">
+                        <div className="flex items-center justify-between border-b border-[#1b2234] pb-2">
+                          <span className="text-zinc-200 font-bold text-[11px] flex items-center gap-1.5">
+                            <Zap className="w-3.5 h-3.5 text-amber-400" />
+                            <span>شخصی‌سازی اوزان و عوامل تعیین‌کننده تصمیم نهایی (Decision Drivers):</span>
+                          </span>
+                          <span className="text-[10px] text-zinc-500">کنترل حق وتو و حد نصاب صدور معامله</span>
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-[11px]">
+                          {/* حق وتوی رژیم بازار */}
+                          <div className="space-y-1 bg-[#141a29] p-2.5 rounded-lg border border-[#232c40]">
+                            <div className="flex items-center justify-between">
+                              <span className="text-zinc-300">حق وتوی فیلتر روند (Veto Power):</span>
+                              <HelpTooltip
+                                titleFa="حق وتوی فیلتر روند"
+                                explanationFa="اگر فعال باشد، در صورت عدم تایید فیلتر رژیم یا روند، حتی با وجود تاییدیه سایر ماژول‌ها، ورود به طور ۱۰۰٪ مسدود می‌شود."
+                              />
+                            </div>
+                            <label className="flex items-center gap-2 cursor-pointer pt-1 text-zinc-300">
+                              <input
+                                type="checkbox"
+                                checked={strategyParams.modularComposition.decisionWeighting.vetoPowerRegime}
+                                onChange={(e) =>
+                                  setStrategyParams({
+                                    ...strategyParams,
+                                    modularComposition: {
+                                      ...strategyParams.modularComposition!,
+                                      decisionWeighting: {
+                                        ...strategyParams.modularComposition!.decisionWeighting,
+                                        vetoPowerRegime: e.target.checked,
+                                      },
+                                    },
+                                  })
+                                }
+                                className="rounded accent-purple-500"
+                              />
+                              <span className="text-[10px] text-zinc-300">
+                                {strategyParams.modularComposition.decisionWeighting.vetoPowerRegime ? 'فعال (مسدودی قطعی سیگنال مخالف)' : 'غیرفعال (اثر امتیازی)'}
+                              </span>
+                            </label>
+                          </div>
+
+                          {/* حداقل نمره اعتماد برای ورود */}
+                          <div className="space-y-1 bg-[#141a29] p-2.5 rounded-lg border border-[#232c40]">
+                            <div className="flex items-center justify-between">
+                              <span className="text-zinc-300">حد نصاب تاییدیه ورود:</span>
+                              <span className="text-purple-300 font-mono font-bold">
+                                {strategyParams.modularComposition.decisionWeighting.minConfidenceScorePercent}%
+                              </span>
+                            </div>
+                            <input
+                              type="range"
+                              min="50"
+                              max="90"
+                              step="5"
+                              value={strategyParams.modularComposition.decisionWeighting.minConfidenceScorePercent}
+                              onChange={(e) =>
+                                setStrategyParams({
+                                  ...strategyParams,
+                                  modularComposition: {
+                                    ...strategyParams.modularComposition!,
+                                    decisionWeighting: {
+                                      ...strategyParams.modularComposition!.decisionWeighting,
+                                      minConfidenceScorePercent: Number(e.target.value),
+                                    },
+                                  },
+                                })
+                              }
+                              className="w-full accent-purple-500"
+                            />
+                            <div className="flex justify-between text-[9px] text-zinc-500 font-mono">
+                              <span>سریع (۵۰٪)</span>
+                              <span>سخت‌گیرانه (۹۰٪)</span>
+                            </div>
+                          </div>
+
+                          {/* امتیاز تشویقی پرایس‌اکشن و حجم */}
+                          <div className="space-y-1 bg-[#141a29] p-2.5 rounded-lg border border-[#232c40]">
+                            <div className="flex items-center justify-between">
+                              <span className="text-zinc-300">وزن تاییدیه نقدینگی و سشن:</span>
+                              <span className="text-cyan-300 font-mono font-bold">
+                                {strategyParams.modularComposition.decisionWeighting.sessionVolumeWeightPercent}%
+                              </span>
+                            </div>
+                            <input
+                              type="range"
+                              min="0"
+                              max="40"
+                              step="5"
+                              value={strategyParams.modularComposition.decisionWeighting.sessionVolumeWeightPercent}
+                              onChange={(e) =>
+                                setStrategyParams({
+                                  ...strategyParams,
+                                  modularComposition: {
+                                    ...strategyParams.modularComposition!,
+                                    decisionWeighting: {
+                                      ...strategyParams.modularComposition!.decisionWeighting,
+                                      sessionVolumeWeightPercent: Number(e.target.value),
+                                    },
+                                  },
+                                })
+                              }
+                              className="w-full accent-cyan-500"
+                            />
+                            <div className="flex justify-between text-[9px] text-zinc-500 font-mono">
+                              <span>بی‌اثر (۰٪)</span>
+                              <span>تاثیر بالا (۴۰٪)</span>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
               <div className="flex items-center justify-between pt-2">
                 <button
                   onClick={() => setCurrentStep(2)}
@@ -2863,6 +3171,145 @@ export default function ResearchPage() {
                   </span>
                   <span className="text-[10px] text-zinc-500 block mt-0.5">نسبت سود به زیان ناخالص</span>
                 </div>
+              </div>
+
+              {/* کالبدشکافی عمیق معاملات و توزیع سود و زیان‌ها (Granular Trade Distribution & Analytics) */}
+              <div className="bg-[#141926] p-4 rounded-2xl border border-blue-500/30 space-y-4 text-xs">
+                <div className="flex items-center justify-between border-b border-[#1f2738] pb-2.5 flex-wrap gap-2">
+                  <div className="flex items-center gap-2 font-bold text-blue-300">
+                    <Activity className="w-4 h-4 text-blue-400" />
+                    <span>کالبدشکافی تحلیلی معاملات و توزیع سودها و زیان‌ها (Trade Breakdown & Distribution):</span>
+                    <HelpTooltip
+                      titleFa="کالبدشکافی تفکیکی معاملات"
+                      explanationFa="این بخش تمام پوزیشن‌های بسته شده را تجزیه می‌کند تا بدانید سودها با چه میانگینی و در چه اهدافی بسته شده‌اند، زیان‌ها چقدر بوده‌اند و معاملات قبل از خروج تا چه حد در سود یا ضرر شناور بوده‌اند."
+                      practicalTipFa="اگر میانگین زیان از ۱R فراتر رفته، نشان‌دهنده اسلیپیج منفی یا عدم رعایت حد ضرر است."
+                      impactOnPropFirmFa="در آزمون‌های پراپ، ثبات میانگین سود به میانگین زیان (Payoff Ratio بالاتر از ۱.۵) تضمین‌کننده بقای حساب است."
+                    />
+                  </div>
+                  <span className="text-[11px] text-zinc-400 font-mono">
+                    تعداد کل پوزیشن‌ها: <strong className="text-zinc-200">{closedTrades.length || backtestResult.totalTrades}</strong>
+                  </span>
+                </div>
+
+                {/* ردیف ۴ کارته آمار تفکیکی سودها و زیان‌ها */}
+                {(() => {
+                  const winningTrades = closedTrades.filter(t => (t.realizedPnl || 0) > 0);
+                  const losingTrades = closedTrades.filter(t => (t.realizedPnl || 0) < 0);
+                  const breakevenTrades = closedTrades.filter(t => (t.realizedPnl || 0) === 0);
+
+                  const totalWinDollars = winningTrades.reduce((s, t) => s + (t.realizedPnl || 0), 0);
+                  const totalLossDollars = losingTrades.reduce((s, t) => s + (t.realizedPnl || 0), 0);
+
+                  const avgWinDollar = winningTrades.length > 0 ? totalWinDollars / winningTrades.length : 0;
+                  const avgLossDollar = losingTrades.length > 0 ? totalLossDollars / losingTrades.length : 0;
+
+                  const avgWinPercent = initialCapital > 0 ? (avgWinDollar / initialCapital) * 100 : 0;
+                  const avgLossPercent = initialCapital > 0 ? (avgLossDollar / initialCapital) * 100 : 0;
+
+                  const maxWin = winningTrades.length > 0 ? Math.max(...winningTrades.map(t => t.realizedPnl || 0)) : 0;
+                  const maxLoss = losingTrades.length > 0 ? Math.min(...losingTrades.map(t => t.realizedPnl || 0)) : 0;
+
+                  const avgMaePips = closedTrades.length > 0
+                    ? closedTrades.reduce((s, t) => s + (t.maePips || 0), 0) / closedTrades.length
+                    : backtestResult.avgMaePips || 0;
+                  const avgMfePips = closedTrades.length > 0
+                    ? closedTrades.reduce((s, t) => s + (t.mfePips || 0), 0) / closedTrades.length
+                    : backtestResult.avgMfePips || 0;
+
+                  const tpHits = closedTrades.filter(t => t.closeReason === 'TP').length;
+                  const slHits = closedTrades.filter(t => t.closeReason === 'SL').length;
+                  const manualOrOther = closedTrades.length - (tpHits + slHits);
+
+                  return (
+                    <div className="space-y-3">
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                        {/* کارت معاملات سودآور */}
+                        <div className="bg-[#0f1422] p-3 rounded-xl border border-emerald-500/20 space-y-1">
+                          <div className="flex items-center justify-between text-[11px] text-zinc-400">
+                            <span>معاملات سودآور (Wins):</span>
+                            <span className="text-emerald-400 font-bold font-mono">
+                              {winningTrades.length || backtestResult.winningTrades} معامله
+                            </span>
+                          </div>
+                          <div className="text-sm font-bold font-mono text-emerald-300">
+                            میانگین سود: +${avgWinDollar.toFixed(1)}{' '}
+                            <span className="text-[10px] text-emerald-400 font-normal">(+{avgWinPercent.toFixed(2)}٪)</span>
+                          </div>
+                          <div className="text-[10px] text-zinc-400">
+                            بهترین معامله: <strong className="text-emerald-400 font-mono">+${maxWin.toFixed(1)}</strong>
+                          </div>
+                        </div>
+
+                        {/* کارت معاملات زیان‌ده */}
+                        <div className="bg-[#0f1422] p-3 rounded-xl border border-rose-500/20 space-y-1">
+                          <div className="flex items-center justify-between text-[11px] text-zinc-400">
+                            <span>معاملات زیان‌ده (Losses):</span>
+                            <span className="text-rose-400 font-bold font-mono">
+                              {losingTrades.length || backtestResult.losingTrades} معامله
+                            </span>
+                          </div>
+                          <div className="text-sm font-bold font-mono text-rose-300">
+                            میانگین زیان: ${avgLossDollar.toFixed(1)}{' '}
+                            <span className="text-[10px] text-rose-400 font-normal">({avgLossPercent.toFixed(2)}٪)</span>
+                          </div>
+                          <div className="text-[10px] text-zinc-400">
+                            بدترین معامله: <strong className="text-rose-400 font-mono">${maxLoss.toFixed(1)}</strong>
+                          </div>
+                        </div>
+
+                        {/* تفکیک خروج: TP در برابر SL */}
+                        <div className="bg-[#0f1422] p-3 rounded-xl border border-[#1e263c] space-y-1">
+                          <span className="text-[11px] text-zinc-400 block">دلایل خروج پوزیشن‌ها:</span>
+                          <div className="flex items-center justify-between text-[11px] font-mono">
+                            <span className="text-emerald-400">تارگت (TP): {tpHits}</span>
+                            <span className="text-rose-400">استاپ (SL): {slHits}</span>
+                          </div>
+                          <div className="text-[10px] text-zinc-400">
+                            سر‌به‌سر / پایان داده: <strong className="text-zinc-200 font-mono">{breakevenTrades.length || manualOrOther}</strong>
+                          </div>
+                        </div>
+
+                        {/* اکسکورشن MAE و MFE */}
+                        <div className="bg-[#0f1422] p-3 rounded-xl border border-[#1e263c] space-y-1">
+                          <span className="text-[11px] text-zinc-400 block">میانگین نوسان شناور (Excursion):</span>
+                          <div className="text-[11px] font-mono text-zinc-300">
+                            حرکت در زیان (MAE): <strong className="text-amber-400">{avgMaePips.toFixed(1)} پیپ</strong>
+                          </div>
+                          <div className="text-[11px] font-mono text-zinc-300">
+                            حرکت در سود (MFE): <strong className="text-cyan-400">{avgMfePips.toFixed(1)} پیپ</strong>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* نوار بصری نسبت برد به باخت و نرخ پرداخت */}
+                      <div className="bg-[#0d121f] p-3 rounded-xl border border-[#1a2336] space-y-2">
+                        <div className="flex items-center justify-between text-[11px]">
+                          <span className="text-zinc-300 font-bold">نسبت بازدهی سود به زیان (Payoff Ratio):</span>
+                          <span className="font-mono text-cyan-300 font-bold">
+                            {backtestResult.payoffRatio ? backtestResult.payoffRatio.toFixed(2) : (Math.abs(avgWinDollar) / Math.max(1, Math.abs(avgLossDollar))).toFixed(2)}x
+                          </span>
+                        </div>
+                        <div className="w-full bg-[#1b2338] h-2.5 rounded-full overflow-hidden flex">
+                          <div
+                            style={{ width: `${Math.max(5, Math.min(95, backtestResult.winRatePercent))}%` }}
+                            className="bg-emerald-500 h-full"
+                            title={`درصد برد: ${backtestResult.winRatePercent}%`}
+                          />
+                          <div
+                            style={{ width: `${Math.max(5, Math.min(95, 100 - backtestResult.winRatePercent))}%` }}
+                            className="bg-rose-500 h-full"
+                            title={`درصد باخت: ${(100 - backtestResult.winRatePercent).toFixed(1)}%`}
+                          />
+                        </div>
+                        <div className="flex items-center justify-between text-[10px] text-zinc-400">
+                          <span className="text-emerald-400 font-mono">سودآور: {backtestResult.winRatePercent}%</span>
+                          <span className="text-zinc-500">امید ریاضی خالص: {backtestResult.expectancyR.toFixed(2)}R</span>
+                          <span className="text-rose-400 font-mono">زیان‌ده: {(100 - backtestResult.winRatePercent).toFixed(1)}%</span>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })()}
               </div>
 
               {/* کارت تفکیک اصطکاک اجرای معامله و درگ اسپرد/اسلیپیج (Package C) */}

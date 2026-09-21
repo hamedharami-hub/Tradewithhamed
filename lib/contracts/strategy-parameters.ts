@@ -211,6 +211,20 @@ export interface ExecutionFrictionParameters {
   randomSkippedFillsPercent: number;
 }
 
+export interface ModularStrategyComposition {
+  enabled: boolean;
+  regimeFilterModule: 'AUTO_REGIME' | 'EMA_TREND' | 'CHOP_BLOCKER' | 'OFF';
+  entryTriggerModule: 'BREAKOUT_CHANNEL' | 'SMC_ORDERBLOCK' | 'MEAN_REVERSION_Z' | 'SCALP_MOMENTUM' | 'HYBRID_CONSENSUS';
+  confirmationModule: 'SESSION_VOLUME' | 'ADX_MOMENTUM' | 'MULTI_TIMEFRAME' | 'NONE';
+  riskManagementModule: 'ATR_DYNAMIC' | 'STRUCTURE_PROTECTED' | 'FIXED_CONSERVATIVE';
+  decisionWeighting: {
+    vetoPowerRegime: boolean; // آیا فیلتر روند حق وتوی ۱۰۰٪ دارد
+    minConfidenceScorePercent: number; // حداقل نمره اعتماد برای صدور اردر (مثلا ۶۰٪)
+    fvgConfirmationBonusPercent: number; // امتیاز تشویقی پرایس‌اکشن FVG
+    sessionVolumeWeightPercent: number; // وزن سشن و نقدینگی در تصمیم ورود
+  };
+}
+
 export interface StrategyParameters {
   common: CommonStrategyParameters;
   trendBreakout: TrendBreakoutParameters;
@@ -219,6 +233,7 @@ export interface StrategyParameters {
   scalp: ScalpParameters;
   swing: SwingParameters;
   executionFriction?: ExecutionFrictionParameters;
+  modularComposition?: ModularStrategyComposition;
 }
 
 export const DEFAULT_COMMON_PARAMETERS: Record<StrategyPreset, CommonStrategyParameters> = {
@@ -470,6 +485,20 @@ export const DEFAULT_EXECUTION_FRICTION_PARAMETERS: Record<StrategyPreset, Execu
   },
 };
 
+export const DEFAULT_MODULAR_COMPOSITION: ModularStrategyComposition = {
+  enabled: false,
+  regimeFilterModule: 'AUTO_REGIME',
+  entryTriggerModule: 'BREAKOUT_CHANNEL',
+  confirmationModule: 'SESSION_VOLUME',
+  riskManagementModule: 'ATR_DYNAMIC',
+  decisionWeighting: {
+    vetoPowerRegime: true,
+    minConfidenceScorePercent: 65,
+    fvgConfirmationBonusPercent: 15,
+    sessionVolumeWeightPercent: 20,
+  },
+};
+
 export function getDefaultStrategyParameters(preset: StrategyPreset = 'BALANCED'): StrategyParameters {
   return {
     common: { ...DEFAULT_COMMON_PARAMETERS[preset] },
@@ -479,5 +508,6 @@ export function getDefaultStrategyParameters(preset: StrategyPreset = 'BALANCED'
     scalp: { ...DEFAULT_SCALP_PARAMETERS[preset] },
     swing: { ...DEFAULT_SWING_PARAMETERS[preset] },
     executionFriction: { ...DEFAULT_EXECUTION_FRICTION_PARAMETERS[preset] },
+    modularComposition: { ...DEFAULT_MODULAR_COMPOSITION },
   };
 }
