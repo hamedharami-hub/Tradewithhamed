@@ -126,6 +126,17 @@ export class SessionTimezoneEngine {
   }
 
   /**
+   * دریافت کلید روز به فرمت YYYY-MM-DD
+   */
+  public static getDayKey(
+    timestamp: number,
+    timezone: TimezoneOption = 'UTC',
+    brokerOffsetMinutes = 0
+  ): string {
+    return this.getLocalTime(timestamp, timezone, brokerOffsetMinutes).dateKey;
+  }
+
+  /**
    * تبدیل رشته "HH:mm" به تعداد دقایق از ابتدای روز (۰ تا ۱۴۳۹)
    */
   public static parseTimeToMinutes(timeStr: string): number {

@@ -944,184 +944,425 @@ export default function ResearchPage() {
                     </select>
                   </div>
 
-                  <div className="space-y-1">
-                    <span className="text-zinc-400 text-[11px]">نوع سفارش (Order Type):</span>
-                    <select
-                      value={strategyParams.common.orderType}
-                      onChange={(e) =>
-                        setStrategyParams({
-                          ...strategyParams,
-                          common: {
-                            ...strategyParams.common,
-                            orderType: e.target.value as 'MARKET' | 'LIMIT',
-                          },
-                        })
-                      }
-                      className="w-full bg-[#1b2234] border border-[#2d3a54] rounded-xl px-2.5 py-1.5 text-zinc-100 font-mono text-xs"
-                    >
-                      <option value="LIMIT">سفارش لیمیت (Limit Order)</option>
-                      <option value="MARKET">سفارش مارکت (Market Order)</option>
-                    </select>
-                  </div>
-
-                  <div className="space-y-1">
-                    <span className="text-zinc-400 text-[11px]">انقضای سفارش لیمیت (کندل):</span>
-                    <input
-                      type="number"
-                      min="1"
-                      max="48"
-                      value={strategyParams.common.expiryBars}
-                      onChange={(e) =>
-                        setStrategyParams({
-                          ...strategyParams,
-                          common: {
-                            ...strategyParams.common,
-                            expiryBars: Number(e.target.value) || 6,
-                          },
-                        })
-                      }
-                      className="w-full bg-[#1b2234] border border-[#2d3a54] rounded-xl px-2.5 py-1.5 text-zinc-100 font-mono text-xs"
-                    />
-                  </div>
-
-                  <div className="space-y-1">
-                    <span className="text-zinc-400 text-[11px]">خنک‌سازی سفارش (Cooldown Bars):</span>
-                    <input
-                      type="number"
-                      min="0"
-                      max="30"
-                      value={strategyParams.common.cooldownBars}
-                      onChange={(e) =>
-                        setStrategyParams({
-                          ...strategyParams,
-                          common: {
-                            ...strategyParams.common,
-                            cooldownBars: Number(e.target.value) || 0,
-                          },
-                        })
-                      }
-                      className="w-full bg-[#1b2234] border border-[#2d3a54] rounded-xl px-2.5 py-1.5 text-zinc-100 font-mono text-xs"
-                    />
-                  </div>
-
-                  <div className="space-y-1">
-                    <span className="text-zinc-400 text-[11px]">نسبت سود به زیان (R:R):</span>
-                    <input
-                      type="number"
-                      step="0.1"
-                      min="0.5"
-                      max="10"
-                      value={strategyParams.common.riskRewardRatio}
-                      onChange={(e) =>
-                        setStrategyParams({
-                          ...strategyParams,
-                          common: {
-                            ...strategyParams.common,
-                            riskRewardRatio: Number(e.target.value) || 2.0,
-                          },
-                        })
-                      }
-                      className="w-full bg-[#1b2234] border border-[#2d3a54] rounded-xl px-2.5 py-1.5 text-zinc-100 font-mono text-xs"
-                    />
-                  </div>
-
-                  <div className="space-y-1">
-                    <span className="text-zinc-400 text-[11px]">دوره محاسبه ATR:</span>
-                    <input
-                      type="number"
-                      min="5"
-                      max="50"
-                      value={strategyParams.common.atrPeriod}
-                      onChange={(e) =>
-                        setStrategyParams({
-                          ...strategyParams,
-                          common: {
-                            ...strategyParams.common,
-                            atrPeriod: Number(e.target.value) || 14,
-                          },
-                        })
-                      }
-                      className="w-full bg-[#1b2234] border border-[#2d3a54] rounded-xl px-2.5 py-1.5 text-zinc-100 font-mono text-xs"
-                    />
-                  </div>
-
-                  <div className="space-y-1">
-                    <span className="text-zinc-400 text-[11px]">ضریب حد ضرر (ATR Multiplier):</span>
-                    <input
-                      type="number"
-                      step="0.1"
-                      min="0.5"
-                      max="5"
-                      value={strategyParams.common.atrMultiplier}
-                      onChange={(e) =>
-                        setStrategyParams({
-                          ...strategyParams,
-                          common: {
-                            ...strategyParams.common,
-                            atrMultiplier: Number(e.target.value) || 1.5,
-                          },
-                        })
-                      }
-                      className="w-full bg-[#1b2234] border border-[#2d3a54] rounded-xl px-2.5 py-1.5 text-zinc-100 font-mono text-xs"
-                    />
-                  </div>
-
-                  {/* کنترل غیرفعال higherTimeframeFilter با برچسب شفاف */}
-                  <div className="space-y-1 opacity-50">
-                    <div className="flex items-center justify-between">
-                      <span className="text-zinc-400 text-[11px]">فیلتر تایم‌فریم بالاتر:</span>
-                      <span className="text-[9px] text-amber-400 font-bold bg-amber-500/10 px-1 py-0.5 rounded border border-amber-500/30">
-                        هنوز فعال نیست (پکیج ۲)
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-zinc-400 text-[11px]">نوع سفارش (Order Type):</span>
+                      <span className="text-[9px] text-emerald-400 font-bold bg-emerald-500/10 px-1 py-0.5 rounded border border-emerald-500/30">
+                        ACTIVE
                       </span>
                     </div>
                     <select
-                      disabled
-                      className="w-full bg-[#1b2234] border border-[#2d3a54] rounded-xl px-2.5 py-1.5 text-zinc-500 font-mono text-xs cursor-not-allowed"
-                    >
-                      <option>غیرفعال (مستلزم پکیج ۲ چندتایم‌فریمی)</option>
-                    </select>
+                        value={strategyParams.common.orderType}
+                        onChange={(e) =>
+                          setStrategyParams({
+                            ...strategyParams,
+                            common: {
+                              ...strategyParams.common,
+                              orderType: e.target.value as 'MARKET' | 'LIMIT' | 'STOP',
+                            },
+                          })
+                        }
+                        className="w-full bg-[#1b2234] border border-[#2d3a54] rounded-xl px-2.5 py-1.5 text-zinc-100 font-mono text-xs"
+                      >
+                        <option value="LIMIT">سفارش لیمیت (Limit Order - ورود در پولبک)</option>
+                        <option value="MARKET">سفارش مارکت (Market Order - ورود در کلوز کندل)</option>
+                        <option value="STOP">سفارش استاپ (Stop Order - ورود در شکست سقف/کف)</option>
+                      </select>
+                    </div>
+
+                    <div className="space-y-1">
+                      <div className="flex items-center justify-between">
+                        <span className="text-zinc-400 text-[11px]">شیوه حد ضرر (Stop Loss Mode):</span>
+                        <span className="text-[9px] text-emerald-400 font-bold bg-emerald-500/10 px-1 py-0.5 rounded border border-emerald-500/30">
+                          ACTIVE
+                        </span>
+                      </div>
+                      <select
+                        value={strategyParams.common.stopLossMode}
+                        onChange={(e) =>
+                          setStrategyParams({
+                            ...strategyParams,
+                            common: {
+                              ...strategyParams.common,
+                              stopLossMode: e.target.value as 'ATR' | 'STRUCTURE' | 'FIXED_PIPS',
+                            },
+                          })
+                        }
+                        className="w-full bg-[#1b2234] border border-[#2d3a54] rounded-xl px-2.5 py-1.5 text-zinc-100 text-xs"
+                      >
+                        <option value="ATR">پویا بر مبنای ATR نوسان‌پذیری</option>
+                        <option value="STRUCTURE">ساختار پرایس‌اکشن گذشته (پشت پیوت‌ها)</option>
+                        <option value="FIXED_PIPS">فاصله پیپ ثابت (Fixed Pips)</option>
+                      </select>
+                    </div>
+
+                    {strategyParams.common.stopLossMode === 'FIXED_PIPS' && (
+                      <div className="space-y-1">
+                        <span className="text-zinc-400 text-[11px]">فاصله حد ضرر ثابت (پیپ):</span>
+                        <input
+                          type="number"
+                          min="3"
+                          max="300"
+                          value={strategyParams.common.fixedStopPips ?? 20}
+                          onChange={(e) =>
+                            setStrategyParams({
+                              ...strategyParams,
+                              common: {
+                                ...strategyParams.common,
+                                fixedStopPips: Number(e.target.value) || 20,
+                              },
+                            })
+                          }
+                          className="w-full bg-[#1b2234] border border-[#2d3a54] rounded-xl px-2.5 py-1.5 text-zinc-100 font-mono text-xs"
+                        />
+                      </div>
+                    )}
+
+                    <div className="space-y-1">
+                      <div className="flex items-center justify-between">
+                        <span className="text-zinc-400 text-[11px]">انقضای سفارش لیمیت/استاپ (کندل):</span>
+                        <span className="text-[9px] text-emerald-400 font-bold bg-emerald-500/10 px-1 py-0.5 rounded border border-emerald-500/30">
+                          ACTIVE
+                        </span>
+                      </div>
+                      <input
+                        type="number"
+                        min="1"
+                        max="48"
+                        value={strategyParams.common.expiryBars}
+                        onChange={(e) =>
+                          setStrategyParams({
+                            ...strategyParams,
+                            common: {
+                              ...strategyParams.common,
+                              expiryBars: Number(e.target.value) || 6,
+                            },
+                          })
+                        }
+                        className="w-full bg-[#1b2234] border border-[#2d3a54] rounded-xl px-2.5 py-1.5 text-zinc-100 font-mono text-xs"
+                      />
+                    </div>
+
+                    <div className="space-y-1">
+                      <div className="flex items-center justify-between">
+                        <span className="text-zinc-400 text-[11px]">استراحت پس از بسته شدن (Cooldown Bars):</span>
+                        <span className="text-[9px] text-emerald-400 font-bold bg-emerald-500/10 px-1 py-0.5 rounded border border-emerald-500/30">
+                          ACTIVE
+                        </span>
+                      </div>
+                      <input
+                        type="number"
+                        min="0"
+                        max="30"
+                        value={strategyParams.common.cooldownBars}
+                        onChange={(e) =>
+                          setStrategyParams({
+                            ...strategyParams,
+                            common: {
+                              ...strategyParams.common,
+                              cooldownBars: Number(e.target.value) || 0,
+                            },
+                          })
+                        }
+                        className="w-full bg-[#1b2234] border border-[#2d3a54] rounded-xl px-2.5 py-1.5 text-zinc-100 font-mono text-xs"
+                      />
+                    </div>
+
+                    <div className="space-y-1">
+                      <div className="flex items-center justify-between">
+                        <span className="text-zinc-400 text-[11px]">نسبت سود به زیان (R:R):</span>
+                        <span className="text-[9px] text-emerald-400 font-bold bg-emerald-500/10 px-1 py-0.5 rounded border border-emerald-500/30">
+                          ACTIVE
+                        </span>
+                      </div>
+                      <input
+                        type="number"
+                        step="0.1"
+                        min="0.5"
+                        max="10"
+                        value={strategyParams.common.riskRewardRatio}
+                        onChange={(e) =>
+                          setStrategyParams({
+                            ...strategyParams,
+                            common: {
+                              ...strategyParams.common,
+                              riskRewardRatio: Number(e.target.value) || 2.0,
+                            },
+                          })
+                        }
+                        className="w-full bg-[#1b2234] border border-[#2d3a54] rounded-xl px-2.5 py-1.5 text-zinc-100 font-mono text-xs"
+                      />
+                    </div>
+
+                    <div className="space-y-1">
+                      <div className="flex items-center justify-between">
+                        <span className="text-zinc-400 text-[11px]">ضریب حد ضرر (ATR Multiplier):</span>
+                        <span className="text-[9px] text-emerald-400 font-bold bg-emerald-500/10 px-1 py-0.5 rounded border border-emerald-500/30">
+                          ACTIVE
+                        </span>
+                      </div>
+                      <input
+                        type="number"
+                        step="0.1"
+                        min="0.5"
+                        max="5"
+                        value={strategyParams.common.atrMultiplier}
+                        onChange={(e) =>
+                          setStrategyParams({
+                            ...strategyParams,
+                            common: {
+                              ...strategyParams.common,
+                              atrMultiplier: Number(e.target.value) || 1.5,
+                            },
+                          })
+                        }
+                        className="w-full bg-[#1b2234] border border-[#2d3a54] rounded-xl px-2.5 py-1.5 text-zinc-100 font-mono text-xs"
+                      />
+                    </div>
+                  </div>
+
+                  {/* کنترل جامع فیلتر تایم‌فریم بالاتر (MTF) پکیج ۳ */}
+                  <div className="p-3.5 bg-[#141926] border border-purple-500/30 rounded-2xl space-y-3">
+                    <div className="flex items-center justify-between border-b border-[#1f2738] pb-2">
+                      <div className="flex items-center gap-1.5 text-xs font-bold text-purple-300">
+                        <Layers className="w-4 h-4" />
+                        <span>تاییدیه چندتایم‌فریمی ضد نگاه‌به‌آینده (Anti Look-Ahead MTF):</span>
+                      </div>
+                      <span className="text-[9px] text-emerald-400 font-bold bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/30">
+                        فعال (Package 3)
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+                      <div className="space-y-1">
+                        <span className="text-zinc-400 text-[11px] block">حالت فیلتر تایم‌فریم بالاتر:</span>
+                        <select
+                          value={strategyParams.common.mtfConfig?.higherTimeframeFilterMode || 'OFF'}
+                          onChange={(e) => {
+                            const newMode = e.target.value as any;
+                            setStrategyParams({
+                              ...strategyParams,
+                              common: {
+                                ...strategyParams.common,
+                                higherTimeframeFilter: newMode !== 'OFF',
+                                mtfConfig: {
+                                  executionTimeframe: selectedTimeframe,
+                                  confirmationTimeframe: strategyParams.common.mtfConfig?.confirmationTimeframe || '1H',
+                                  higherTimeframeSource: strategyParams.common.mtfConfig?.higherTimeframeSource || 'AUTO',
+                                  higherTimeframeFilterMode: newMode,
+                                  trendEmaSettings: {
+                                    trendEmaPeriod: 50,
+                                    trendSlopeLookback: 3,
+                                    minimumSlope: 0.0,
+                                  },
+                                },
+                              },
+                            });
+                          }}
+                          className="w-full bg-[#1b2234] border border-[#2d3a54] rounded-xl px-2.5 py-1.5 text-zinc-100 text-xs font-mono"
+                        >
+                          <option value="OFF">OFF (غیرفعال - بیس‌لاین تک‌تایم‌فریمی)</option>
+                          <option value="TREND_EMA">TREND_EMA (روند میانگین متحرک کلان)</option>
+                          <option value="MARKET_STRUCTURE">MARKET_STRUCTURE (ساختار پیوت‌های سقف/کف)</option>
+                          <option value="MOMENTUM">MOMENTUM (شتاب نرخ تغییرات)</option>
+                          <option value="VOLATILITY">VOLATILITY (صدک نوسان‌پذیری ATR)</option>
+                          <option value="COMBINED">COMBINED (ترکیب حدنصاب چندگانه)</option>
+                        </select>
+                      </div>
+
+                      <div className="space-y-1">
+                        <span className="text-zinc-400 text-[11px] block">تایم‌فریم تاییدیه (Confirmation):</span>
+                        <select
+                          value={strategyParams.common.mtfConfig?.confirmationTimeframe || '1H'}
+                          onChange={(e) => {
+                            const newConf = e.target.value as any;
+                            setStrategyParams({
+                              ...strategyParams,
+                              common: {
+                                ...strategyParams.common,
+                                mtfConfig: {
+                                  executionTimeframe: selectedTimeframe,
+                                  confirmationTimeframe: newConf,
+                                  higherTimeframeSource: strategyParams.common.mtfConfig?.higherTimeframeSource || 'AUTO',
+                                  higherTimeframeFilterMode: strategyParams.common.mtfConfig?.higherTimeframeFilterMode || 'OFF',
+                                  trendEmaSettings: {
+                                    trendEmaPeriod: 50,
+                                    trendSlopeLookback: 3,
+                                    minimumSlope: 0.0,
+                                  },
+                                },
+                              },
+                            });
+                          }}
+                          className="w-full bg-[#1b2234] border border-[#2d3a54] rounded-xl px-2.5 py-1.5 text-zinc-100 text-xs font-mono"
+                        >
+                          <option value="15M">15M (برای اجرای 5M)</option>
+                          <option value="1H">1H (برای اجرای 5M یا 15M)</option>
+                          <option value="4H">4H (برای اجرای 15M یا 1H)</option>
+                          <option value="D1">D1 (برای اجرای 1H یا 4H)</option>
+                        </select>
+                      </div>
+
+                      <div className="space-y-1">
+                        <span className="text-zinc-400 text-[11px] block">منبع کندل تایم‌فریم بالاتر:</span>
+                        <select
+                          value={strategyParams.common.mtfConfig?.higherTimeframeSource || 'AUTO'}
+                          onChange={(e) => {
+                            const newSource = e.target.value as any;
+                            setStrategyParams({
+                              ...strategyParams,
+                              common: {
+                                ...strategyParams.common,
+                                mtfConfig: {
+                                  executionTimeframe: selectedTimeframe,
+                                  confirmationTimeframe: strategyParams.common.mtfConfig?.confirmationTimeframe || '1H',
+                                  higherTimeframeSource: newSource,
+                                  higherTimeframeFilterMode: strategyParams.common.mtfConfig?.higherTimeframeFilterMode || 'OFF',
+                                  trendEmaSettings: {
+                                    trendEmaPeriod: 50,
+                                    trendSlopeLookback: 3,
+                                    minimumSlope: 0.0,
+                                  },
+                                },
+                              },
+                            });
+                          }}
+                          className="w-full bg-[#1b2234] border border-[#2d3a54] rounded-xl px-2.5 py-1.5 text-zinc-100 text-xs font-mono"
+                        >
+                          <option value="AUTO">AUTO (تجمیع قطعی از کندل‌های بسته)</option>
+                          <option value="AGGREGATED_FROM_EXECUTION">AGGREGATED (تولید مستقل)</option>
+                          <option value="NATIVE_DATASET">NATIVE (دیتاست مستقیم)</option>
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* چک‌باکس‌ها و کنترل‌های بریک‌ایون و خروج پله‌ای */}
+                  <div className="p-3.5 bg-[#141926] border border-[#232c40] rounded-2xl space-y-3 text-xs">
+                    <div className="flex flex-wrap items-center gap-6">
+                      <label className="flex items-center gap-2 cursor-pointer text-zinc-200">
+                        <input
+                          type="checkbox"
+                          checked={strategyParams.common.enableBreakeven}
+                          onChange={(e) =>
+                            setStrategyParams({
+                              ...strategyParams,
+                              common: {
+                                ...strategyParams.common,
+                                enableBreakeven: e.target.checked,
+                              },
+                            })
+                          }
+                          className="rounded border-[#2d3a54] bg-[#1b2234] text-purple-600 focus:ring-0"
+                        />
+                        <span className="font-bold">ریسک‌فری خودکار (Breakeven)</span>
+                      </label>
+
+                      {strategyParams.common.enableBreakeven && (
+                        <div className="flex items-center gap-3 text-zinc-400">
+                          <span>در سود:</span>
+                          <input
+                            type="number"
+                            step="0.1"
+                            min="0.5"
+                            max="5"
+                            value={strategyParams.common.breakevenTriggerR ?? 1.0}
+                            onChange={(e) =>
+                              setStrategyParams({
+                                ...strategyParams,
+                                common: {
+                                  ...strategyParams.common,
+                                  breakevenTriggerR: Number(e.target.value) || 1.0,
+                                },
+                              })
+                            }
+                            className="w-16 bg-[#1b2234] border border-[#2d3a54] rounded-lg px-2 py-0.5 text-zinc-100 font-mono text-xs text-center"
+                          />
+                          <span>واحد R</span>
+
+                          <label className="flex items-center gap-1.5 cursor-pointer text-zinc-300 mr-2">
+                            <input
+                              type="checkbox"
+                              checked={strategyParams.common.includeEntryCostsInBreakeven ?? true}
+                              onChange={(e) =>
+                                setStrategyParams({
+                                  ...strategyParams,
+                                  common: {
+                                    ...strategyParams.common,
+                                    includeEntryCostsInBreakeven: e.target.checked,
+                                  },
+                                })
+                              }
+                              className="rounded border-[#2d3a54] bg-[#1b2234] text-purple-600 focus:ring-0"
+                            />
+                            <span>احتساب اسپرد و کمیسیون در نقطه خروج</span>
+                          </label>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-6 pt-2 border-t border-[#1f2738]">
+                      <label className="flex items-center gap-2 cursor-pointer text-zinc-200">
+                        <input
+                          type="checkbox"
+                          checked={strategyParams.common.enablePartialTakeProfit}
+                          onChange={(e) =>
+                            setStrategyParams({
+                              ...strategyParams,
+                              common: {
+                                ...strategyParams.common,
+                                enablePartialTakeProfit: e.target.checked,
+                              },
+                            })
+                          }
+                          className="rounded border-[#2d3a54] bg-[#1b2234] text-purple-600 focus:ring-0"
+                        />
+                        <span className="font-bold">سیو سود پله‌ای (Partial Take Profit)</span>
+                      </label>
+
+                      {strategyParams.common.enablePartialTakeProfit && (
+                        <div className="flex items-center gap-3 text-zinc-400">
+                          <span>در سود:</span>
+                          <input
+                            type="number"
+                            step="0.1"
+                            min="0.5"
+                            max="5"
+                            value={strategyParams.common.partialTakeProfitTriggerR ?? 1.2}
+                            onChange={(e) =>
+                              setStrategyParams({
+                                ...strategyParams,
+                                common: {
+                                  ...strategyParams.common,
+                                  partialTakeProfitTriggerR: Number(e.target.value) || 1.2,
+                                },
+                              })
+                            }
+                            className="w-16 bg-[#1b2234] border border-[#2d3a54] rounded-lg px-2 py-0.5 text-zinc-100 font-mono text-xs text-center"
+                          />
+                          <span>R | حجم خروج:</span>
+                          <input
+                            type="number"
+                            min="10"
+                            max="90"
+                            value={strategyParams.common.partialClosePercent ?? 50}
+                            onChange={(e) =>
+                              setStrategyParams({
+                                ...strategyParams,
+                                common: {
+                                  ...strategyParams.common,
+                                  partialClosePercent: Number(e.target.value) || 50,
+                                },
+                              })
+                            }
+                            className="w-16 bg-[#1b2234] border border-[#2d3a54] rounded-lg px-2 py-0.5 text-zinc-100 font-mono text-xs text-center"
+                          />
+                          <span>٪</span>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
-
-                {/* چک‌باکس‌های بریک‌ایون و خروج پله‌ای */}
-                <div className="flex flex-wrap items-center gap-4 pt-2 border-t border-[#1f2738] text-xs">
-                  <label className="flex items-center gap-2 cursor-pointer text-zinc-300">
-                    <input
-                      type="checkbox"
-                      checked={strategyParams.common.enableBreakeven}
-                      onChange={(e) =>
-                        setStrategyParams({
-                          ...strategyParams,
-                          common: {
-                            ...strategyParams.common,
-                            enableBreakeven: e.target.checked,
-                          },
-                        })
-                      }
-                      className="rounded border-[#2d3a54] bg-[#1b2234] text-purple-600 focus:ring-0"
-                    />
-                    <span>انتقال حد ضرر به نقطه ورود در سود ۱.۰R (Breakeven)</span>
-                  </label>
-
-                  <label className="flex items-center gap-2 cursor-pointer text-zinc-300">
-                    <input
-                      type="checkbox"
-                      checked={strategyParams.common.enablePartialTakeProfit}
-                      onChange={(e) =>
-                        setStrategyParams({
-                          ...strategyParams,
-                          common: {
-                            ...strategyParams.common,
-                            enablePartialTakeProfit: e.target.checked,
-                          },
-                        })
-                      }
-                      className="rounded border-[#2d3a54] bg-[#1b2234] text-purple-600 focus:ring-0"
-                    />
-                    <span>خروج ۵۰٪ حجم در ۱.۲R (Partial Take Profit)</span>
-                  </label>
-                </div>
-              </div>
 
               <div className="flex items-center justify-between pt-2">
                 <button

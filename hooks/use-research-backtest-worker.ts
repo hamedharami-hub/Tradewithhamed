@@ -35,6 +35,9 @@ export interface ResearchBacktestWorkerOptions {
   riskPercent?: number;
   strategyParameters?: StrategyParameters;
   endOfDataPolicy?: EndOfDataPolicy;
+  htfCandles?: Candle[];
+  htfTimeframe?: Timeframe;
+  htfSource?: import('@/lib/contracts/strategy-parameters').HigherTimeframeSource;
 }
 
 export function useResearchBacktestWorker() {

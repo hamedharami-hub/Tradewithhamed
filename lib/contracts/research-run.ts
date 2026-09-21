@@ -45,7 +45,7 @@ export interface RobustnessWarning {
 export interface AdvancedExecutionStressConfig {
   delayedEntryBars?: 0 | 1 | 2;
   randomSkippedFillsPercent?: number; // 0 to 100
-  orderTypeOverride?: 'MARKET' | 'LIMIT';
+  orderTypeOverride?: 'MARKET' | 'LIMIT' | 'STOP';
   spreadMultiplier?: number;
   slippageAdditionPips?: number;
   gapShockMultiplier?: number;
@@ -117,6 +117,19 @@ export type ScenarioTemplateKey =
   | 'DELAYED_ENTRY_2BAR'
   | 'ORDER_TYPE_MARKET'
   | 'ORDER_TYPE_LIMIT'
+  | 'ORDER_TYPE_STOP'
+  | 'MTF_OFF'
+  | 'MTF_TREND_EMA'
+  | 'MTF_MARKET_STRUCTURE'
+  | 'STOP_LOSS_ATR'
+  | 'STOP_LOSS_STRUCTURE'
+  | 'STOP_LOSS_FIXED'
+  | 'BREAKEVEN_ON'
+  | 'BREAKEVEN_OFF'
+  | 'PARTIAL_TP_ON'
+  | 'PARTIAL_TP_OFF'
+  | 'COOLDOWN_0BAR'
+  | 'COOLDOWN_5BAR'
   | 'POLICY_CLOSE_AT_END'
   | 'POLICY_KEEP_OPEN'
   | 'CUSTOM';
@@ -137,9 +150,18 @@ export interface ScenarioDraft {
     commissionPerLot?: number;
     additionalSlippagePips?: number;
     delayedEntryBars?: 0 | 1 | 2;
-    orderTypeOverride?: 'MARKET' | 'LIMIT';
-    endOfDataPolicy?: EndOfDataPolicy;
+    orderTypeOverride?: 'MARKET' | 'LIMIT' | 'STOP';
+    higherTimeframeFilterMode?: import('./strategy-parameters').HigherTimeframeFilterMode;
+    confirmationTimeframe?: Timeframe;
+    stopLossMode?: import('./strategy-parameters').StopLossMode;
+    enableBreakeven?: boolean;
+    enablePartialTakeProfit?: boolean;
+    cooldownBars?: number;
+    maxOpenPositions?: number;
     randomSkippedFillsPercent?: number;
+    gapShockMultiplier?: number;
+    endOfDataPolicy?: EndOfDataPolicy;
+    randomSeed?: number;
   };
 }
 

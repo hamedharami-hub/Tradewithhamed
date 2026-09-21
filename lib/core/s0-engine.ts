@@ -1,8 +1,13 @@
-import { Candle, SymbolId, Timeframe } from '../contracts/market';
+// lib/core/s0-engine.ts
+// موتور استراتژی S0 بر مبنای سوییپ سطوح نقدینگی، FVG و شکست ساختار داخلی
+// با اتصال کامل پارامترهای liquidityLookback, sweepThreshold, requireStructureBreak, requireFvg
+
+import { Candle, SymbolId, SYMBOL_SPECS, Timeframe } from '../contracts/market';
 import { StrategyCandidate } from '../contracts/strategy';
 import { detectSwingPoints } from './swings';
 import { calculateWilderATR } from './atr';
 import { StrategyParameters, getDefaultStrategyParameters } from '../contracts/strategy-parameters';
+import { StopLossCalculator } from './stop-loss-calculator';
 
 function timeframeToMs(timeframe: Timeframe): number {
   const durations: Record<Timeframe, number> = {
@@ -23,7 +28,7 @@ function timeframeToMs(timeframe: Timeframe): number {
 export function evaluateS0Strategy(
   symbol: SymbolId,
   candles5M: Candle[],
-  candles15M: Candle[],
+  _candles15M: Candle[],
   timeframe: Timeframe = '5M',
   params?: StrategyParameters
 ): StrategyCandidate | null {
@@ -39,52 +44,75 @@ export function evaluateS0Strategy(
   const atrMultiplier = common.atrMultiplier || 0.3;
   const atrPeriod = common.atrPeriod || 14;
   const swingLookback = smcParams.liquidityLookback || 3;
+  const sweepThresholdPips = smcParams.sweepThreshold ?? 0.3;
+  const pipVal = SYMBOL_SPECS[symbol].pipSize;
+  const minSweepDistance = sweepThresholdPips * pipVal;
+  const slMode = common.stopLossMode || 'ATR';
 
   const currentIdx = candles5M.length - 1;
   const currentCandle = candles5M[currentIdx];
   if (!currentCandle.isClosed) return null;
 
   const swings = detectSwingPoints(candles5M, timeframe);
-  // فقط پیوت‌هایی که تایید شده‌اند مجازند
   const confirmedSwings = swings.filter(s => s.confirmedAtIndex <= currentIdx);
   if (confirmedSwings.length < 2) return null;
 
-  const atrs = calculateWilderATR(candles5M, atrPeriod);
-  const currentATR = atrs.length > 0 ? atrs[atrs.length - 1] : symbol === 'XAUUSD' ? 2.5 : 0.0015;
+  // بررسی شرط FVG (گپ ارزش منصفانه) در صورت الزام
+  if (smcParams.requireFvg && candles5M.length >= 3) {
+    const c1 = candles5M[currentIdx - 2];
+    const c3 = currentCandle;
+    const hasBullishFvg = c3.low > c1.high;
+    const hasBearishFvg = c3.high < c1.low;
+    if (!hasBullishFvg && !hasBearishFvg) {
+      return null;
+    }
+  }
 
   // بررسی سوییپ کف (کاندیدای BUY)
   if (canBuy) {
     const recentLows = confirmedSwings.filter(s => s.type === 'LOW').slice(-swingLookback);
     for (const low of recentLows) {
-      // شرط سوییپ: شدو نفوذ کرده ولی کلوز کندل بالاتر از سطح بسته شده باشد
-      if (currentCandle.low < low.price && currentCandle.close > low.price) {
+      const sweepDepth = low.price - currentCandle.low;
+      // شرط سوییپ: نفوذ شدو حداقل به اندازه minSweepDistance ولی کلوز بالاتر از سطح بسته شده باشد
+      if (sweepDepth >= minSweepDistance && currentCandle.close > low.price) {
+        // در صورت الزام شکست ساختار (requireStructureBreak): کلوز باید بالاتر از اوپن کندل قبلی باشد
+        if (smcParams.requireStructureBreak && currentCandle.close <= candles5M[currentIdx - 1].high) {
+          continue;
+        }
+
         const entryPrice = currentCandle.close;
-        const stopLossPrice = Number((currentCandle.low - currentATR * atrMultiplier).toFixed(symbol === 'XAUUSD' ? 2 : 5));
-        const slDistance = entryPrice - stopLossPrice;
-        if (slDistance <= 0) continue;
+        const slRes = StopLossCalculator.calculate(slMode, 'BUY', entryPrice, candles5M, symbol, timeframe, {
+          atrPeriod,
+          atrMultiplier,
+          fixedStopPips: common.fixedStopPips ?? 20,
+          structureLookback: 3,
+        });
 
-        const takeProfitPrice = Number((entryPrice + slDistance * rr).toFixed(symbol === 'XAUUSD' ? 2 : 5));
-        const riskRewardRatio = Number(((takeProfitPrice - entryPrice) / slDistance).toFixed(2));
+        if (slRes.status === 'VALID' && slRes.riskDistancePrice > 0) {
+          const precision = symbol === 'XAUUSD' || symbol === 'BTCUSD' ? 2 : symbol === 'USDJPY' ? 3 : 5;
+          const takeProfitPrice = Number((entryPrice + slRes.riskDistancePrice * rr).toFixed(precision));
+          const riskRewardRatio = Number(((takeProfitPrice - entryPrice) / slRes.riskDistancePrice).toFixed(2));
 
-        return {
-          id: `CAND-BUY-${currentCandle.timestamp}`,
-          strategyName: 'S0-proposed Intraday (Sweep Reversal)',
-          symbol,
-          timeframe,
-          direction: 'BUY',
-          createdAtTimestamp: currentCandle.timestamp,
-          expiresAtTimestamp: currentCandle.timestamp + expiryMs,
-          entryPrice,
-          stopLossPrice,
-          takeProfitPrice,
-          riskRewardRatio,
-          evidenceIds: {
-            sweepId: `SWEEP-${low.id}`,
-            contextSwingId: low.id,
-          },
-          rationale: `سوییپ نقدینگی کف قیمتی ${low.price} با برگشت در تایم‌فریم ${timeframe} و ریسک به ریوارد ۱ به ${riskRewardRatio}`,
-          status: 'CONFIRMED',
-        };
+          return {
+            id: `CAND-BUY-${currentCandle.timestamp}`,
+            strategyName: 'S0-proposed Intraday (Sweep Reversal)',
+            symbol,
+            timeframe,
+            direction: 'BUY',
+            createdAtTimestamp: currentCandle.timestamp,
+            expiresAtTimestamp: currentCandle.timestamp + expiryMs,
+            entryPrice,
+            stopLossPrice: slRes.stopLossPrice,
+            takeProfitPrice,
+            riskRewardRatio,
+            evidenceIds: {
+              sweepId: `SWEEP-${low.id}`,
+              contextSwingId: low.id,
+            },
+            rationale: `سوییپ نقدینگی کف قیمتی ${low.price} با نفوذ ${(sweepDepth / pipVal).toFixed(1)} پیپ و تایید در تایم‌فریم ${timeframe}؛ نسبت سود به ضرر ۱ به ${riskRewardRatio}`,
+            status: 'CONFIRMED',
+          };
+        }
       }
     }
   }
@@ -93,49 +121,48 @@ export function evaluateS0Strategy(
   if (canSell) {
     const recentHighs = confirmedSwings.filter(s => s.type === 'HIGH').slice(-swingLookback);
     for (const high of recentHighs) {
-      if (currentCandle.high > high.price && currentCandle.close < high.price) {
+      const sweepDepth = currentCandle.high - high.price;
+      if (sweepDepth >= minSweepDistance && currentCandle.close < high.price) {
+        if (smcParams.requireStructureBreak && currentCandle.close >= candles5M[currentIdx - 1].low) {
+          continue;
+        }
+
         const entryPrice = currentCandle.close;
-        const stopLossPrice = Number((currentCandle.high + currentATR * atrMultiplier).toFixed(symbol === 'XAUUSD' ? 2 : 5));
-        const slDistance = stopLossPrice - entryPrice;
-        if (slDistance <= 0) continue;
+        const slRes = StopLossCalculator.calculate(slMode, 'SELL', entryPrice, candles5M, symbol, timeframe, {
+          atrPeriod,
+          atrMultiplier,
+          fixedStopPips: common.fixedStopPips ?? 20,
+          structureLookback: 3,
+        });
 
-        const takeProfitPrice = Number((entryPrice - slDistance * rr).toFixed(symbol === 'XAUUSD' ? 2 : 5));
-        const riskRewardRatio = Number(((entryPrice - takeProfitPrice) / slDistance).toFixed(2));
+        if (slRes.status === 'VALID' && slRes.riskDistancePrice > 0) {
+          const precision = symbol === 'XAUUSD' || symbol === 'BTCUSD' ? 2 : symbol === 'USDJPY' ? 3 : 5;
+          const takeProfitPrice = Number((entryPrice - slRes.riskDistancePrice * rr).toFixed(precision));
+          const riskRewardRatio = Number(((entryPrice - takeProfitPrice) / slRes.riskDistancePrice).toFixed(2));
 
-        return {
-          id: `CAND-SELL-${currentCandle.timestamp}`,
-          strategyName: 'S0-proposed Intraday (Sweep Reversal)',
-          symbol,
-          timeframe,
-          direction: 'SELL',
-          createdAtTimestamp: currentCandle.timestamp,
-          expiresAtTimestamp: currentCandle.timestamp + expiryMs,
-          entryPrice,
-          stopLossPrice,
-          takeProfitPrice,
-          riskRewardRatio,
-          evidenceIds: {
-            sweepId: `SWEEP-${high.id}`,
-            contextSwingId: high.id,
-          },
-          rationale: `سوییپ نقدینگی سقف قیمتی ${high.price} با برگشت در تایم‌فریم ${timeframe} و ریسک به ریوارد ۱ به ${riskRewardRatio}`,
-          status: 'CONFIRMED',
-        };
+          return {
+            id: `CAND-SELL-${currentCandle.timestamp}`,
+            strategyName: 'S0-proposed Intraday (Sweep Reversal)',
+            symbol,
+            timeframe,
+            direction: 'SELL',
+            createdAtTimestamp: currentCandle.timestamp,
+            expiresAtTimestamp: currentCandle.timestamp + expiryMs,
+            entryPrice,
+            stopLossPrice: slRes.stopLossPrice,
+            takeProfitPrice,
+            riskRewardRatio,
+            evidenceIds: {
+              sweepId: `SWEEP-${high.id}`,
+              contextSwingId: high.id,
+            },
+            rationale: `سوییپ نقدینگی سقف قیمتی ${high.price} با نفوذ ${(sweepDepth / pipVal).toFixed(1)} پیپ و تایید در تایم‌فریم ${timeframe}؛ نسبت سود به ضرر ۱ به ${riskRewardRatio}`,
+            status: 'CONFIRMED',
+          };
+        }
       }
     }
   }
 
   return null;
 }
-
-export class S0Engine {
-  public static evaluateSlice(
-    candles: Candle[],
-    symbol: SymbolId = 'XAUUSD',
-    tf: Timeframe = '5M',
-    params?: StrategyParameters
-  ): StrategyCandidate | null {
-    return evaluateS0Strategy(symbol, candles, candles, tf, params);
-  }
-}
-

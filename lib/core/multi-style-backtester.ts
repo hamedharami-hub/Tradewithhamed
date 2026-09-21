@@ -418,6 +418,7 @@ export class MultiStyleBacktester {
               iterations: 100,
               stepsPerPath: 40,
               volatility: regimeAnalysis.metrics.atrRatio > 1.5 ? baseVol * 1.4 : baseVol,
+              seed: Math.round(candidate.entryPrice * 1000) + i,
             });
 
             if (mcRes.probabilityHittingTarget >= config.minMonteCarloTpProbability) {

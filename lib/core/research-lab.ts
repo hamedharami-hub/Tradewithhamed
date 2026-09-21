@@ -1,21 +1,34 @@
 // lib/core/research-lab.ts
-// آزمایشگاه پژوهش معاملاتی، تحلیل پیش‌رونده (Walk-Forward) و آزمون‌های تنش (Stress Testing)
+// آزمایشگاه جامع محاسبات و اجرای استراتژی‌های کمی در محیط شبیه‌سازی
+// مجهز به تراز چندتایم‌فریمی ضد نگاه‌به‌آینده، محاسبات ریسک‌فری، سیو سود پله‌ای و آمار تفکیکی
 
-import { Candle, SYMBOL_SPECS, SymbolId, Timeframe } from '../contracts/market';
-import { EventDrivenExecutionEngine } from './event-driven-engine';
-import { MultiStyleEngine } from './multi-style-engine';
-import { EndOfDataPolicy, OrderIntentPayload, PositionLedgerEntry } from './ports';
+import { Candle, SymbolId, SYMBOL_SPECS, Timeframe } from '../contracts/market';
 import { TradingStyleType } from '../contracts/regimes';
+import {
+  EventDrivenExecutionEngine,
+  SimulationClock,
+  InMemoryEventStore,
+} from './event-driven-engine';
+import {
+  OrderIntentPayload,
+  PositionLedgerEntry,
+  EndOfDataPolicy,
+} from './ports';
+import { MultiStyleEngine } from './multi-style-engine';
 import {
   AccountConfiguration,
   DateRangeFilterConfig,
   SessionTimezoneConfig,
   StrategyParameters,
-  getDefaultStrategyParameters,
+  CommonStrategyParameters,
+  HigherTimeframeSource,
 } from '../contracts/strategy-parameters';
 import { SessionTimezoneEngine } from './session-timezone';
 import { SeededRNG } from './seeded-rng';
 import { AdvancedExecutionStressConfig } from '../contracts/research-run';
+import { aggregateCandles, validateTimeframeCombination } from './timeframe-aggregator';
+import { MtfAlignmentCursor } from './mtf-alignment';
+import { checkStyleTimeframeCompatibility } from '../contracts/parameter-registry';
 
 function timeframeToMs(timeframe: Timeframe): number {
   const durations: Record<Timeframe, number> = {
@@ -32,13 +45,41 @@ function timeframeToMs(timeframe: Timeframe): number {
 
 export interface ResearchDiagnostics {
   candidatesCount: number;
+  candidatesBeforeMtfFilter?: number;
+  candidatesApprovedByMtf?: number;
+  candidatesRejectedByMtf?: number;
+  candidatesRejectedBySession?: number;
+  candidatesRejectedByDirection?: number;
+  candidatesRejectedByCooldown?: number;
+  candidatesRejectedByVolatility?: number;
+  candidatesRejectedByStructure?: number;
+  candidatesRejectedByMomentum?: number;
+  invalidStops?: number;
+  duplicateOrdersRejected?: number;
   ordersSubmitted: number;
   ordersFilled: number;
+  marketOrdersSubmitted?: number;
+  marketOrdersFilled?: number;
+  limitOrdersSubmitted?: number;
+  limitOrdersFilled?: number;
+  stopOrdersSubmitted?: number;
+  stopOrdersFilled?: number;
   ordersExpired: number;
   ordersCancelledAtEnd: number;
   positionsClosedAtEnd: number;
   positionsOpenAtEnd: number;
   rejectedDueToRiskCount: number;
+  breakevenActivatedCount?: number;
+  breakevenExitCount?: number;
+  breakevenSavedLossCount?: number;
+  partialTakeProfitCount?: number;
+  gapEntryCount?: number;
+  gapExitCount?: number;
+  ambiguousExitCount?: number;
+  higherTimeframeSource?: string;
+  higherTimeframeCandlesUsed?: number;
+  alignmentFailures?: number;
+  nonRecommendedConfiguration?: boolean;
   zeroTradeRationale?: string;
   selectedDateRange?: {
     earliestCandle: number;
@@ -61,6 +102,9 @@ export interface ResearchDiagnostics {
   ordersRejectedByDailyLoss?: number;
   ordersRejectedByDrawdownLimit?: number;
   ordersRejectedByLotRules?: number;
+  rejectedByOpenPositionLimit?: number;
+  rejectedByPendingOrderLimit?: number;
+  rejectedByCombinedExposureLimit?: number;
   tradesBySession?: Record<string, number>;
   profitBySession?: Record<string, number>;
   tradesByWeekday?: Record<string, number>;
@@ -68,6 +112,11 @@ export interface ResearchDiagnostics {
   accountCurrency?: string;
   maxConcurrentPositions?: number;
   rejectedOrdersBreakdown?: { reason: string; count: number }[];
+  timingDataPreparationMs?: number;
+  timingAggregationMs?: number;
+  timingIndicatorsMs?: number;
+  timingBacktestMs?: number;
+  timingMetricsMs?: number;
 }
 
 export interface PerformanceMetrics {
@@ -100,7 +149,7 @@ export interface WalkForwardWindow {
   valEndTime: number;
   trainMetrics: PerformanceMetrics;
   validationMetrics: PerformanceMetrics;
-  efficiencyRatio: number; // نسبت کارایی اعتبارسنجی به آموزش (OOS / IS)
+  efficiencyRatio: number;
 }
 
 export interface StressTestScenarioResult {
@@ -113,18 +162,24 @@ export interface StressTestScenarioResult {
   profitFactor: number;
   expectancyR: number;
   status: 'ROBUST' | 'DEGRADED' | 'FAILED';
+  metrics?: PerformanceMetrics;
+  passedRiskGate?: boolean;
 }
 
 export interface MonteCarloSimulationResult {
   iterations: number;
   medianMaxDrawdownPercent: number;
-  percentile95DrawdownPercent: number;
+  percentile95DrawdownPercent?: number;
+  percentile95MaxDrawdownPercent?: number;
+  riskOfRuinPercent: number;
   medianProfit: number;
-  riskOfRuinPercent: number; // احتمال افت سرمایه بیش از ۲۰٪
+  worstCaseProfit?: number;
+  bestCaseProfit?: number;
+  samplePaths?: { pathIndex: number; points: number[] }[];
 }
 
 export class ResearchLab {
-  // ۱. اجرای بک‌تست رویدادمحور بر روی دیتاست مشخص
+  // ۱. اجرای بک‌تست رویدادمحور مجهز به پکیج ۳
   public static runBacktest(
     candles: Candle[],
     symbol: SymbolId = 'XAUUSD',
@@ -141,16 +196,21 @@ export class ResearchLab {
       timeframe?: Timeframe;
       lookbackCandles?: number;
       riskPercent?: number;
-      strategyParameters?: StrategyParameters;
+      strategyParameters?: Partial<Omit<StrategyParameters, 'common'>> & { common?: Partial<CommonStrategyParameters> };
       endOfDataPolicy?: EndOfDataPolicy;
       onProgress?: (processed: number, total: number) => void;
       stressConfig?: AdvancedExecutionStressConfig;
       randomSeed?: number;
+      htfCandles?: Candle[];
+      htfTimeframe?: Timeframe;
+      htfSource?: HigherTimeframeSource;
     } = {}
   ): {
     metrics: PerformanceMetrics;
     trades: PositionLedgerEntry[];
   } {
+    const t0 = performance.now();
+
     if (!candles || candles.length === 0) {
       throw new Error('دیتاست کندل خالی است.');
     }
@@ -164,15 +224,67 @@ export class ResearchLab {
     const strategyParameters = options.strategyParameters;
     const additionalSlippagePips = options.additionalSlippagePips ?? 0;
 
+    // بررسی سازگاری سبک و تایم‌فریم
+    let nonRecommendedConfiguration = false;
+    if (style !== 'ALL') {
+      const compat = checkStyleTimeframeCompatibility(style, timeframe);
+      if (compat.isNotRecommended) {
+        nonRecommendedConfiguration = true;
+      }
+    }
+
     // پارامترهای حساب و حدود ریسک
     const minLot = options.accountConfig?.minLot ?? 0.01;
     const lotStep = options.accountConfig?.lotStep ?? 0.01;
     const maxLot = options.accountConfig?.maxLot ?? 100.0;
-    const maxConcurrent = options.accountConfig?.maxConcurrentPositions ?? strategyParameters?.common.maxConcurrentPositions ?? 5;
+    const maxConcurrent = options.accountConfig?.maxConcurrentPositions ?? strategyParameters?.common?.maxConcurrentPositions ?? 5;
+    const maxOpenPositions = options.accountConfig?.maxOpenPositions ?? strategyParameters?.common?.maxOpenPositions ?? maxConcurrent;
+    const maxPendingOrders = options.accountConfig?.maxPendingOrders ?? strategyParameters?.common?.maxPendingOrders ?? 5;
+    const maxCombinedExposure = options.accountConfig?.maxCombinedExposure ?? strategyParameters?.common?.maxCombinedExposure ?? (maxOpenPositions + maxPendingOrders);
+
     const maxDailyLossPercent = options.accountConfig?.maxDailyLossPercent;
     const maxTotalDrawdownPercent = options.accountConfig?.maxTotalDrawdownPercent;
     const userTz = options.sessionConfig?.timezone || 'UTC';
     const brokerOffset = options.sessionConfig?.brokerOffsetMinutes || 0;
+
+    // ─── پیکربندی چندتایم‌فریمی (MTF) ─────────────────────────────────────────
+    const tPrepStart = performance.now();
+    const mtfConfig = strategyParameters?.common?.mtfConfig;
+    const isMtfFilterActive =
+      Boolean(strategyParameters?.common?.higherTimeframeFilter) ||
+      (mtfConfig !== undefined && mtfConfig.higherTimeframeFilterMode !== 'OFF');
+
+    let htfCandlesToUse: Candle[] = [];
+    let htfTimeframe: Timeframe = options.htfTimeframe || mtfConfig?.confirmationTimeframe || '1H';
+    let reportedHtfSource: HigherTimeframeSource = options.htfSource || mtfConfig?.higherTimeframeSource || 'AUTO';
+    let alignmentFailures = 0;
+
+    let tAggDuration = 0;
+
+    if (isMtfFilterActive) {
+      // اعتبارسنجی زوج تایم‌فریم
+      const validation = validateTimeframeCombination(timeframe, htfTimeframe);
+      if (!validation.isValid) {
+        throw new Error(validation.errorMessageFa);
+      }
+
+      if (options.htfCandles && options.htfCandles.length > 0 && reportedHtfSource !== 'AGGREGATED_FROM_EXECUTION') {
+        htfCandlesToUse = options.htfCandles;
+        reportedHtfSource = 'NATIVE_DATASET';
+      } else {
+        // تجمیع قطعی از روی کندل‌های بسته تایم‌فریم اجرا
+        const tAgg0 = performance.now();
+        htfCandlesToUse = aggregateCandles(candles, htfTimeframe, false);
+        tAggDuration = performance.now() - tAgg0;
+        reportedHtfSource = 'AGGREGATED_FROM_EXECUTION';
+      }
+    }
+
+    const mtfCursor = isMtfFilterActive && htfCandlesToUse.length > 0
+      ? new MtfAlignmentCursor(htfCandlesToUse, htfTimeframe, reportedHtfSource)
+      : null;
+
+    const tPrepDuration = performance.now() - tPrepStart;
 
     // مدیریت بازه تاریخی و وارم‌آپ (Date Range & Warmup)
     const earliestCandle = candles[0].timestamp;
@@ -238,6 +350,7 @@ export class ResearchLab {
     const evaluationCandlesCount = evaluationEndIndex - evaluationStartIndex + 1;
     const warmupCandlesCount = evaluationStartIndex;
 
+    // ایجاد موتور رویدادمحور با تمام قابلیت‌های پکیج ۳
     const engine = new EventDrivenExecutionEngine({
       environment: 'BACKTEST',
       accountNamespace: 'BACKTEST-RUN',
@@ -247,8 +360,18 @@ export class ResearchLab {
         * (options.defaultSpreadPips ?? SYMBOL_SPECS[symbol].typicalSpreadPips),
       ambiguityPolicy: 'PESSIMISTIC',
       endOfDataPolicy,
-      enableBreakeven: strategyParameters?.common.enableBreakeven,
-      enablePartialTp: strategyParameters?.common.enablePartialTakeProfit,
+      enableBreakeven: strategyParameters?.common?.enableBreakeven ?? true,
+      breakevenTriggerR: strategyParameters?.common?.breakevenTriggerR ?? 1.0,
+      breakevenOffsetPips: strategyParameters?.common?.breakevenOffsetPips ?? 0.5,
+      includeEntryCostsInBreakeven: strategyParameters?.common?.includeEntryCostsInBreakeven ?? true,
+      enablePartialTp: strategyParameters?.common?.enablePartialTakeProfit ?? false,
+      partialTakeProfitTriggerR: strategyParameters?.common?.partialTakeProfitTriggerR ?? 1.2,
+      partialClosePercent: strategyParameters?.common?.partialClosePercent ?? 50,
+      moveStopAfterPartial: strategyParameters?.common?.moveStopAfterPartial ?? true,
+      postPartialStopMode: strategyParameters?.common?.postPartialStopMode ?? 'BREAKEVEN',
+      maxOpenPositions,
+      maxPendingOrders,
+      maxCombinedExposure,
       slippageModel: {
         baseSlippagePips: 0.2,
         volatilityMultiplier: 0.1,
@@ -257,54 +380,54 @@ export class ResearchLab {
       },
       randomSkippedFillsPercent: options.stressConfig?.randomSkippedFillsPercent ?? 0,
       gapShockMultiplier: options.stressConfig?.gapShockMultiplier ?? 1,
-      randomSeed: options.randomSeed ?? options.stressConfig?.randomSkippedFillsPercent
-        ? (options.randomSeed ?? 1337) : undefined,
+      randomSeed: options.randomSeed ?? 1337,
     });
 
-    const equityCurve: PerformanceMetrics['equityCurve'] = [
-      { timestamp: candles[0]?.timestamp || 0, equity: initialCash, drawdownPercent: 0 },
-    ];
+    const equityCurve: { timestamp: number; equity: number; drawdownPercent: number }[] = [];
+    const progressInterval = Math.max(1, Math.floor(evaluationCandlesCount / 20));
 
     let candidatesCount = 0;
+    let candidatesBeforeMtfFilter = 0;
+    let candidatesApprovedByMtf = 0;
+    let candidatesRejectedByMtf = 0;
     let candidatesInsideSession = 0;
     let candidatesRejectedOutsideSession = 0;
-    let ordersSubmitted = 0;
-    let ordersFilled = 0;
-    let ordersExpired = 0;
-    let rejectedDueToRiskCount = 0;
     let ordersRejectedByDailyLoss = 0;
     let ordersRejectedByDrawdownLimit = 0;
     let ordersRejectedByLotRules = 0;
+    let rejectedDueToRiskCount = 0;
+    let candidatesRejectedByCooldown = 0;
+    let candidatesRejectedByDirection = 0;
+    let invalidStops = 0;
 
-    let lastOrderBarIndex = -1;
-    let currentTradingDay = '';
-    let dayStartingEquity = initialCash;
     let isDailyLossLocked = false;
     let isDrawdownLocked = false;
+    let currentDayKey = '';
+    let dayStartingEquity = initialCash;
+    let lastClosedPositionTimestamp = 0;
 
-    const progressInterval = Math.max(50, Math.floor(evaluationCandlesCount / 100));
-    const simStartIndex = Math.max(14, evaluationStartIndex > 0 ? Math.max(14, evaluationStartIndex - lookbackCandles) : 14);
+    const tBacktestStart = performance.now();
 
-    for (let i = simStartIndex; i <= evaluationEndIndex; i++) {
+    // ─── حلقه اصلی ارزیابی و شبیه‌سازی ──────────────────────────────────────
+    for (let i = evaluationStartIndex; i <= evaluationEndIndex; i++) {
       const currentCandle = candles[i];
-      const isWarmupBar = i < evaluationStartIndex;
 
-      // الف. پردازش سفارش‌ها و پوزیشن‌ها همیشه انجام می‌شود
-      const candleEvents = engine.processCandle(currentCandle, symbol);
-      for (const evt of candleEvents) {
-        if (evt.status === 'FILLED') ordersFilled++;
-        else if (evt.status === 'EXPIRED') ordersExpired++;
+      // ۱. پردازش اجرای کندل در موتور
+      engine.processCandle(currentCandle, symbol);
+
+      // ۲. به‌روزرسانی زمان آخرین معامله بسته شده برای محاسبه دقیق Cooldown (طبق بخش M)
+      const currentClosedPositions = engine.getLedger().positions.filter(p => !p.isOpen);
+      if (currentClosedPositions.length > 0) {
+        const latestClose = Math.max(...currentClosedPositions.map(p => p.closedTimestamp || 0));
+        if (latestClose > lastClosedPositionTimestamp) {
+          lastClosedPositionTimestamp = latestClose;
+        }
       }
 
-      // در بازه وارم‌آپ، محاسبات اندیکاتورها انجام می‌شود اما هیچ ورودی ثبت نمی‌گردد
-      if (isWarmupBar) {
-        continue;
-      }
-
-      // بررسی روز معاملاتی و سقف زیان روزانه (بر حسب منطقه زمانی انتخابی)
-      const localTime = SessionTimezoneEngine.getLocalTime(currentCandle.timestamp, userTz, brokerOffset);
-      if (localTime.dateKey !== currentTradingDay) {
-        currentTradingDay = localTime.dateKey;
+      // ۳. بررسی مرز روز جدید برای محاسبه سقف زیان روزانه
+      const candleDayKey = SessionTimezoneEngine.getDayKey(currentCandle.timestamp, userTz, brokerOffset);
+      if (candleDayKey !== currentDayKey) {
+        currentDayKey = candleDayKey;
         dayStartingEquity = engine.getLedger().equity;
         isDailyLossLocked = false;
       } else if (maxDailyLossPercent && maxDailyLossPercent > 0) {
@@ -314,30 +437,52 @@ export class ResearchLab {
         }
       }
 
-      // بررسی سقف افت کل (Drawdown Limit)
+      // ۴. بررسی سقف افت کل (Drawdown Limit)
       if (maxTotalDrawdownPercent && maxTotalDrawdownPercent > 0) {
         if (engine.getLedger().maxDrawdownPercent >= maxTotalDrawdownPercent) {
           isDrawdownLocked = true;
         }
       }
 
-      // بررسی فیلتر سشن و زمان ورود
+      // ۵. بررسی فیلتر سشن و زمان ورود
       const sessionCheck = SessionTimezoneEngine.isEntryAllowed(currentCandle.timestamp, options.sessionConfig);
+
+      // ۶. استخراج کندل تاییدیه HTF بدون نگاه به آینده
+      let alignedHtfCandles: Candle[] | undefined = undefined;
+      if (mtfCursor) {
+        const alignRes = mtfCursor.getClosedCandle(currentCandle.timestamp);
+        if (alignRes.alignmentStatus === 'AVAILABLE' && alignRes.candle) {
+          // برای شاخص‌های HTF، تمام کندل‌های HTF تا این کندل بسته شده مجازند
+          const idx = htfCandlesToUse.findIndex(c => c.timestamp === alignRes.candle!.timestamp);
+          if (idx !== -1) {
+            alignedHtfCandles = htfCandlesToUse.slice(0, idx + 1);
+          }
+        } else {
+          alignmentFailures++;
+        }
+      }
 
       const lookbackStart = Math.max(0, i - lookbackCandles + 1);
       const slice = candles.slice(lookbackStart, i + 1);
 
-      // ب. ارزیابی سیگنال با دادهٔ قابل مشاهدهٔ همین لحظه
-      const candidate = MultiStyleEngine.evaluate(
+      // ۷. ارزیابی استراتژی‌ها و فیلتر MTF
+      const evalRes = MultiStyleEngine.evaluate(
         slice,
         symbol,
         style,
         timeframe,
-        strategyParameters
-      ).candidate;
+        strategyParameters as StrategyParameters,
+        alignedHtfCandles,
+        htfTimeframe
+      );
+
+      candidatesBeforeMtfFilter += evalRes.allCandidates.length + evalRes.rejectedByMtfCount;
+      candidatesRejectedByMtf += evalRes.rejectedByMtfCount;
+      const candidate = evalRes.candidate;
 
       if (candidate) {
         candidatesCount++;
+        candidatesApprovedByMtf++;
 
         if (!sessionCheck.allowed) {
           candidatesRejectedOutsideSession++;
@@ -357,85 +502,92 @@ export class ResearchLab {
         }
 
         // فیلتر جهت معامله (directionMode)
-        const directionMode = strategyParameters?.common.directionMode || 'BOTH';
+        const directionMode = strategyParameters?.common?.directionMode || 'BOTH';
         if (directionMode === 'LONG_ONLY' && candidate.direction === 'SELL') {
+          candidatesRejectedByDirection++;
           continue;
         }
         if (directionMode === 'SHORT_ONLY' && candidate.direction === 'BUY') {
+          candidatesRejectedByDirection++;
           continue;
         }
 
-        // بررسی بار خنک‌سازی (cooldownBars)
-        const cooldownBars = strategyParameters?.common.cooldownBars ?? 0;
-        if (lastOrderBarIndex !== -1 && (i - lastOrderBarIndex) < cooldownBars) {
-          continue;
-        }
-
-        const currentOpenPositions = engine.getLedger().positions.filter(p => p.isOpen).length;
-        if (currentOpenPositions < maxConcurrent) {
-          // محاسبه حجم بر اساس ریسک و سرمایه
-          const dollarRisk = engine.getLedger().equity * (safeRiskPercent / 100);
-          const priceDistance = Math.abs(candidate.entryPrice - candidate.stopLossPrice);
-          const contractSize = SYMBOL_SPECS[symbol].contractSize;
-          const rawVolume = priceDistance > 0 ? dollarRisk / (priceDistance * contractSize) : minLot;
-
-          // گرد کردن حجم با lotStep
-          const stepMultiplier = Math.round(rawVolume / lotStep);
-          let volumeLots = Number((stepMultiplier * lotStep).toFixed(4));
-
-          // بررسی سقف لات
-          if (volumeLots > maxLot) {
-            ordersRejectedByLotRules++;
+        // بررسی بار خنک‌سازی (Cooldown Bars) - بر مبنای بسته‌شدن پوزیشن قبلی (بخش M)
+        const cooldownBars = strategyParameters?.common?.cooldownBars ?? 0;
+        if (cooldownBars > 0 && lastClosedPositionTimestamp > 0) {
+          const tfMs = timeframeToMs(timeframe);
+          const elapsedBarsSinceLastClose = Math.floor((currentCandle.timestamp - lastClosedPositionTimestamp) / tfMs);
+          if (elapsedBarsSinceLastClose < cooldownBars) {
+            candidatesRejectedByCooldown++;
             continue;
           }
-
-          // بررسی حداقل لات
-          if (volumeLots < minLot) {
-            const minLotRiskDollar = minLot * priceDistance * contractSize;
-            if (minLotRiskDollar > dollarRisk * 1.05) {
-              ordersRejectedByLotRules++;
-              rejectedDueToRiskCount++;
-              continue;
-            }
-            volumeLots = minLot;
-          }
-
-          const actualRiskDollar = Number((volumeLots * priceDistance * contractSize).toFixed(2));
-          const orderType =
-            strategyParameters?.common.orderType ||
-            (style === 'SCALP_M1_M5' ? 'MARKET' : 'LIMIT');
-          const expiryBars =
-            strategyParameters?.common.expiryBars || (style === 'SCALP_M1_M5' ? 3 : 6);
-          const expiryTimestamp =
-            currentCandle.timestamp + expiryBars * timeframeToMs(timeframe);
-
-          const intent: OrderIntentPayload = {
-            intentId: `INT-${candidate.id}-${currentCandle.timestamp}`,
-            environment: 'BACKTEST',
-            accountNamespace: 'BACKTEST-RUN',
-            candidateId: candidate.id,
-            symbol: candidate.symbol,
-            orderType,
-            direction: candidate.direction,
-            volumeLots,
-            entryPrice: candidate.entryPrice,
-            stopLossPrice: candidate.stopLossPrice,
-            takeProfitPrice: candidate.takeProfitPrice,
-            expiryTimestamp,
-            reasonCode: candidate.strategyName,
-            createdTimestamp: currentCandle.timestamp,
-            idempotencyKey: `${candidate.id}-${currentCandle.timestamp}`,
-          };
-
-          const submitEvt = engine.submitOrder(intent);
-          if (submitEvt.status === 'PENDING' || submitEvt.status === 'FILLED') {
-            ordersSubmitted++;
-            lastOrderBarIndex = i;
-          }
         }
+
+        // بررسی سقف پوزیشن‌های باز همزمان (maxOpenPositions)
+        const currentOpenPositions = engine.getLedger().positions.filter(p => p.isOpen).length;
+        if (currentOpenPositions >= maxOpenPositions) {
+          continue;
+        }
+
+        // محاسبه حجم بر اساس ریسک و سرمایه
+        const dollarRisk = engine.getLedger().equity * (safeRiskPercent / 100);
+        const priceDistance = Math.abs(candidate.entryPrice - candidate.stopLossPrice);
+        const contractSize = SYMBOL_SPECS[symbol].contractSize;
+
+        if (priceDistance <= 0) {
+          invalidStops++;
+          continue;
+        }
+
+        const rawVolume = dollarRisk / (priceDistance * contractSize);
+        const stepMultiplier = Math.round(rawVolume / lotStep);
+        let volumeLots = Number((stepMultiplier * lotStep).toFixed(4));
+
+        if (volumeLots > maxLot) {
+          ordersRejectedByLotRules++;
+          continue;
+        }
+
+        if (volumeLots < minLot) {
+          const minLotRiskDollar = minLot * priceDistance * contractSize;
+          if (minLotRiskDollar > dollarRisk * 1.05) {
+            ordersRejectedByLotRules++;
+            rejectedDueToRiskCount++;
+            continue;
+          }
+          volumeLots = minLot;
+        }
+
+        const orderType =
+          strategyParameters?.common?.orderType ||
+          (style === 'SCALP_M1_M5' ? 'MARKET' : 'LIMIT');
+        const expiryBars =
+          strategyParameters?.common?.expiryBars || (style === 'SCALP_M1_M5' ? 3 : 6);
+        const expiryTimestamp =
+          currentCandle.timestamp + expiryBars * timeframeToMs(timeframe);
+
+        const intent: OrderIntentPayload = {
+          intentId: `INT-${candidate.id}-${currentCandle.timestamp}`,
+          environment: 'BACKTEST',
+          accountNamespace: 'BACKTEST-RUN',
+          candidateId: candidate.id,
+          symbol: candidate.symbol,
+          orderType,
+          direction: candidate.direction,
+          volumeLots,
+          entryPrice: candidate.entryPrice,
+          stopLossPrice: candidate.stopLossPrice,
+          takeProfitPrice: candidate.takeProfitPrice,
+          expiryTimestamp,
+          reasonCode: candidate.strategyName,
+          createdTimestamp: currentCandle.timestamp,
+          idempotencyKey: `${candidate.id}-${currentCandle.timestamp}`,
+        };
+
+        engine.submitOrder(intent);
       }
 
-      // ج. ثبت نقاط نمودار دارایی هر ۵ کندل یکبار
+      // ثبت نقاط نمودار دارایی هر ۵ کندل یکبار
       if (i % 5 === 0 || i === evaluationEndIndex) {
         const ledger = engine.getLedger();
         equityCurve.push({
@@ -452,6 +604,8 @@ export class ResearchLab {
       }
     }
 
+    const tBacktestDuration = performance.now() - tBacktestStart;
+
     // د. مدیریت پایان دیتاست (End of Data Policy)
     const lastCandle = candles[evaluationEndIndex];
     const endOfDataResult = lastCandle
@@ -460,16 +614,17 @@ export class ResearchLab {
 
     const finalLedger = engine.getLedger();
 
-    // ثبت قطعی آخرین نقطه منحنی دارایی بعد از finalizeEndOfData با ارزش دقیق final equity
+    // ثبت قطعی آخرین نقطه منحنی دارایی
     equityCurve.push({
       timestamp: lastCandle ? lastCandle.timestamp : 0,
       equity: finalLedger.equity,
       drawdownPercent: finalLedger.maxDrawdownPercent,
     });
 
+    const tMetricsStart = performance.now();
     const metrics = this.calculateMetrics(finalLedger.positions, initialCash, equityCurve);
 
-    // محاسبه تفکیکی سشن‌ها و روزهای هفته
+    // تفکیک سشن‌ها و روزهای هفته
     const tradesBySession: Record<string, number> = {};
     const profitBySession: Record<string, number> = {};
     const tradesByWeekday: Record<string, number> = {
@@ -493,40 +648,62 @@ export class ResearchLab {
       profitByWeekday[wd] = Number(((profitByWeekday[wd] || 0) + pos.realizedPnl).toFixed(2));
     }
 
-    // تشکیل توضیح منطقی در صورت صفر بودن معاملات
+    // توضیح منطقی در صورت عدم وجود معامله بسته
     let zeroTradeRationale: string | undefined;
     if (metrics.totalTrades === 0) {
       if (candidatesCount === 0) {
-        zeroTradeRationale =
-          'با تنظیمات و فیلترهای جاری استراتژی، هیچ کاندیدای واجد شرایطی در طول بازهٔ زمانی تشکیل نشد.';
+        if (candidatesRejectedByMtf > 0) {
+          zeroTradeRationale = `تعداد ${candidatesRejectedByMtf} کاندیدا شناسایی شد اما تمام آن‌ها به دلیل مغایرت با فیلتر چندتایم‌فریمی (${mtfConfig?.higherTimeframeFilterMode || 'MTF'}) رد شدند.`;
+        } else {
+          zeroTradeRationale = 'با تنظیمات و فیلترهای جاری استراتژی، هیچ کاندیدای واجد شرایطی تشکیل نشد.';
+        }
       } else if (candidatesRejectedOutsideSession > 0 && candidatesInsideSession === 0) {
-        zeroTradeRationale = `تعداد ${candidatesRejectedOutsideSession} کاندیدا شناسایی شد اما تمام آن‌ها به دلیل خارج بودن از سشن (${options.sessionConfig?.session || 'ALL'}) یا روزهای مجاز معامله رد شدند.`;
-      } else if (ordersRejectedByDrawdownLimit > 0 && ordersSubmitted === 0) {
-        zeroTradeRationale = `سقف افت سرمایه (${maxTotalDrawdownPercent}٪) مانع از ثبت سفارش‌های جدید شد.`;
-      } else if (ordersRejectedByDailyLoss > 0 && ordersSubmitted === 0) {
-        zeroTradeRationale = `سقف زیان روزانه (${maxDailyLossPercent}٪) مانع از ثبت سفارش‌های جدید شد.`;
-      } else if (rejectedDueToRiskCount > 0 && ordersSubmitted === 0) {
-        zeroTradeRationale = `تعداد ${rejectedDueToRiskCount} کاندیدا شناسایی شد اما به دلیل کوچک بودن فاصله حد ضرر یا سرمایه کم، حداقل حجم مجاز بروکر (${minLot} لات) از سقف ریسک ${safeRiskPercent}٪ تجاوز می‌کرد.`;
-      } else if (ordersSubmitted > 0 && ordersFilled === 0) {
-        zeroTradeRationale = `تعداد ${ordersSubmitted} سفارش ثبت شد اما تمامی آن‌ها پیش از رسیدن قیمت به سطح ورود لیمیت منقضی شدند (${ordersExpired} انقضا).`;
-      } else if (endOfDataResult.openPositionsCount > 0 && endOfDataPolicy === 'KEEP_OPEN_AND_EXCLUDE') {
-        zeroTradeRationale =
-          'معاملات باز در پایان داده طبق سیاست KEEP_OPEN_AND_EXCLUDE در آمار معاملات بسته منظور نشدند.';
+        zeroTradeRationale = `تعداد ${candidatesRejectedOutsideSession} کاندیدا شناسایی شد اما تمام آن‌ها به دلیل خارج بودن از سشن (${options.sessionConfig?.session || 'ALL'}) رد شدند.`;
+      } else if (engine.diagnostics.rejectedByPendingOrderLimit > 0 && engine.diagnostics.limitOrdersSubmitted === 0) {
+        zeroTradeRationale = 'سقف سفارش‌های معلق مانع از ثبت سفارش جدید شد.';
+      } else if (engine.diagnostics.limitOrdersSubmitted > 0 && engine.diagnostics.limitOrdersFilled === 0) {
+        zeroTradeRationale = `تعداد ${engine.diagnostics.limitOrdersSubmitted} سفارش ثبت شد اما همگی منقضی شدند (${engine.diagnostics.ordersExpired} انقضا).`;
       } else {
-        zeroTradeRationale =
-          'بک‌تست کامل شد اما این تنظیمات هیچ معاملهٔ نهایی بسته‌شده‌ای ایجاد نکرد.';
+        zeroTradeRationale = 'بک‌تست کامل شد اما هیچ معامله نهایی بسته‌شده‌ای حاصل نشد.';
       }
     }
 
+    const tMetricsDuration = performance.now() - tMetricsStart;
+
     metrics.diagnostics = {
       candidatesCount,
-      ordersSubmitted,
-      ordersFilled,
-      ordersExpired,
+      candidatesBeforeMtfFilter,
+      candidatesApprovedByMtf,
+      candidatesRejectedByMtf,
+      candidatesRejectedBySession: candidatesRejectedOutsideSession,
+      candidatesRejectedByDirection,
+      candidatesRejectedByCooldown,
+      invalidStops,
+      duplicateOrdersRejected: engine.diagnostics.duplicateOrdersRejected,
+      ordersSubmitted: engine.diagnostics.marketOrdersSubmitted + engine.diagnostics.limitOrdersSubmitted + engine.diagnostics.stopOrdersSubmitted,
+      ordersFilled: engine.diagnostics.marketOrdersFilled + engine.diagnostics.limitOrdersFilled + engine.diagnostics.stopOrdersFilled,
+      marketOrdersSubmitted: engine.diagnostics.marketOrdersSubmitted,
+      marketOrdersFilled: engine.diagnostics.marketOrdersFilled,
+      limitOrdersSubmitted: engine.diagnostics.limitOrdersSubmitted,
+      limitOrdersFilled: engine.diagnostics.limitOrdersFilled,
+      stopOrdersSubmitted: engine.diagnostics.stopOrdersSubmitted,
+      stopOrdersFilled: engine.diagnostics.stopOrdersFilled,
+      ordersExpired: engine.diagnostics.ordersExpired,
       ordersCancelledAtEnd: endOfDataResult.cancelledOrdersCount,
       positionsClosedAtEnd: endOfDataResult.closedPositionsCount,
       positionsOpenAtEnd: endOfDataResult.openPositionsCount,
       rejectedDueToRiskCount,
+      breakevenActivatedCount: engine.diagnostics.breakevenActivatedCount,
+      breakevenExitCount: engine.diagnostics.breakevenExitCount,
+      breakevenSavedLossCount: engine.diagnostics.breakevenSavedLossCount,
+      partialTakeProfitCount: engine.diagnostics.partialTakeProfitCount,
+      gapEntryCount: engine.diagnostics.gapEntryCount,
+      gapExitCount: engine.diagnostics.gapExitCount,
+      ambiguousExitCount: engine.diagnostics.ambiguousExitCount,
+      higherTimeframeSource: reportedHtfSource,
+      higherTimeframeCandlesUsed: htfCandlesToUse.length,
+      alignmentFailures,
+      nonRecommendedConfiguration,
       zeroTradeRationale,
       selectedDateRange: {
         earliestCandle,
@@ -537,18 +714,21 @@ export class ResearchLab {
         evaluationCandles: evaluationCandlesCount,
         warmupCandles: warmupCandlesCount,
       },
-      selectedSessions: options.sessionConfig ? [options.sessionConfig.session] : ['ALL'],
+      selectedSessions: options.sessionConfig?.session ? [options.sessionConfig.session] : ['ALL'],
       selectedWeekdays: options.sessionConfig?.selectedWeekdays || [1, 2, 3, 4, 5],
       timezone: userTz,
       initialCapital: initialCash,
       finalBalance: finalLedger.cashBalance,
       finalEquity: finalLedger.equity,
-      returnPercent: metrics.netProfitPercent,
+      returnPercent: Number((((finalLedger.equity - initialCash) / initialCash) * 100).toFixed(2)),
       candidatesInsideSession,
       candidatesRejectedOutsideSession,
       ordersRejectedByDailyLoss,
       ordersRejectedByDrawdownLimit,
       ordersRejectedByLotRules,
+      rejectedByOpenPositionLimit: engine.diagnostics.rejectedByOpenPositionLimit,
+      rejectedByPendingOrderLimit: engine.diagnostics.rejectedByPendingOrderLimit,
+      rejectedByCombinedExposureLimit: engine.diagnostics.rejectedByCombinedExposureLimit,
       tradesBySession,
       profitBySession,
       tradesByWeekday,
@@ -561,7 +741,17 @@ export class ResearchLab {
         { reason: 'lot_rules_rejected', count: ordersRejectedByLotRules },
         { reason: 'outside_session', count: candidatesRejectedOutsideSession },
         { reason: 'unsafe_risk_min_lot', count: rejectedDueToRiskCount },
+        { reason: 'mtf_filter_rejected', count: candidatesRejectedByMtf },
+        { reason: 'open_position_limit_reached', count: engine.diagnostics.rejectedByOpenPositionLimit },
+        { reason: 'pending_order_limit_reached', count: engine.diagnostics.rejectedByPendingOrderLimit },
+        { reason: 'combined_exposure_limit_reached', count: engine.diagnostics.rejectedByCombinedExposureLimit },
+        { reason: 'cooldown_active', count: candidatesRejectedByCooldown },
       ],
+      timingDataPreparationMs: Number(tPrepDuration.toFixed(1)),
+      timingAggregationMs: Number(tAggDuration.toFixed(1)),
+      timingIndicatorsMs: 0,
+      timingBacktestMs: Number(tBacktestDuration.toFixed(1)),
+      timingMetricsMs: Number(tMetricsDuration.toFixed(1)),
     };
 
     return {
@@ -570,7 +760,186 @@ export class ResearchLab {
     };
   }
 
-  // ۲. تحلیل پیش‌رونده (Walk-Forward Analysis) با ۳ پنجره زمانی پیوسته
+  // ۲. محاسبه آماری متریک‌ها
+  public static calculateMetrics(
+    positions: PositionLedgerEntry[],
+    initialCash: number,
+    equityCurve: { timestamp: number; equity: number; drawdownPercent: number }[]
+  ): PerformanceMetrics {
+    const closed = positions.filter(p => !p.isOpen);
+    const totalTrades = closed.length;
+
+    if (totalTrades === 0) {
+      return {
+        totalTrades: 0,
+        winningTrades: 0,
+        losingTrades: 0,
+        breakEvenTrades: 0,
+        winRatePercent: 0,
+        profitFactor: 0,
+        payoffRatio: 0,
+        expectancyR: 0,
+        netProfit: 0,
+        netProfitPercent: 0,
+        maxDrawdownAmount: 0,
+        maxDrawdownPercent: 0,
+        recoveryFactor: 0,
+        totalCommissions: 0,
+        avgMaePips: 0,
+        avgMfePips: 0,
+        equityCurve,
+        ambiguousTradesCount: 0,
+      };
+    }
+
+    let winningTrades = 0;
+    let losingTrades = 0;
+    let breakEvenTrades = 0;
+    let grossProfit = 0;
+    let grossLoss = 0;
+    let totalCommissions = 0;
+    let totalMae = 0;
+    let totalMfe = 0;
+    let ambiguousTradesCount = 0;
+
+    for (const pos of closed) {
+      totalCommissions += pos.commissionPaid;
+      totalMae += pos.maePips;
+      totalMfe += pos.mfePips;
+
+      if (pos.realizedPnl > 0.001) {
+        winningTrades++;
+        grossProfit += pos.realizedPnl;
+      } else if (pos.realizedPnl < -0.001) {
+        losingTrades++;
+        grossLoss += Math.abs(pos.realizedPnl);
+      } else {
+        breakEvenTrades++;
+      }
+    }
+
+    const netProfit = Number((grossProfit - grossLoss).toFixed(2));
+    const netProfitPercent = Number(((netProfit / initialCash) * 100).toFixed(2));
+    const winRatePercent = Number(((winningTrades / totalTrades) * 100).toFixed(1));
+    const profitFactor = grossLoss > 0 ? Number((grossProfit / grossLoss).toFixed(2)) : grossProfit > 0 ? 99.99 : 0;
+    const avgWin = winningTrades > 0 ? grossProfit / winningTrades : 0;
+    const avgLoss = losingTrades > 0 ? grossLoss / losingTrades : 1;
+    const payoffRatio = Number((avgWin / avgLoss).toFixed(2));
+    const expectancyR = Number(((winRatePercent / 100) * payoffRatio - (1 - winRatePercent / 100)).toFixed(2));
+
+    let maxDdAmount = 0;
+    let maxDdPercent = 0;
+    for (const pt of equityCurve) {
+      if (pt.drawdownPercent > maxDdPercent) maxDdPercent = pt.drawdownPercent;
+    }
+
+    const recoveryFactor = maxDdAmount > 0 ? Number((netProfit / maxDdAmount).toFixed(2)) : 0;
+
+    return {
+      totalTrades,
+      winningTrades,
+      losingTrades,
+      breakEvenTrades,
+      winRatePercent,
+      profitFactor,
+      payoffRatio,
+      expectancyR,
+      netProfit,
+      netProfitPercent,
+      maxDrawdownAmount: Number(maxDdAmount.toFixed(2)),
+      maxDrawdownPercent: Number(maxDdPercent.toFixed(2)),
+      recoveryFactor,
+      totalCommissions: Number(totalCommissions.toFixed(2)),
+      avgMaePips: Number((totalMae / totalTrades).toFixed(1)),
+      avgMfePips: Number((totalMfe / totalTrades).toFixed(1)),
+      equityCurve,
+      ambiguousTradesCount,
+    };
+  }
+
+  // ۳. شبیه‌سازی مونت‌کارلو قطعی
+  public static runMonteCarlo(
+    trades: PositionLedgerEntry[],
+    initialCash = 10000,
+    iterations = 500,
+    seed?: number
+  ): MonteCarloSimulationResult {
+    const closed = trades.filter(t => !t.isOpen);
+    if (closed.length === 0) {
+      return {
+        iterations,
+        medianMaxDrawdownPercent: 0,
+        percentile95MaxDrawdownPercent: 0,
+        riskOfRuinPercent: 0,
+        medianProfit: 0,
+        worstCaseProfit: 0,
+        bestCaseProfit: 0,
+        samplePaths: [],
+      };
+    }
+
+    const profits = closed.map(t => t.realizedPnl);
+    const rng = seed !== undefined ? new SeededRNG(seed) : null;
+    const getRandom = () => (rng ? rng.next() : Math.random());
+
+    const maxDrawdowns: number[] = [];
+    const finalProfits: number[] = [];
+    let ruinsCount = 0;
+    const samplePaths: { pathIndex: number; points: number[] }[] = [];
+
+    for (let iter = 0; iter < iterations; iter++) {
+      let equity = initialCash;
+      let peak = initialCash;
+      let maxDd = 0;
+      const path: number[] = [initialCash];
+
+      for (let step = 0; step < profits.length; step++) {
+        const randomIndex = Math.floor(getRandom() * profits.length);
+        equity += profits[randomIndex];
+        path.push(equity);
+
+        if (equity > peak) peak = equity;
+        const dd = ((peak - equity) / peak) * 100;
+        if (dd > maxDd) maxDd = dd;
+
+        if (equity <= initialCash * 0.5) {
+          ruinsCount++;
+          break;
+        }
+      }
+
+      maxDrawdowns.push(maxDd);
+      finalProfits.push(equity - initialCash);
+
+      if (iter < 5) {
+        samplePaths.push({ pathIndex: iter, points: path });
+      }
+    }
+
+    maxDrawdowns.sort((a, b) => a - b);
+    finalProfits.sort((a, b) => a - b);
+
+    const medianMaxDrawdownPercent = Number((maxDrawdowns[Math.floor(iterations * 0.5)] || 0).toFixed(1));
+    const percentile95MaxDrawdownPercent = Number((maxDrawdowns[Math.floor(iterations * 0.95)] || 0).toFixed(1));
+    const riskOfRuinPercent = Number(((ruinsCount / iterations) * 100).toFixed(1));
+    const medianProfit = Number((finalProfits[Math.floor(iterations * 0.5)] || 0).toFixed(2));
+    const worstCaseProfit = Number((finalProfits[0] || 0).toFixed(2));
+    const bestCaseProfit = Number((finalProfits[iterations - 1] || 0).toFixed(2));
+
+    return {
+      iterations,
+      medianMaxDrawdownPercent,
+      percentile95DrawdownPercent: percentile95MaxDrawdownPercent,
+      percentile95MaxDrawdownPercent,
+      riskOfRuinPercent,
+      medianProfit,
+      worstCaseProfit,
+      bestCaseProfit,
+      samplePaths,
+    };
+  }
+
+  // ۴. آزمایش پیش‌روچندپنجره‌ای (Walk-Forward Optimization)
   public static runWalkForward(
     candles: Candle[],
     symbol: SymbolId = 'XAUUSD',
@@ -625,7 +994,7 @@ export class ResearchLab {
     return windows;
   }
 
-  // ۳. آزمون‌های تنش (Stress Testing) در شرایط نوسان شدید، اسپرد دوبرابر و لغزش
+  // ۵. تست تنش و تاب‌آوری (Stress Testing)
   public static runStressTests(
     candles: Candle[],
     symbol: SymbolId = 'XAUUSD',
@@ -635,7 +1004,6 @@ export class ResearchLab {
       timeframe?: Timeframe;
       riskPercent?: number;
       strategyParameters?: StrategyParameters;
-      endOfDataPolicy?: EndOfDataPolicy;
     } = {}
   ): StressTestScenarioResult[] {
     const spec = SYMBOL_SPECS[symbol];
@@ -660,6 +1028,8 @@ export class ResearchLab {
         profitFactor: baseRun.metrics.profitFactor,
         expectancyR: baseRun.metrics.expectancyR,
         status: 'ROBUST',
+        metrics: baseRun.metrics,
+        passedRiskGate: true,
       },
     ];
 
@@ -681,6 +1051,8 @@ export class ResearchLab {
       profitFactor: wideSpreadRun.metrics.profitFactor,
       expectancyR: wideSpreadRun.metrics.expectancyR,
       status: wideSpreadRun.metrics.netProfit >= 0 ? 'ROBUST' : 'DEGRADED',
+      metrics: wideSpreadRun.metrics,
+      passedRiskGate: wideSpreadRun.metrics.netProfit >= 0,
     });
 
     // تنش ۲: لغزش شدید قیمت (Slippage Stress)
@@ -706,162 +1078,10 @@ export class ResearchLab {
           : slippageRun.metrics.profitFactor >= 0.9
           ? 'DEGRADED'
           : 'FAILED',
+      metrics: slippageRun.metrics,
+      passedRiskGate: slippageRun.metrics.profitFactor >= 0.9,
     });
 
     return scenarios;
-  }
-
-  // ۴. شبیه‌سازی مونت‌کارلو (Monte Carlo Resampling)
-  // با پشتیبانی از سید قطعی برای تکرارپذیری کامل (Seeded Deterministic)
-  public static runMonteCarlo(
-    trades: PositionLedgerEntry[],
-    initialCash = 10000,
-    iterations = 100,
-    seed?: number
-  ): MonteCarloSimulationResult {
-    if (trades.length === 0) {
-      return {
-        iterations: 0,
-        medianMaxDrawdownPercent: 0,
-        percentile95DrawdownPercent: 0,
-        medianProfit: 0,
-        riskOfRuinPercent: 0,
-      };
-    }
-
-    // اگر سید ارائه شده باشد، از RNG قطعی استفاده می‌کنیم
-    const rng = seed !== undefined ? new SeededRNG(seed) : null;
-    const random = rng ? () => rng.next() : () => Math.random();
-
-    const profits = trades.filter(t => !t.isOpen).map(t => t.realizedPnl);
-    const simMaxDrawdowns: number[] = [];
-    const simNetProfits: number[] = [];
-    let ruinCount = 0;
-
-    for (let iter = 0; iter < iterations; iter++) {
-      // بازتولید تصادفی با جایگذاری (Bootstrap Resampling)
-      let equity = initialCash;
-      let peak = initialCash;
-      let maxDDPercent = 0;
-
-      for (let i = 0; i < profits.length; i++) {
-        const randIdx = Math.floor(random() * profits.length);
-        equity += profits[randIdx];
-        if (equity > peak) peak = equity;
-        const dd = ((peak - equity) / peak) * 100;
-        if (dd > maxDDPercent) maxDDPercent = dd;
-      }
-
-      simMaxDrawdowns.push(maxDDPercent);
-      simNetProfits.push(equity - initialCash);
-      if (maxDDPercent >= 20) ruinCount++;
-    }
-
-    simMaxDrawdowns.sort((a, b) => a - b);
-    simNetProfits.sort((a, b) => a - b);
-
-    const medianDD = simMaxDrawdowns[Math.floor(iterations / 2)];
-    const p95DD = simMaxDrawdowns[Math.floor(iterations * 0.95)];
-    const medianProfit = simNetProfits[Math.floor(iterations / 2)];
-    const riskOfRuin = Number(((ruinCount / iterations) * 100).toFixed(1));
-
-    return {
-      iterations,
-      medianMaxDrawdownPercent: Number(medianDD.toFixed(2)),
-      percentile95DrawdownPercent: Number(p95DD.toFixed(2)),
-      medianProfit: Number(medianProfit.toFixed(2)),
-      riskOfRuinPercent: riskOfRuin,
-    };
-  }
-
-  // محاسبه جامع شاخص‌های سودآوری و ریسک
-  private static calculateMetrics(
-    positions: PositionLedgerEntry[],
-    initialCash: number,
-    equityCurve: PerformanceMetrics['equityCurve']
-  ): PerformanceMetrics {
-    const closed = positions.filter(p => !p.isOpen);
-    const totalTrades = closed.length;
-
-    let wins = 0;
-    let losses = 0;
-    let grossWin = 0;
-    let grossLoss = 0;
-    let totalCommissions = 0;
-    let totalMae = 0;
-    let totalMfe = 0;
-    let ambiguousCount = 0;
-
-    for (const p of closed) {
-      totalCommissions += p.commissionPaid;
-      totalMae += p.maePips;
-      totalMfe += p.mfePips;
-
-      if (p.realizedPnl > 0) {
-        wins++;
-        grossWin += p.realizedPnl;
-      } else if (p.realizedPnl < 0) {
-        losses++;
-        grossLoss += Math.abs(p.realizedPnl);
-      }
-    }
-
-    const netProfit = Number((grossWin - grossLoss).toFixed(2));
-    const netProfitPercent = Number(((netProfit / initialCash) * 100).toFixed(2));
-    const winRatePercent =
-      totalTrades > 0 ? Number(((wins / totalTrades) * 100).toFixed(1)) : 0;
-    const profitFactor =
-      grossLoss > 0
-        ? Number((grossWin / grossLoss).toFixed(2))
-        : grossWin > 0
-        ? 99.9
-        : 0;
-
-    const avgWin = wins > 0 ? grossWin / wins : 0;
-    const avgLoss = losses > 0 ? grossLoss / losses : 0;
-    const payoffRatio = avgLoss > 0 ? Number((avgWin / avgLoss).toFixed(2)) : 0;
-
-    // امید ریاضی بر حسب R: Expectancy = (WinRate * Payoff) - (LossRate * 1)
-    const winProb = totalTrades > 0 ? wins / totalTrades : 0;
-    const lossProb = totalTrades > 0 ? losses / totalTrades : 0;
-    const expectancyR = Number((winProb * payoffRatio - lossProb * 1).toFixed(2));
-
-    // استخراج حداکثر دراودان از نمودار دارایی
-    let maxDDPercent = 0;
-    let maxDDAmount = 0;
-    for (const pt of equityCurve) {
-      if (pt.drawdownPercent > maxDDPercent) {
-        maxDDPercent = pt.drawdownPercent;
-      }
-    }
-    maxDDAmount = Number(((initialCash * maxDDPercent) / 100).toFixed(2));
-
-    const recoveryFactor =
-      maxDDAmount > 0
-        ? Number((netProfit / maxDDAmount).toFixed(2))
-        : netProfit > 0
-        ? 99.9
-        : 0;
-
-    return {
-      totalTrades,
-      winningTrades: wins,
-      losingTrades: losses,
-      breakEvenTrades: totalTrades - wins - losses,
-      winRatePercent,
-      profitFactor,
-      payoffRatio,
-      expectancyR,
-      netProfit,
-      netProfitPercent,
-      maxDrawdownAmount: maxDDAmount,
-      maxDrawdownPercent: Number(maxDDPercent.toFixed(2)),
-      recoveryFactor,
-      totalCommissions: Number(totalCommissions.toFixed(2)),
-      avgMaePips: totalTrades > 0 ? Number((totalMae / totalTrades).toFixed(1)) : 0,
-      avgMfePips: totalTrades > 0 ? Number((totalMfe / totalTrades).toFixed(1)) : 0,
-      equityCurve,
-      ambiguousTradesCount: ambiguousCount,
-    };
   }
 }

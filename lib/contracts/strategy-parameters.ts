@@ -1,13 +1,14 @@
 // lib/contracts/strategy-parameters.ts
 // ساختار داده و تنظیمات تایپ‌سیف پارامترهای استراتژی در دو سطح خانواده و جزییات
 
+import { Timeframe } from './market';
 import { TradingStyleType } from './regimes';
 
 export type StrategyFamily = TradingStyleType;
 
 export type DirectionMode = 'LONG_ONLY' | 'SHORT_ONLY' | 'BOTH';
 export type StopLossMode = 'ATR' | 'STRUCTURE' | 'FIXED_PIPS';
-export type OrderExecutionType = 'MARKET' | 'LIMIT';
+export type OrderExecutionType = 'MARKET' | 'LIMIT' | 'STOP';
 export type SessionFilter =
   | 'ALL'
   | 'ASIAN'
@@ -31,7 +32,10 @@ export interface AccountConfiguration {
   leverage: 1 | 10 | 30 | 50 | 100;
   maxDailyLossPercent?: number; // 0 to 20%
   maxTotalDrawdownPercent?: number; // 0 to 50%
-  maxConcurrentPositions: number; // 1 to 20
+  maxConcurrentPositions: number; // 1 to 20 (legacy/aggregated limit)
+  maxOpenPositions?: number; // Separate limit for open positions
+  maxPendingOrders?: number; // Separate limit for pending orders
+  maxCombinedExposure?: number; // Combined open + pending limit
   minLot: number; // e.g. 0.01
   lotStep: number; // e.g. 0.01
   maxLot: number; // e.g. 10.0 or 100.0
@@ -65,22 +69,98 @@ export interface SessionTimezoneConfig {
   excludeEdgeMinutes?: number; // e.g. 15 to skip first/last 15m of session
 }
 
+// ─── Multi-Timeframe (MTF) Data Model (Package 3) ──────────────────────────
+export type HigherTimeframeSource =
+  | 'NATIVE_DATASET'
+  | 'AGGREGATED_FROM_EXECUTION'
+  | 'AUTO';
+
+export type HigherTimeframeFilterMode =
+  | 'OFF'
+  | 'TREND_EMA'
+  | 'MARKET_STRUCTURE'
+  | 'MOMENTUM'
+  | 'VOLATILITY'
+  | 'COMBINED';
+
+export interface MtfTrendEmaSettings {
+  trendEmaPeriod: number; // default 50
+  trendSlopeLookback?: number; // default 3 bars
+  minimumSlope?: number; // default 0.0 (points per bar)
+}
+
+export interface MtfStructureSettings {
+  pivotLeftBars: number; // default 3
+  pivotRightBars: number; // default 3
+  structureLookback: number; // default 10
+  minimumStructurePoints: number; // default 2
+}
+
+export interface MtfMomentumSettings {
+  momentumMethod: 'EMA_SLOPE' | 'RATE_OF_CHANGE';
+  momentumPeriod: number; // default 14
+  momentumThreshold: number; // default 0.0
+}
+
+export interface MtfVolatilitySettings {
+  atrPeriod: number; // default 14
+  minimumAtrPercentile: number; // 0 to 100, default 20
+  maximumAtrPercentile: number; // 0 to 100, default 90
+  percentileLookback: number; // default 50
+}
+
+export interface MtfCombinedSettings {
+  enabledFilters: ('TREND_EMA' | 'MARKET_STRUCTURE' | 'MOMENTUM' | 'VOLATILITY')[];
+  minimumConfirmations: number; // e.g. 2 out of 3
+}
+
+export interface MultiTimeframeConfig {
+  enabled?: boolean;
+  higherTimeframe?: Timeframe;
+  executionTimeframe?: Timeframe;
+  confirmationTimeframe?: Timeframe;
+  contextTimeframe?: Timeframe;
+  higherTimeframeSource?: HigherTimeframeSource;
+  higherTimeframeFilterMode: HigherTimeframeFilterMode;
+  trendEmaSettings?: MtfTrendEmaSettings;
+  structureSettings?: MtfStructureSettings;
+  momentumSettings?: MtfMomentumSettings;
+  volatilitySettings?: MtfVolatilitySettings;
+  combinedSettings?: MtfCombinedSettings;
+}
+
+export type CooldownScope = 'PER_SYMBOL' | 'PER_STRATEGY' | 'PER_DIRECTION';
+export type PostPartialStopMode = 'UNCHANGED' | 'BREAKEVEN' | 'LOCK_PROFIT';
+
 export type StrategyPreset = 'CONSERVATIVE' | 'BALANCED' | 'AGGRESSIVE';
 
 export interface CommonStrategyParameters {
   directionMode: DirectionMode;
   riskRewardRatio: number;
   stopLossMode: StopLossMode;
+  fixedStopPips?: number; // For FIXED_PIPS mode
   atrPeriod: number;
   atrMultiplier: number;
   orderType: OrderExecutionType;
   expiryBars: number;
   maxConcurrentPositions: number;
+  maxOpenPositions?: number;
+  maxPendingOrders?: number;
+  maxCombinedExposure?: number;
   cooldownBars: number;
+  cooldownScope?: CooldownScope;
   sessionFilter: SessionFilter;
   higherTimeframeFilter: boolean;
+  mtfConfig?: MultiTimeframeConfig;
   enableBreakeven: boolean;
+  breakevenTriggerR?: number; // default 1.0 R
+  breakevenOffsetPips?: number; // default 0.5 pips
+  includeEntryCostsInBreakeven?: boolean; // default true
   enablePartialTakeProfit: boolean;
+  partialTakeProfitTriggerR?: number; // default 1.2 R
+  partialClosePercent?: number; // default 50%
+  moveStopAfterPartial?: boolean; // default true
+  postPartialStopMode?: PostPartialStopMode; // default BREAKEVEN
 }
 
 export interface TrendBreakoutParameters {
@@ -131,46 +211,115 @@ export const DEFAULT_COMMON_PARAMETERS: Record<StrategyPreset, CommonStrategyPar
     directionMode: 'BOTH',
     riskRewardRatio: 2.0,
     stopLossMode: 'ATR',
+    fixedStopPips: 20,
     atrPeriod: 14,
     atrMultiplier: 1.5,
     orderType: 'LIMIT',
     expiryBars: 6,
     maxConcurrentPositions: 3,
+    maxOpenPositions: 3,
+    maxPendingOrders: 3,
+    maxCombinedExposure: 5,
     cooldownBars: 2,
+    cooldownScope: 'PER_SYMBOL',
     sessionFilter: 'ALL',
     higherTimeframeFilter: false,
+    mtfConfig: {
+      executionTimeframe: '15M',
+      confirmationTimeframe: '1H',
+      higherTimeframeSource: 'AUTO',
+      higherTimeframeFilterMode: 'OFF',
+      trendEmaSettings: {
+        trendEmaPeriod: 50,
+        trendSlopeLookback: 3,
+        minimumSlope: 0.0,
+      },
+    },
     enableBreakeven: true,
+    breakevenTriggerR: 1.0,
+    breakevenOffsetPips: 0.5,
+    includeEntryCostsInBreakeven: true,
     enablePartialTakeProfit: false,
+    partialTakeProfitTriggerR: 1.2,
+    partialClosePercent: 50,
+    moveStopAfterPartial: true,
+    postPartialStopMode: 'BREAKEVEN',
   },
   CONSERVATIVE: {
     directionMode: 'BOTH',
     riskRewardRatio: 2.5,
     stopLossMode: 'STRUCTURE',
+    fixedStopPips: 25,
     atrPeriod: 20,
     atrMultiplier: 2.0,
     orderType: 'LIMIT',
     expiryBars: 4,
     maxConcurrentPositions: 1,
+    maxOpenPositions: 1,
+    maxPendingOrders: 2,
+    maxCombinedExposure: 2,
     cooldownBars: 5,
+    cooldownScope: 'PER_SYMBOL',
     sessionFilter: 'LONDON',
     higherTimeframeFilter: true,
+    mtfConfig: {
+      executionTimeframe: '15M',
+      confirmationTimeframe: '1H',
+      higherTimeframeSource: 'AUTO',
+      higherTimeframeFilterMode: 'TREND_EMA',
+      trendEmaSettings: {
+        trendEmaPeriod: 50,
+        trendSlopeLookback: 3,
+        minimumSlope: 0.0,
+      },
+    },
     enableBreakeven: true,
+    breakevenTriggerR: 1.0,
+    breakevenOffsetPips: 1.0,
+    includeEntryCostsInBreakeven: true,
     enablePartialTakeProfit: true,
+    partialTakeProfitTriggerR: 1.5,
+    partialClosePercent: 50,
+    moveStopAfterPartial: true,
+    postPartialStopMode: 'BREAKEVEN',
   },
   AGGRESSIVE: {
     directionMode: 'BOTH',
     riskRewardRatio: 1.5,
     stopLossMode: 'ATR',
+    fixedStopPips: 15,
     atrPeriod: 10,
     atrMultiplier: 1.0,
     orderType: 'MARKET',
     expiryBars: 12,
     maxConcurrentPositions: 5,
+    maxOpenPositions: 5,
+    maxPendingOrders: 5,
+    maxCombinedExposure: 8,
     cooldownBars: 1,
+    cooldownScope: 'PER_SYMBOL',
     sessionFilter: 'ALL',
     higherTimeframeFilter: false,
+    mtfConfig: {
+      executionTimeframe: '5M',
+      confirmationTimeframe: '15M',
+      higherTimeframeSource: 'AUTO',
+      higherTimeframeFilterMode: 'OFF',
+      trendEmaSettings: {
+        trendEmaPeriod: 30,
+        trendSlopeLookback: 2,
+        minimumSlope: 0.0,
+      },
+    },
     enableBreakeven: false,
+    breakevenTriggerR: 1.0,
+    breakevenOffsetPips: 0.0,
+    includeEntryCostsInBreakeven: false,
     enablePartialTakeProfit: false,
+    partialTakeProfitTriggerR: 1.0,
+    partialClosePercent: 50,
+    moveStopAfterPartial: false,
+    postPartialStopMode: 'UNCHANGED',
   },
 };
 

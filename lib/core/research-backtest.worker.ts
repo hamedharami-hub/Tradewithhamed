@@ -8,6 +8,7 @@ import type {
   DateRangeFilterConfig,
   SessionTimezoneConfig,
   StrategyParameters,
+  HigherTimeframeSource,
 } from '../contracts/strategy-parameters';
 import type { EndOfDataPolicy } from './ports';
 import { ResearchLab } from './research-lab';
@@ -33,6 +34,9 @@ type ResearchWorkerRequest =
         riskPercent?: number;
         strategyParameters?: StrategyParameters;
         endOfDataPolicy?: EndOfDataPolicy;
+        htfCandles?: Candle[];
+        htfTimeframe?: Timeframe;
+        htfSource?: HigherTimeframeSource;
       };
     }
   | {
