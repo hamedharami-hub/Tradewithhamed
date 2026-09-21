@@ -3,15 +3,40 @@
 // پشتیبانی کامل از تمام پارامترهای ممیزی‌شده، فیلتر MTF ضد نگاه‌به‌آینده و شیوه‌های حد ضرر
 
 import { Candle, SymbolId, Timeframe, SYMBOL_SPECS } from '../contracts/market';
-import { StrategyCandidate } from '../contracts/strategy';
+import { StrategyCandidate, RuleProvenance } from '../contracts/strategy';
 import { MarketRegimeAnalysis, TradingStyleType } from '../contracts/regimes';
 import { MarketRegimeClassifier } from './market-regime-classifier';
 import { evaluateS0Strategy } from './s0-engine';
 import { calculateWilderATR } from './atr';
 import { detectSwingPoints } from './swings';
-import { StrategyParameters } from '../contracts/strategy-parameters';
+import { StrategyParameters, SessionFilter } from '../contracts/strategy-parameters';
 import { StopLossCalculator } from './stop-loss-calculator';
 import { MtfFilterEngine, MtfFilterEvaluationResult } from './mtf-filter';
+
+function calculateParameterHash(params: Record<string, number>): string {
+  const keys = Object.keys(params).sort();
+  let hash = 2166136261;
+  for (const key of keys) {
+    const str = `${key}:${params[key]};`;
+    for (let i = 0; i < str.length; i++) {
+      hash ^= str.charCodeAt(i);
+      hash = Math.imul(hash, 16777619);
+    }
+  }
+  return (hash >>> 0).toString(16).padStart(8, '0');
+}
+
+function sessionFilterToCode(s?: SessionFilter): number {
+  switch (s) {
+    case 'ALL': return 0;
+    case 'ASIAN': return 1;
+    case 'LONDON': return 2;
+    case 'NEW_YORK': return 3;
+    case 'LONDON_NEW_YORK_OVERLAP': return 4;
+    case 'CUSTOM': return 5;
+    default: return 0;
+  }
+}
 
 function timeframeToMs(timeframe: Timeframe): number {
   const durations: Record<Timeframe, number> = {
@@ -114,6 +139,17 @@ export class MultiStyleEngine {
 
       if (slRes.status === 'VALID' && slRes.riskDistancePrice > 0) {
         const takeProfitPrice = Number((entryPrice + slRes.riskDistancePrice * rr).toFixed(precision));
+        const resolvedParameters: Record<string, number> = {
+          fastEma: fastEmaPeriod,
+          slowEma: slowEmaPeriod,
+          minAtr,
+          session: sessionFilterToCode(scalpParams?.session),
+          atrPeriod,
+          riskRewardRatio: rr,
+        };
+        const parameterHash = calculateParameterHash(resolvedParameters);
+        const evidenceAvailableAtTimestamp = currentCandle.timestamp + tfMs;
+
         return {
           id: `SCALP-BUY-${currentCandle.timestamp}`,
           strategyName: 'اسکلپ مومنتوم سریع (M1/M5 Micro-Sweep)',
@@ -127,6 +163,14 @@ export class MultiStyleEngine {
           stopLossPrice: slRes.stopLossPrice,
           takeProfitPrice,
           riskRewardRatio: rr,
+          ruleProvenance: {
+            ruleVersion: '2.4.0',
+            parameterHash,
+            resolvedParameters,
+            signalCandleTimestamp: currentCandle.timestamp,
+            evidenceAvailableAtTimestamp,
+            lifecycle: 'CONFIRMED',
+          },
           evidenceIds: { sweepId: `MICRO-LOW-${prevCandle.timestamp}` },
           rationale: `سوییپ سریع میکروکف با بازگشت شتابان و تایید EMA(${fastEmaPeriod}/${slowEmaPeriod}) در تایم‌فریم ${timeframe}؛ تارگت ${rr}R.`,
           status: 'CONFIRMED',
@@ -151,6 +195,17 @@ export class MultiStyleEngine {
 
       if (slRes.status === 'VALID' && slRes.riskDistancePrice > 0) {
         const takeProfitPrice = Number((entryPrice - slRes.riskDistancePrice * rr).toFixed(precision));
+        const resolvedParameters: Record<string, number> = {
+          fastEma: fastEmaPeriod,
+          slowEma: slowEmaPeriod,
+          minAtr,
+          session: sessionFilterToCode(scalpParams?.session),
+          atrPeriod,
+          riskRewardRatio: rr,
+        };
+        const parameterHash = calculateParameterHash(resolvedParameters);
+        const evidenceAvailableAtTimestamp = currentCandle.timestamp + tfMs;
+
         return {
           id: `SCALP-SELL-${currentCandle.timestamp}`,
           strategyName: 'اسکلپ مومنتوم سریع (M1/M5 Micro-Sweep)',
@@ -164,6 +219,14 @@ export class MultiStyleEngine {
           stopLossPrice: slRes.stopLossPrice,
           takeProfitPrice,
           riskRewardRatio: rr,
+          ruleProvenance: {
+            ruleVersion: '2.4.0',
+            parameterHash,
+            resolvedParameters,
+            signalCandleTimestamp: currentCandle.timestamp,
+            evidenceAvailableAtTimestamp,
+            lifecycle: 'CONFIRMED',
+          },
           evidenceIds: { sweepId: `MICRO-HIGH-${prevCandle.timestamp}` },
           rationale: `سوییپ سریع میکروسقف با فشار فروش لحظه‌ای و تایید EMA(${fastEmaPeriod}/${slowEmaPeriod}) در تایم‌فریم ${timeframe}؛ تارگت ${rr}R.`,
           status: 'CONFIRMED',
@@ -265,6 +328,17 @@ export class MultiStyleEngine {
 
       if (slRes.status === 'VALID' && slRes.riskDistancePrice > 0) {
         const takeProfitPrice = Number((entryPrice + slRes.riskDistancePrice * rr).toFixed(precision));
+        const resolvedParameters: Record<string, number> = {
+          channelPeriod: lookback,
+          fastEmaPeriod,
+          slowEmaPeriod,
+          breakoutBufferAtr: tbParams?.breakoutBufferAtr || 0,
+          atrPeriod,
+          riskRewardRatio: rr,
+        };
+        const parameterHash = calculateParameterHash(resolvedParameters);
+        const evidenceAvailableAtTimestamp = current.timestamp + tfMs;
+
         return {
           id: `BREAKOUT-BUY-${current.timestamp}`,
           strategyName: 'شکست روندی کانال (Regime-Filtered Breakout)',
@@ -278,6 +352,14 @@ export class MultiStyleEngine {
           stopLossPrice: slRes.stopLossPrice,
           takeProfitPrice,
           riskRewardRatio: rr,
+          ruleProvenance: {
+            ruleVersion: '2.4.0',
+            parameterHash,
+            resolvedParameters,
+            signalCandleTimestamp: current.timestamp,
+            evidenceAvailableAtTimestamp,
+            lifecycle: 'CONFIRMED',
+          },
           evidenceIds: { contextSwingId: `CHANNEL-HIGH-${priorHigh}` },
           rationale: `بسته‌شدن بالای سقف کانال ${lookback} دوره‌ای (بافر ${buffer.toFixed(4)}) با تایید EMA(${fastEmaPeriod}/${slowEmaPeriod})؛ R:R=${rr}.`,
           status: 'CONFIRMED',
@@ -296,6 +378,17 @@ export class MultiStyleEngine {
 
       if (slRes.status === 'VALID' && slRes.riskDistancePrice > 0) {
         const takeProfitPrice = Number((entryPrice - slRes.riskDistancePrice * rr).toFixed(precision));
+        const resolvedParameters: Record<string, number> = {
+          channelPeriod: lookback,
+          fastEmaPeriod,
+          slowEmaPeriod,
+          breakoutBufferAtr: tbParams?.breakoutBufferAtr || 0,
+          atrPeriod,
+          riskRewardRatio: rr,
+        };
+        const parameterHash = calculateParameterHash(resolvedParameters);
+        const evidenceAvailableAtTimestamp = current.timestamp + tfMs;
+
         return {
           id: `BREAKOUT-SELL-${current.timestamp}`,
           strategyName: 'شکست روندی کانال (Regime-Filtered Breakout)',
@@ -309,6 +402,14 @@ export class MultiStyleEngine {
           stopLossPrice: slRes.stopLossPrice,
           takeProfitPrice,
           riskRewardRatio: rr,
+          ruleProvenance: {
+            ruleVersion: '2.4.0',
+            parameterHash,
+            resolvedParameters,
+            signalCandleTimestamp: current.timestamp,
+            evidenceAvailableAtTimestamp,
+            lifecycle: 'CONFIRMED',
+          },
           evidenceIds: { contextSwingId: `CHANNEL-LOW-${priorLow}` },
           rationale: `بسته‌شدن زیر کف کانال ${lookback} دوره‌ای (بافر ${buffer.toFixed(4)}) با تایید EMA(${fastEmaPeriod}/${slowEmaPeriod})؛ R:R=${rr}.`,
           status: 'CONFIRMED',
@@ -406,6 +507,16 @@ export class MultiStyleEngine {
 
       if (slRes.status === 'VALID' && slRes.riskDistancePrice > 0) {
         const takeProfitPrice = Number((entryPrice + slRes.riskDistancePrice * rr).toFixed(precision));
+        const resolvedParameters: Record<string, number> = {
+          trendEma: trendEmaPeriod,
+          pullbackDepth: pullbackAtrFactor,
+          confirmationBars,
+          atrPeriod,
+          riskRewardRatio: rr,
+        };
+        const parameterHash = calculateParameterHash(resolvedParameters);
+        const evidenceAvailableAtTimestamp = currentCandle.timestamp + tfMs;
+
         return {
           id: `SWING-BUY-${currentCandle.timestamp}`,
           strategyName: 'سوئینگ و ترند کلان (Macro Trend Continuation)',
@@ -419,6 +530,14 @@ export class MultiStyleEngine {
           stopLossPrice: slRes.stopLossPrice,
           takeProfitPrice,
           riskRewardRatio: rr,
+          ruleProvenance: {
+            ruleVersion: '2.4.0',
+            parameterHash,
+            resolvedParameters,
+            signalCandleTimestamp: currentCandle.timestamp,
+            evidenceAvailableAtTimestamp,
+            lifecycle: 'CONFIRMED',
+          },
           evidenceIds: { contextSwingId: `EMA-${trendEmaPeriod}` },
           rationale: `پولبک به میانگین EMA(${trendEmaPeriod}) با تایید ${confirmationBars} کندل صعودی در تایم‌فریم ${timeframe}؛ R:R=${rr}.`,
           status: 'CONFIRMED',
@@ -446,6 +565,16 @@ export class MultiStyleEngine {
 
       if (slRes.status === 'VALID' && slRes.riskDistancePrice > 0) {
         const takeProfitPrice = Number((entryPrice - slRes.riskDistancePrice * rr).toFixed(precision));
+        const resolvedParameters: Record<string, number> = {
+          trendEma: trendEmaPeriod,
+          pullbackDepth: pullbackAtrFactor,
+          confirmationBars,
+          atrPeriod,
+          riskRewardRatio: rr,
+        };
+        const parameterHash = calculateParameterHash(resolvedParameters);
+        const evidenceAvailableAtTimestamp = currentCandle.timestamp + tfMs;
+
         return {
           id: `SWING-SELL-${currentCandle.timestamp}`,
           strategyName: 'سوئینگ و ترند کلان (Macro Trend Continuation)',
@@ -459,6 +588,14 @@ export class MultiStyleEngine {
           stopLossPrice: slRes.stopLossPrice,
           takeProfitPrice,
           riskRewardRatio: rr,
+          ruleProvenance: {
+            ruleVersion: '2.4.0',
+            parameterHash,
+            resolvedParameters,
+            signalCandleTimestamp: currentCandle.timestamp,
+            evidenceAvailableAtTimestamp,
+            lifecycle: 'CONFIRMED',
+          },
           evidenceIds: { contextSwingId: `EMA-${trendEmaPeriod}` },
           rationale: `پولبک به میانگین EMA(${trendEmaPeriod}) با تایید ${confirmationBars} کندل نزولی در تایم‌فریم ${timeframe}؛ R:R=${rr}.`,
           status: 'CONFIRMED',
@@ -539,6 +676,17 @@ export class MultiStyleEngine {
         const calculatedRr = Number(((takeProfitPrice - entryPrice) / slRes.riskDistancePrice).toFixed(2));
 
         if (calculatedRr >= 0.8) {
+          const resolvedParameters: Record<string, number> = {
+            lookbackPeriod: lookback,
+            zScoreThreshold: zThresh,
+            exitZScore: mrParams?.exitZScore ?? 0,
+            trendFilter: mrParams?.trendFilter ? 1 : 0,
+            atrPeriod,
+            riskRewardRatio: calculatedRr,
+          };
+          const parameterHash = calculateParameterHash(resolvedParameters);
+          const evidenceAvailableAtTimestamp = currentCandle.timestamp + tfMs;
+
           return {
             id: `MEANREV-BUY-${currentCandle.timestamp}`,
             strategyName: 'بازگشت به میانگین آماری (Band Exhaustion Reversion)',
@@ -552,6 +700,14 @@ export class MultiStyleEngine {
             stopLossPrice: slRes.stopLossPrice,
             takeProfitPrice,
             riskRewardRatio: calculatedRr,
+            ruleProvenance: {
+              ruleVersion: '2.4.0',
+              parameterHash,
+              resolvedParameters,
+              signalCandleTimestamp: currentCandle.timestamp,
+              evidenceAvailableAtTimestamp,
+              lifecycle: 'CONFIRMED',
+            },
             evidenceIds: { sweepId: `BAND-LOWER-${lowerBand.toFixed(2)}` },
             rationale: `اشباع فروش در انحراف معیار ${zThresh}- در تایم‌فریم ${timeframe} و بازگشت قیمت به میانگین (R:R=${calculatedRr}).`,
             status: 'CONFIRMED',
@@ -577,6 +733,17 @@ export class MultiStyleEngine {
         const calculatedRr = Number(((entryPrice - takeProfitPrice) / slRes.riskDistancePrice).toFixed(2));
 
         if (calculatedRr >= 0.8) {
+          const resolvedParameters: Record<string, number> = {
+            lookbackPeriod: lookback,
+            zScoreThreshold: zThresh,
+            exitZScore: mrParams?.exitZScore ?? 0,
+            trendFilter: mrParams?.trendFilter ? 1 : 0,
+            atrPeriod,
+            riskRewardRatio: calculatedRr,
+          };
+          const parameterHash = calculateParameterHash(resolvedParameters);
+          const evidenceAvailableAtTimestamp = currentCandle.timestamp + tfMs;
+
           return {
             id: `MEANREV-SELL-${currentCandle.timestamp}`,
             strategyName: 'بازگشت به میانگین آماری (Band Exhaustion Reversion)',
@@ -590,6 +757,14 @@ export class MultiStyleEngine {
             stopLossPrice: slRes.stopLossPrice,
             takeProfitPrice,
             riskRewardRatio: calculatedRr,
+            ruleProvenance: {
+              ruleVersion: '2.4.0',
+              parameterHash,
+              resolvedParameters,
+              signalCandleTimestamp: currentCandle.timestamp,
+              evidenceAvailableAtTimestamp,
+              lifecycle: 'CONFIRMED',
+            },
             evidenceIds: { sweepId: `BAND-UPPER-${upperBand.toFixed(2)}` },
             rationale: `اشباع خرید در انحراف معیار ${zThresh}+ در تایم‌فریم ${timeframe} و بازگشت قیمت به میانگین (R:R=${calculatedRr}).`,
             status: 'CONFIRMED',

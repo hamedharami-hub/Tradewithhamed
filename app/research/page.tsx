@@ -1170,6 +1170,32 @@ export default function ResearchPage() {
 
                     <div className="space-y-1">
                       <div className="flex items-center justify-between">
+                        <span className="text-zinc-400 text-[11px]">محدوده استراحت (Cooldown Scope):</span>
+                        <span className="text-[9px] text-emerald-400 font-bold bg-emerald-500/10 px-1 py-0.5 rounded border border-emerald-500/30">
+                          ACTIVE
+                        </span>
+                      </div>
+                      <select
+                        value={strategyParams.common.cooldownScope || 'PER_SYMBOL'}
+                        onChange={(e) =>
+                          setStrategyParams({
+                            ...strategyParams,
+                            common: {
+                              ...strategyParams.common,
+                              cooldownScope: e.target.value as any,
+                            },
+                          })
+                        }
+                        className="w-full bg-[#1b2234] border border-[#2d3a54] rounded-xl px-2.5 py-1.5 text-zinc-100 text-xs font-mono"
+                      >
+                        <option value="PER_SYMBOL">بر اساس نماد (PER_SYMBOL)</option>
+                        <option value="PER_STRATEGY">بر اساس استراتژی (PER_STRATEGY)</option>
+                        <option value="PER_DIRECTION">بر اساس جهت معامله (PER_DIRECTION)</option>
+                      </select>
+                    </div>
+
+                    <div className="space-y-1">
+                      <div className="flex items-center justify-between">
                         <span className="text-zinc-400 text-[11px]">نسبت سود به زیان (R:R):</span>
                         <span className="text-[9px] text-emerald-400 font-bold bg-emerald-500/10 px-1 py-0.5 rounded border border-emerald-500/30">
                           ACTIVE
@@ -1462,6 +1488,530 @@ export default function ResearchPage() {
                       )}
                     </div>
                   </div>
+                </div>
+
+                {/* فرم پارامترهای اختصاصی خانواده استراتژی فعال (Package B - Style-Specific Parameters) */}
+                <div className="p-4 bg-[#141926] border border-cyan-500/30 rounded-2xl space-y-3">
+                  <div className="flex items-center justify-between border-b border-[#1f2738] pb-2.5">
+                    <div className="flex items-center gap-2">
+                      <Sliders className="w-4 h-4 text-cyan-400" />
+                      <span className="text-xs font-bold text-cyan-300">
+                        پارامترهای اختصاصی الگوریتم «{TRADING_STYLES_CONFIG[strategy]?.nameFa || strategy}»:
+                      </span>
+                    </div>
+                    <span className="text-[10px] text-cyan-400 font-bold bg-cyan-500/10 px-2 py-0.5 rounded border border-cyan-500/30 font-mono">
+                      {strategy}
+                    </span>
+                  </div>
+
+                  {/* ۱. پارامترهای اسمارت‌مانی SMC */}
+                  {strategy === 'SMC_INTRADAY' && (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
+                      <div className="space-y-1">
+                        <div className="flex items-center justify-between">
+                          <span className="text-zinc-400 text-[11px]">پیوت‌های نقدینگی (Lookback):</span>
+                          <span className="text-[9px] text-emerald-400 font-bold bg-emerald-500/10 px-1 py-0.5 rounded border border-emerald-500/30">
+                            ACTIVE
+                          </span>
+                        </div>
+                        <input
+                          type="number"
+                          min="1"
+                          max="10"
+                          value={strategyParams.smc.liquidityLookback}
+                          onChange={(e) =>
+                            setStrategyParams({
+                              ...strategyParams,
+                              smc: {
+                                ...strategyParams.smc,
+                                liquidityLookback: Number(e.target.value) || 3,
+                              },
+                            })
+                          }
+                          className="w-full bg-[#1b2234] border border-[#2d3a54] rounded-xl px-2.5 py-1.5 text-zinc-100 font-mono text-xs"
+                        />
+                      </div>
+
+                      <div className="space-y-1">
+                        <div className="flex items-center justify-between">
+                          <span className="text-zinc-400 text-[11px]">حداقل نفوذ سوییپ (پیپ):</span>
+                          <span className="text-[9px] text-emerald-400 font-bold bg-emerald-500/10 px-1 py-0.5 rounded border border-emerald-500/30">
+                            ACTIVE
+                          </span>
+                        </div>
+                        <input
+                          type="number"
+                          step="0.1"
+                          min="0.1"
+                          max="10"
+                          value={strategyParams.smc.sweepThreshold}
+                          onChange={(e) =>
+                            setStrategyParams({
+                              ...strategyParams,
+                              smc: {
+                                ...strategyParams.smc,
+                                sweepThreshold: Number(e.target.value) || 0.5,
+                              },
+                            })
+                          }
+                          className="w-full bg-[#1b2234] border border-[#2d3a54] rounded-xl px-2.5 py-1.5 text-zinc-100 font-mono text-xs"
+                        />
+                      </div>
+
+                      <div className="space-y-1">
+                        <div className="flex items-center justify-between">
+                          <span className="text-zinc-400 text-[11px]">شکست ساختار داخلی:</span>
+                          <span className="text-[9px] text-emerald-400 font-bold bg-emerald-500/10 px-1 py-0.5 rounded border border-emerald-500/30">
+                            ACTIVE
+                          </span>
+                        </div>
+                        <select
+                          value={strategyParams.smc.requireStructureBreak ? 'YES' : 'NO'}
+                          onChange={(e) =>
+                            setStrategyParams({
+                              ...strategyParams,
+                              smc: {
+                                ...strategyParams.smc,
+                                requireStructureBreak: e.target.value === 'YES',
+                              },
+                            })
+                          }
+                          className="w-full bg-[#1b2234] border border-[#2d3a54] rounded-xl px-2.5 py-1.5 text-zinc-100 text-xs font-mono"
+                        >
+                          <option value="YES">الزامی (تایید شکست ساختار قبل از ورود)</option>
+                          <option value="NO">اختیاری (فقط سوییپ بدون نیاز به شکست)</option>
+                        </select>
+                      </div>
+
+                      <div className="space-y-1">
+                        <div className="flex items-center justify-between">
+                          <span className="text-zinc-400 text-[11px]">تاییدیه گپ منصفانه (FVG):</span>
+                          <span className="text-[9px] text-amber-400 font-bold bg-amber-500/10 px-1 py-0.5 rounded border border-amber-500/30">
+                            PARTIAL
+                          </span>
+                        </div>
+                        <select
+                          value={strategyParams.smc.requireFvg ? 'YES' : 'NO'}
+                          onChange={(e) =>
+                            setStrategyParams({
+                              ...strategyParams,
+                              smc: {
+                                ...strategyParams.smc,
+                                requireFvg: e.target.value === 'YES',
+                              },
+                            })
+                          }
+                          className="w-full bg-[#1b2234] border border-[#2d3a54] rounded-xl px-2.5 py-1.5 text-zinc-100 text-xs font-mono"
+                        >
+                          <option value="NO">غیرفعال (عدم الزام FVG)</option>
+                          <option value="YES">فعال (بررسی عدم‌تعادل ۳ کندلی)</option>
+                        </select>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* ۲. پارامترهای شکست کانال روندی Trend Breakout */}
+                  {strategy === 'TREND_BREAKOUT' && (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
+                      <div className="space-y-1">
+                        <div className="flex items-center justify-between">
+                          <span className="text-zinc-400 text-[11px]">دوره کانال دانچیان (کندل):</span>
+                          <span className="text-[9px] text-emerald-400 font-bold bg-emerald-500/10 px-1 py-0.5 rounded border border-emerald-500/30">
+                            ACTIVE
+                          </span>
+                        </div>
+                        <input
+                          type="number"
+                          min="10"
+                          max="200"
+                          value={strategyParams.trendBreakout.channelPeriod}
+                          onChange={(e) =>
+                            setStrategyParams({
+                              ...strategyParams,
+                              trendBreakout: {
+                                ...strategyParams.trendBreakout,
+                                channelPeriod: Number(e.target.value) || 55,
+                              },
+                            })
+                          }
+                          className="w-full bg-[#1b2234] border border-[#2d3a54] rounded-xl px-2.5 py-1.5 text-zinc-100 font-mono text-xs"
+                        />
+                      </div>
+
+                      <div className="space-y-1">
+                        <div className="flex items-center justify-between">
+                          <span className="text-zinc-400 text-[11px]">دوره میانگین سریع (Fast EMA):</span>
+                          <span className="text-[9px] text-emerald-400 font-bold bg-emerald-500/10 px-1 py-0.5 rounded border border-emerald-500/30">
+                            ACTIVE
+                          </span>
+                        </div>
+                        <input
+                          type="number"
+                          min="5"
+                          max="50"
+                          value={strategyParams.trendBreakout.fastEmaPeriod}
+                          onChange={(e) =>
+                            setStrategyParams({
+                              ...strategyParams,
+                              trendBreakout: {
+                                ...strategyParams.trendBreakout,
+                                fastEmaPeriod: Number(e.target.value) || 20,
+                              },
+                            })
+                          }
+                          className="w-full bg-[#1b2234] border border-[#2d3a54] rounded-xl px-2.5 py-1.5 text-zinc-100 font-mono text-xs"
+                        />
+                      </div>
+
+                      <div className="space-y-1">
+                        <div className="flex items-center justify-between">
+                          <span className="text-zinc-400 text-[11px]">دوره میانگین کند (Slow EMA):</span>
+                          <span className="text-[9px] text-emerald-400 font-bold bg-emerald-500/10 px-1 py-0.5 rounded border border-emerald-500/30">
+                            ACTIVE
+                          </span>
+                        </div>
+                        <input
+                          type="number"
+                          min="50"
+                          max="500"
+                          value={strategyParams.trendBreakout.slowEmaPeriod}
+                          onChange={(e) =>
+                            setStrategyParams({
+                              ...strategyParams,
+                              trendBreakout: {
+                                ...strategyParams.trendBreakout,
+                                slowEmaPeriod: Number(e.target.value) || 200,
+                              },
+                            })
+                          }
+                          className="w-full bg-[#1b2234] border border-[#2d3a54] rounded-xl px-2.5 py-1.5 text-zinc-100 font-mono text-xs"
+                        />
+                      </div>
+
+                      <div className="space-y-1">
+                        <div className="flex items-center justify-between">
+                          <span className="text-zinc-400 text-[11px]">بافر نفوذ شکست (ATR):</span>
+                          <span className="text-[9px] text-emerald-400 font-bold bg-emerald-500/10 px-1 py-0.5 rounded border border-emerald-500/30">
+                            ACTIVE
+                          </span>
+                        </div>
+                        <input
+                          type="number"
+                          step="0.05"
+                          min="0"
+                          max="1"
+                          value={strategyParams.trendBreakout.breakoutBufferAtr}
+                          onChange={(e) =>
+                            setStrategyParams({
+                              ...strategyParams,
+                              trendBreakout: {
+                                ...strategyParams.trendBreakout,
+                                breakoutBufferAtr: Number(e.target.value) || 0.1,
+                              },
+                            })
+                          }
+                          className="w-full bg-[#1b2234] border border-[#2d3a54] rounded-xl px-2.5 py-1.5 text-zinc-100 font-mono text-xs"
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  {/* ۳. پارامترهای بازگشت به میانگین Mean Reversion */}
+                  {strategy === 'MEAN_REVERSION' && (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
+                      <div className="space-y-1">
+                        <div className="flex items-center justify-between">
+                          <span className="text-zinc-400 text-[11px]">دوره انحراف معیار (Lookback):</span>
+                          <span className="text-[9px] text-emerald-400 font-bold bg-emerald-500/10 px-1 py-0.5 rounded border border-emerald-500/30">
+                            ACTIVE
+                          </span>
+                        </div>
+                        <input
+                          type="number"
+                          min="10"
+                          max="100"
+                          value={strategyParams.meanReversion.lookbackPeriod}
+                          onChange={(e) =>
+                            setStrategyParams({
+                              ...strategyParams,
+                              meanReversion: {
+                                ...strategyParams.meanReversion,
+                                lookbackPeriod: Number(e.target.value) || 20,
+                              },
+                            })
+                          }
+                          className="w-full bg-[#1b2234] border border-[#2d3a54] rounded-xl px-2.5 py-1.5 text-zinc-100 font-mono text-xs"
+                        />
+                      </div>
+
+                      <div className="space-y-1">
+                        <div className="flex items-center justify-between">
+                          <span className="text-zinc-400 text-[11px]">آستانه انحراف ورود (Z-Score):</span>
+                          <span className="text-[9px] text-emerald-400 font-bold bg-emerald-500/10 px-1 py-0.5 rounded border border-emerald-500/30">
+                            ACTIVE
+                          </span>
+                        </div>
+                        <input
+                          type="number"
+                          step="0.1"
+                          min="1"
+                          max="4"
+                          value={strategyParams.meanReversion.zScoreThreshold}
+                          onChange={(e) =>
+                            setStrategyParams({
+                              ...strategyParams,
+                              meanReversion: {
+                                ...strategyParams.meanReversion,
+                                zScoreThreshold: Number(e.target.value) || 2.0,
+                              },
+                            })
+                          }
+                          className="w-full bg-[#1b2234] border border-[#2d3a54] rounded-xl px-2.5 py-1.5 text-zinc-100 font-mono text-xs"
+                        />
+                      </div>
+
+                      <div className="space-y-1">
+                        <div className="flex items-center justify-between">
+                          <span className="text-zinc-400 text-[11px]">انحراف خروج تعادل (Exit Z):</span>
+                          <span className="text-[9px] text-emerald-400 font-bold bg-emerald-500/10 px-1 py-0.5 rounded border border-emerald-500/30">
+                            ACTIVE
+                          </span>
+                        </div>
+                        <input
+                          type="number"
+                          step="0.1"
+                          min="-1"
+                          max="1"
+                          value={strategyParams.meanReversion.exitZScore}
+                          onChange={(e) =>
+                            setStrategyParams({
+                              ...strategyParams,
+                              meanReversion: {
+                                ...strategyParams.meanReversion,
+                                exitZScore: Number(e.target.value) || 0,
+                              },
+                            })
+                          }
+                          className="w-full bg-[#1b2234] border border-[#2d3a54] rounded-xl px-2.5 py-1.5 text-zinc-100 font-mono text-xs"
+                        />
+                      </div>
+
+                      <div className="space-y-1">
+                        <div className="flex items-center justify-between">
+                          <span className="text-zinc-400 text-[11px]">فیلتر روند کلان:</span>
+                          <span className="text-[9px] text-emerald-400 font-bold bg-emerald-500/10 px-1 py-0.5 rounded border border-emerald-500/30">
+                            ACTIVE
+                          </span>
+                        </div>
+                        <select
+                          value={strategyParams.meanReversion.trendFilter ? 'YES' : 'NO'}
+                          onChange={(e) =>
+                            setStrategyParams({
+                              ...strategyParams,
+                              meanReversion: {
+                                ...strategyParams.meanReversion,
+                                trendFilter: e.target.value === 'YES',
+                              },
+                            })
+                          }
+                          className="w-full bg-[#1b2234] border border-[#2d3a54] rounded-xl px-2.5 py-1.5 text-zinc-100 text-xs font-mono"
+                        >
+                          <option value="YES">فعال (مسدودسازی ورود در ترندهای افراطی)</option>
+                          <option value="NO">غیرفعال (ورود بر مبنای باند بدون فیلتر)</option>
+                        </select>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* ۴. پارامترهای اسکلپینگ سریع Scalp */}
+                  {strategy === 'SCALP_M1_M5' && (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
+                      <div className="space-y-1">
+                        <div className="flex items-center justify-between">
+                          <span className="text-zinc-400 text-[11px]">EMA سریع اسکلپ:</span>
+                          <span className="text-[9px] text-emerald-400 font-bold bg-emerald-500/10 px-1 py-0.5 rounded border border-emerald-500/30">
+                            ACTIVE
+                          </span>
+                        </div>
+                        <input
+                          type="number"
+                          min="3"
+                          max="20"
+                          value={strategyParams.scalp.fastEma}
+                          onChange={(e) =>
+                            setStrategyParams({
+                              ...strategyParams,
+                              scalp: {
+                                ...strategyParams.scalp,
+                                fastEma: Number(e.target.value) || 9,
+                              },
+                            })
+                          }
+                          className="w-full bg-[#1b2234] border border-[#2d3a54] rounded-xl px-2.5 py-1.5 text-zinc-100 font-mono text-xs"
+                        />
+                      </div>
+
+                      <div className="space-y-1">
+                        <div className="flex items-center justify-between">
+                          <span className="text-zinc-400 text-[11px]">EMA کند اسکلپ:</span>
+                          <span className="text-[9px] text-emerald-400 font-bold bg-emerald-500/10 px-1 py-0.5 rounded border border-emerald-500/30">
+                            ACTIVE
+                          </span>
+                        </div>
+                        <input
+                          type="number"
+                          min="10"
+                          max="50"
+                          value={strategyParams.scalp.slowEma}
+                          onChange={(e) =>
+                            setStrategyParams({
+                              ...strategyParams,
+                              scalp: {
+                                ...strategyParams.scalp,
+                                slowEma: Number(e.target.value) || 21,
+                              },
+                            })
+                          }
+                          className="w-full bg-[#1b2234] border border-[#2d3a54] rounded-xl px-2.5 py-1.5 text-zinc-100 font-mono text-xs"
+                        />
+                      </div>
+
+                      <div className="space-y-1">
+                        <div className="flex items-center justify-between">
+                          <span className="text-zinc-400 text-[11px]">حداقل نوسان ATR:</span>
+                          <span className="text-[9px] text-emerald-400 font-bold bg-emerald-500/10 px-1 py-0.5 rounded border border-emerald-500/30">
+                            ACTIVE
+                          </span>
+                        </div>
+                        <input
+                          type="number"
+                          step="0.0001"
+                          min="0.00005"
+                          max="0.01"
+                          value={strategyParams.scalp.minAtr}
+                          onChange={(e) =>
+                            setStrategyParams({
+                              ...strategyParams,
+                              scalp: {
+                                ...strategyParams.scalp,
+                                minAtr: Number(e.target.value) || 0.0002,
+                              },
+                            })
+                          }
+                          className="w-full bg-[#1b2234] border border-[#2d3a54] rounded-xl px-2.5 py-1.5 text-zinc-100 font-mono text-xs"
+                        />
+                      </div>
+
+                      <div className="space-y-1">
+                        <div className="flex items-center justify-between">
+                          <span className="text-zinc-400 text-[11px]">سشن اختصاصی اسکلپ:</span>
+                          <span className="text-[9px] text-emerald-400 font-bold bg-emerald-500/10 px-1 py-0.5 rounded border border-emerald-500/30">
+                            ACTIVE
+                          </span>
+                        </div>
+                        <select
+                          value={strategyParams.scalp.session}
+                          onChange={(e) =>
+                            setStrategyParams({
+                              ...strategyParams,
+                              scalp: {
+                                ...strategyParams.scalp,
+                                session: e.target.value as any,
+                              },
+                            })
+                          }
+                          className="w-full bg-[#1b2234] border border-[#2d3a54] rounded-xl px-2.5 py-1.5 text-zinc-100 text-xs font-mono"
+                        >
+                          <option value="ALL">تمام سشن‌ها (آزاد)</option>
+                          <option value="LONDON_NEW_YORK_OVERLAP">همپوشانی لندن و نیویورک</option>
+                          <option value="LONDON">فقط لندن</option>
+                          <option value="NEW_YORK">فقط نیویورک</option>
+                          <option value="ASIAN">فقط آسیا</option>
+                        </select>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* ۵. پارامترهای سوئینگ کلان Swing Macro */}
+                  {strategy === 'SWING_MACRO' && (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 text-xs">
+                      <div className="space-y-1">
+                        <div className="flex items-center justify-between">
+                          <span className="text-zinc-400 text-[11px]">EMA جهت روند کلان:</span>
+                          <span className="text-[9px] text-emerald-400 font-bold bg-emerald-500/10 px-1 py-0.5 rounded border border-emerald-500/30">
+                            ACTIVE
+                          </span>
+                        </div>
+                        <input
+                          type="number"
+                          min="20"
+                          max="200"
+                          value={strategyParams.swing.trendEma}
+                          onChange={(e) =>
+                            setStrategyParams({
+                              ...strategyParams,
+                              swing: {
+                                ...strategyParams.swing,
+                                trendEma: Number(e.target.value) || 50,
+                              },
+                            })
+                          }
+                          className="w-full bg-[#1b2234] border border-[#2d3a54] rounded-xl px-2.5 py-1.5 text-zinc-100 font-mono text-xs"
+                        />
+                      </div>
+
+                      <div className="space-y-1">
+                        <div className="flex items-center justify-between">
+                          <span className="text-zinc-400 text-[11px]">عمق اصلاح پولبک (بر حسب ATR):</span>
+                          <span className="text-[9px] text-emerald-400 font-bold bg-emerald-500/10 px-1 py-0.5 rounded border border-emerald-500/30">
+                            ACTIVE
+                          </span>
+                        </div>
+                        <input
+                          type="number"
+                          step="0.1"
+                          min="0.2"
+                          max="3"
+                          value={strategyParams.swing.pullbackDepth}
+                          onChange={(e) =>
+                            setStrategyParams({
+                              ...strategyParams,
+                              swing: {
+                                ...strategyParams.swing,
+                                pullbackDepth: Number(e.target.value) || 1.0,
+                              },
+                            })
+                          }
+                          className="w-full bg-[#1b2234] border border-[#2d3a54] rounded-xl px-2.5 py-1.5 text-zinc-100 font-mono text-xs"
+                        />
+                      </div>
+
+                      <div className="space-y-1">
+                        <div className="flex items-center justify-between">
+                          <span className="text-zinc-400 text-[11px]">کندل‌های تاییدیه برگشت:</span>
+                          <span className="text-[9px] text-emerald-400 font-bold bg-emerald-500/10 px-1 py-0.5 rounded border border-emerald-500/30">
+                            ACTIVE
+                          </span>
+                        </div>
+                        <input
+                          type="number"
+                          min="1"
+                          max="5"
+                          value={strategyParams.swing.confirmationBars}
+                          onChange={(e) =>
+                            setStrategyParams({
+                              ...strategyParams,
+                              swing: {
+                                ...strategyParams.swing,
+                                confirmationBars: Number(e.target.value) || 2,
+                              },
+                            })
+                          }
+                          className="w-full bg-[#1b2234] border border-[#2d3a54] rounded-xl px-2.5 py-1.5 text-zinc-100 font-mono text-xs"
+                        />
+                      </div>
+                    </div>
+                  )}
                 </div>
 
               <div className="flex items-center justify-between pt-2">

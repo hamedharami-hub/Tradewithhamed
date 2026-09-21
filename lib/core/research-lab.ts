@@ -428,6 +428,9 @@ export class ResearchLab {
     let currentDayKey = '';
     let dayStartingEquity = initialCash;
     let lastClosedPositionTimestamp = 0;
+    const lastClosedBySymbol: Record<string, number> = {};
+    const lastClosedByStrategy: Record<string, number> = {};
+    const lastClosedByDirection: Record<string, number> = {};
 
     const tBacktestStart = performance.now();
 
@@ -438,12 +441,26 @@ export class ResearchLab {
       // ۱. پردازش اجرای کندل در موتور
       engine.processCandle(currentCandle, symbol);
 
-      // ۲. به‌روزرسانی زمان آخرین معامله بسته شده برای محاسبه دقیق Cooldown (طبق بخش M)
+      // ۲. به‌روزرسانی زمان آخرین معامله بسته شده برای محاسبه دقیق Cooldown (طبق بخش M و حوزه cooldownScope)
       const currentClosedPositions = engine.getLedger().positions.filter(p => !p.isOpen);
       if (currentClosedPositions.length > 0) {
-        const latestClose = Math.max(...currentClosedPositions.map(p => p.closedTimestamp || 0));
-        if (latestClose > lastClosedPositionTimestamp) {
-          lastClosedPositionTimestamp = latestClose;
+        for (const pos of currentClosedPositions) {
+          const closeTs = pos.closedTimestamp || 0;
+          if (closeTs > 0) {
+            if (closeTs > lastClosedPositionTimestamp) {
+              lastClosedPositionTimestamp = closeTs;
+            }
+            if (!lastClosedBySymbol[pos.symbol] || closeTs > lastClosedBySymbol[pos.symbol]) {
+              lastClosedBySymbol[pos.symbol] = closeTs;
+            }
+            const stratKey = pos.intentId?.split('-')[1] || pos.symbol;
+            if (!lastClosedByStrategy[stratKey] || closeTs > lastClosedByStrategy[stratKey]) {
+              lastClosedByStrategy[stratKey] = closeTs;
+            }
+            if (!lastClosedByDirection[pos.direction] || closeTs > lastClosedByDirection[pos.direction]) {
+              lastClosedByDirection[pos.direction] = closeTs;
+            }
+          }
         }
       }
 
@@ -535,14 +552,27 @@ export class ResearchLab {
           continue;
         }
 
-        // بررسی بار خنک‌سازی (Cooldown Bars) - بر مبنای بسته‌شدن پوزیشن قبلی (بخش M)
+        // بررسی بار خنک‌سازی (Cooldown Bars) بر مبنای حوزه انتخابی (cooldownScope)
         const cooldownBars = strategyParameters?.common?.cooldownBars ?? 0;
-        if (cooldownBars > 0 && lastClosedPositionTimestamp > 0) {
-          const tfMs = timeframeToMs(timeframe);
-          const elapsedBarsSinceLastClose = Math.floor((currentCandle.timestamp - lastClosedPositionTimestamp) / tfMs);
-          if (elapsedBarsSinceLastClose < cooldownBars) {
-            candidatesRejectedByCooldown++;
-            continue;
+        const cooldownScope = strategyParameters?.common?.cooldownScope || 'PER_SYMBOL';
+        if (cooldownBars > 0) {
+          let relevantLastCloseTs = 0;
+          if (cooldownScope === 'PER_SYMBOL') {
+            relevantLastCloseTs = lastClosedBySymbol[candidate.symbol] || 0;
+          } else if (cooldownScope === 'PER_STRATEGY') {
+            const candStratKey = candidate.id.split('-')[0] || candidate.strategyName;
+            relevantLastCloseTs = lastClosedByStrategy[candStratKey] || 0;
+          } else if (cooldownScope === 'PER_DIRECTION') {
+            relevantLastCloseTs = lastClosedByDirection[candidate.direction] || 0;
+          }
+
+          if (relevantLastCloseTs > 0) {
+            const tfMs = timeframeToMs(timeframe);
+            const elapsedBarsSinceLastClose = Math.floor((currentCandle.timestamp - relevantLastCloseTs) / tfMs);
+            if (elapsedBarsSinceLastClose < cooldownBars) {
+              candidatesRejectedByCooldown++;
+              continue;
+            }
           }
         }
 

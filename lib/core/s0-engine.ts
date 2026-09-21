@@ -3,11 +3,24 @@
 // با اتصال کامل پارامترهای liquidityLookback, sweepThreshold, requireStructureBreak, requireFvg
 
 import { Candle, SymbolId, SYMBOL_SPECS, Timeframe } from '../contracts/market';
-import { StrategyCandidate } from '../contracts/strategy';
+import { StrategyCandidate, RuleProvenance } from '../contracts/strategy';
 import { detectSwingPoints } from './swings';
 import { calculateWilderATR } from './atr';
 import { StrategyParameters, getDefaultStrategyParameters } from '../contracts/strategy-parameters';
 import { StopLossCalculator } from './stop-loss-calculator';
+
+function calculateParameterHash(params: Record<string, number>): string {
+  const keys = Object.keys(params).sort();
+  let hash = 2166136261;
+  for (const key of keys) {
+    const str = `${key}:${params[key]};`;
+    for (let i = 0; i < str.length; i++) {
+      hash ^= str.charCodeAt(i);
+      hash = Math.imul(hash, 16777619);
+    }
+  }
+  return (hash >>> 0).toString(16).padStart(8, '0');
+}
 
 function timeframeToMs(timeframe: Timeframe): number {
   const durations: Record<Timeframe, number> = {
@@ -93,6 +106,18 @@ export function evaluateS0Strategy(
           const takeProfitPrice = Number((entryPrice + slRes.riskDistancePrice * rr).toFixed(precision));
           const riskRewardRatio = Number(((takeProfitPrice - entryPrice) / slRes.riskDistancePrice).toFixed(2));
 
+          const resolvedParameters: Record<string, number> = {
+            liquidityLookback: swingLookback,
+            sweepThreshold: sweepThresholdPips,
+            requireStructureBreak: smcParams.requireStructureBreak ? 1 : 0,
+            requireFvg: smcParams.requireFvg ? 1 : 0,
+            atrPeriod,
+            atrMultiplier,
+            riskRewardRatio: rr,
+          };
+          const parameterHash = calculateParameterHash(resolvedParameters);
+          const evidenceAvailableAtTimestamp = currentCandle.timestamp + timeframeToMs(timeframe);
+
           return {
             id: `CAND-BUY-${currentCandle.timestamp}`,
             strategyName: 'S0-proposed Intraday (Sweep Reversal)',
@@ -105,6 +130,14 @@ export function evaluateS0Strategy(
             stopLossPrice: slRes.stopLossPrice,
             takeProfitPrice,
             riskRewardRatio,
+            ruleProvenance: {
+              ruleVersion: '2.4.0',
+              parameterHash,
+              resolvedParameters,
+              signalCandleTimestamp: currentCandle.timestamp,
+              evidenceAvailableAtTimestamp,
+              lifecycle: 'CONFIRMED',
+            },
             evidenceIds: {
               sweepId: `SWEEP-${low.id}`,
               contextSwingId: low.id,
@@ -140,6 +173,18 @@ export function evaluateS0Strategy(
           const takeProfitPrice = Number((entryPrice - slRes.riskDistancePrice * rr).toFixed(precision));
           const riskRewardRatio = Number(((entryPrice - takeProfitPrice) / slRes.riskDistancePrice).toFixed(2));
 
+          const resolvedParameters: Record<string, number> = {
+            liquidityLookback: swingLookback,
+            sweepThreshold: sweepThresholdPips,
+            requireStructureBreak: smcParams.requireStructureBreak ? 1 : 0,
+            requireFvg: smcParams.requireFvg ? 1 : 0,
+            atrPeriod,
+            atrMultiplier,
+            riskRewardRatio: rr,
+          };
+          const parameterHash = calculateParameterHash(resolvedParameters);
+          const evidenceAvailableAtTimestamp = currentCandle.timestamp + timeframeToMs(timeframe);
+
           return {
             id: `CAND-SELL-${currentCandle.timestamp}`,
             strategyName: 'S0-proposed Intraday (Sweep Reversal)',
@@ -152,6 +197,14 @@ export function evaluateS0Strategy(
             stopLossPrice: slRes.stopLossPrice,
             takeProfitPrice,
             riskRewardRatio,
+            ruleProvenance: {
+              ruleVersion: '2.4.0',
+              parameterHash,
+              resolvedParameters,
+              signalCandleTimestamp: currentCandle.timestamp,
+              evidenceAvailableAtTimestamp,
+              lifecycle: 'CONFIRMED',
+            },
             evidenceIds: {
               sweepId: `SWEEP-${high.id}`,
               contextSwingId: high.id,
