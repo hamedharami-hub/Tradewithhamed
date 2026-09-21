@@ -1150,6 +1150,36 @@ export class ResearchLab {
     return PropFirmChallengeAuditor.auditChallenge(metrics, config, meta);
   }
 
+  // ۷.۱. تولید گزارش تجمیعی استراتژی، کارت‌های اشتراک‌گذاری و پل ژورنال (Package G)
+  public static generateExecutiveReport(
+    metrics: PerformanceMetrics,
+    options: {
+      strategyName: string;
+      strategyStyle: TradingStyleType;
+      symbol: SymbolId;
+      timeframe: Timeframe;
+      initialCapital: number;
+      passport?: import('../contracts/prop-firm-passport').StrategyPropPassport | null;
+      monteCarlo?: import('../contracts/monte-carlo-stress').MonteCarloSimulationReport | null;
+      walkForward?: import('../contracts/parameter-optimization').PurgedWalkForwardReport | null;
+    }
+  ): import('../contracts/research-reports-journal').StrategyExecutiveReport {
+    const { ExecutiveReportGenerator } = require('./executive-report-generator');
+    return ExecutiveReportGenerator.generateExecutiveReport(metrics, options);
+  }
+
+  // ۷.۲. بسته‌بندی و صدور معاملات بکتست جهت ثبت در ژورنال معاملات (Package G)
+  public static exportTradesToJournal(
+    trades: import('./ports').PositionLedgerEntry[],
+    meta: {
+      strategyName: string;
+      symbol: SymbolId;
+    }
+  ): import('../contracts/research-reports-journal').JournalExportBatch {
+    const { ExecutiveReportGenerator } = require('./executive-report-generator');
+    return ExecutiveReportGenerator.exportTradesToJournalBatch(trades, meta);
+  }
+
   // ۵. تست تنش و تاب‌آوری (Stress Testing)
   public static runStressTests(
     candles: Candle[],

@@ -28,6 +28,8 @@ import type { PurgedWalkForwardReport, PurgedWalkForwardConfig, ParameterOptimiz
 import type { MonteCarloSimulationReport, StressMatrixReport } from '@/lib/contracts/monte-carlo-stress';
 import type { StrategyPropPassport, PropFirmEvaluationVerdict } from '@/lib/contracts/prop-firm-passport';
 import { PROP_FIRM_PRESETS, type PropFirmId } from '@/lib/contracts/prop-firms';
+import type { StrategyExecutiveReport, JournalExportBatch } from '@/lib/contracts/research-reports-journal';
+import { ShareableTradeCardModal, type ShareableTradeData } from '@/components/trading/shareable-trade-card-modal';
 import {
   FlaskConical,
   Database,
@@ -53,6 +55,9 @@ import {
   Trash2,
   Award,
   ShieldCheck,
+  FileText,
+  Share2,
+  BookOpen,
 } from 'lucide-react';
 
 const AVAILABLE_SYMBOLS: SymbolId[] = ['XAUUSD', 'EURUSD', 'GBPUSD', 'USDJPY'];
@@ -172,6 +177,13 @@ export default function ResearchPage() {
   const [targetAccountSize, setTargetAccountSize] = useState<number>(100000);
   const [propPassport, setPropPassport] = useState<StrategyPropPassport | null>(null);
   const [isPassportAuditing, setIsPassportAuditing] = useState<boolean>(false);
+
+  // ─── گزارش جامع، کارت‌های اشتراک‌گذاری و ژورنال (Package G) ───────────────────
+  const [executiveReport, setExecutiveReport] = useState<StrategyExecutiveReport | null>(null);
+  const [isGeneratingExecReport, setIsGeneratingExecReport] = useState<boolean>(false);
+  const [journalExportStatus, setJournalExportStatus] = useState<string | null>(null);
+  const [shareableCardData, setShareableCardData] = useState<ShareableTradeData | null>(null);
+  const [isShareableModalOpen, setIsShareableModalOpen] = useState<boolean>(false);
 
   // هوک اختصاصی اجرای بکتست خارج از نخ اصلی
   const { run: runWorkerBacktest, cancel: cancelWorkerBacktest, isRunning, progress } =
@@ -3497,6 +3509,180 @@ export default function ResearchPage() {
                 )}
               </div>
 
+              {/* کارت گزارش تجمیعی استراتژی و پل صدور به ژورنال معاملات (Package G) */}
+              <div className="bg-[#141926] p-4 rounded-2xl border border-emerald-500/30 space-y-3 text-xs">
+                <div className="flex items-center justify-between border-b border-[#1f2738] pb-2 flex-wrap gap-2">
+                  <div className="flex items-center gap-2 font-bold text-emerald-300">
+                    <FileText className="w-4 h-4 text-emerald-400" />
+                    <span>گزارش جامع اجرایی، کارت تصویری و همگام‌سازی با ژورنال (Executive Report & Journal Bridge):</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      disabled={isGeneratingExecReport || backtestResult.totalTrades === 0}
+                      onClick={async () => {
+                        setIsGeneratingExecReport(true);
+                        try {
+                          const { ResearchLab } = await import('@/lib/core/research-lab');
+                          const report = ResearchLab.generateExecutiveReport(backtestResult, {
+                            strategyName: TRADING_STYLES_CONFIG[strategy]?.nameFa || strategy,
+                            strategyStyle: strategy,
+                            symbol,
+                            timeframe: selectedTimeframe,
+                            initialCapital,
+                            passport: propPassport,
+                            monteCarlo: mcReport,
+                            walkForward: walkForwardReport,
+                          });
+                          setExecutiveReport(report);
+                        } catch (err) {
+                          console.error('Error generating executive report:', err);
+                        } finally {
+                          setIsGeneratingExecReport(false);
+                        }
+                      }}
+                      className="px-3 py-1.5 bg-emerald-600/30 hover:bg-emerald-600/50 disabled:opacity-40 border border-emerald-500/40 text-emerald-200 text-xs font-bold rounded-xl flex items-center gap-1.5 transition-all"
+                    >
+                      <FileText className="w-3 h-3" />
+                      <span>{isGeneratingExecReport ? 'در حال تدوین گزارش...' : 'تولید گزارش جامع اجرایی'}</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      disabled={closedTrades.length === 0}
+                      onClick={async () => {
+                        try {
+                          const { ResearchLab } = await import('@/lib/core/research-lab');
+                          const batch = ResearchLab.exportTradesToJournal(closedTrades, {
+                            strategyName: TRADING_STYLES_CONFIG[strategy]?.nameFa || strategy,
+                            symbol,
+                          });
+                          setJournalExportStatus(`✓ ${batch.totalExportedTrades} معامله با مجموع سود $${batch.totalRealizedNetPnL} به بسته ژورنال منتقل شد.`);
+                        } catch (err: any) {
+                          setJournalExportStatus(`خطا در انتقال: ${err?.message}`);
+                        }
+                      }}
+                      className="px-3 py-1.5 bg-blue-600/30 hover:bg-blue-600/50 disabled:opacity-40 border border-blue-500/40 text-blue-200 text-xs font-bold rounded-xl flex items-center gap-1.5 transition-all"
+                    >
+                      <BookOpen className="w-3 h-3" />
+                      <span>انتقال {closedTrades.length} معامله به ژورنال</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      disabled={!propPassport && backtestResult.totalTrades === 0}
+                      onClick={() => {
+                        // ساخت داده کارت اشتراک‌گذاری برای نمایش در مودال گرافیکی
+                        const tradeData: ShareableTradeData = {
+                          symbol,
+                          direction: 'BUY',
+                          entryPrice: candles[candles.length - 1]?.close || 1.0,
+                          exitPrice: candles[candles.length - 1]?.close || 1.0,
+                          realizedNetPnL: backtestResult.netProfit,
+                          realizedRMultiple: backtestResult.expectancyR,
+                          exitEfficiencyPercent: Math.min(100, Math.round(backtestResult.winRatePercent)),
+                          setupGrade: executiveReport?.qualityTier === 'GRADE_A_PRIME' ? 'A+' : 'A',
+                          propFirmId: selectedPropFirm,
+                          traderNotesFa: executiveReport?.readinessSummaryFa || propPassport?.summaryFa || 'گزارش نتایج شبیه‌سازی استراتژی',
+                        };
+                        setShareableCardData(tradeData);
+                        setIsShareableModalOpen(true);
+                      }}
+                      className="px-3 py-1.5 bg-amber-600/30 hover:bg-amber-600/50 disabled:opacity-40 border border-amber-500/40 text-amber-200 text-xs font-bold rounded-xl flex items-center gap-1.5 transition-all"
+                    >
+                      <Share2 className="w-3 h-3" />
+                      <span>صدور کارت تصویری (Card)</span>
+                    </button>
+                  </div>
+                </div>
+
+                {journalExportStatus && (
+                  <div className="p-2.5 bg-blue-500/10 border border-blue-500/30 rounded-xl text-blue-300 text-[11px] font-mono flex items-center justify-between">
+                    <span>{journalExportStatus}</span>
+                    <button onClick={() => setJournalExportStatus(null)} className="text-zinc-500 hover:text-zinc-300">✕</button>
+                  </div>
+                )}
+
+                {/* نمایش نتایج گزارش جامع اجرایی */}
+                {executiveReport && (
+                  <div className="space-y-3 pt-1">
+                    {/* ردیف شاخص‌های ارزیابی */}
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                      <div className="bg-[#0f1422] p-2.5 rounded-xl border border-[#1e263c] text-center">
+                        <span className="text-[10px] text-zinc-400 block">رتبه کیفی استراتژی:</span>
+                        <span className={`text-sm font-bold mt-0.5 block ${
+                          executiveReport.qualityTier === 'GRADE_A_PRIME' ? 'text-emerald-400' :
+                          executiveReport.qualityTier === 'GRADE_B_VIABLE' ? 'text-blue-400' :
+                          executiveReport.qualityTier === 'GRADE_C_RISKY' ? 'text-amber-400' : 'text-rose-400'
+                        }`}>
+                          {executiveReport.qualityTier}
+                        </span>
+                      </div>
+
+                      <div className="bg-[#0f1422] p-2.5 rounded-xl border border-[#1e263c] text-center">
+                        <span className="text-[10px] text-zinc-400 block">نمره آمادگی اجرایی:</span>
+                        <span className="text-sm font-bold text-zinc-200 mt-0.5 block font-mono">
+                          {executiveReport.executiveScorePercent} از ۱۰۰
+                        </span>
+                      </div>
+
+                      <div className="bg-[#0f1422] p-2.5 rounded-xl border border-[#1e263c] text-center">
+                        <span className="text-[10px] text-zinc-400 block">اکوئیتی نهایی برآورد شده:</span>
+                        <span className="text-sm font-bold text-emerald-400 mt-0.5 block font-mono">
+                          ${executiveReport.finalEquityDollar.toLocaleString('en-US')}
+                        </span>
+                      </div>
+
+                      <div className="bg-[#0f1422] p-2.5 rounded-xl border border-[#1e263c] text-center">
+                        <span className="text-[10px] text-zinc-400 block">شناسه رهگیری گزارش:</span>
+                        <span className="text-[10px] text-zinc-400 mt-1 block font-mono">
+                          {executiveReport.reportId}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* نقاط قوت و آسیب‌پذیری‌ها */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div className="bg-[#0f1422] p-3 rounded-xl border border-emerald-500/20 space-y-1.5">
+                        <span className="font-bold text-emerald-400 flex items-center gap-1.5 text-[11px]">
+                          <span>✓</span>
+                          <span>نقاط قوت و مزیت‌های کلیدی:</span>
+                        </span>
+                        <ul className="space-y-1 text-[11px] text-zinc-300">
+                          {executiveReport.keyStrengthsFa.map((str, idx) => (
+                            <li key={idx} className="flex items-center gap-1.5 text-zinc-300">
+                              <span className="text-emerald-500 text-[10px]">•</span>
+                              <span>{str}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+
+                      <div className="bg-[#0f1422] p-3 rounded-xl border border-rose-500/20 space-y-1.5">
+                        <span className="font-bold text-rose-400 flex items-center gap-1.5 text-[11px]">
+                          <span>⚠️</span>
+                          <span>حوزه‌های آسیب‌پذیری و هشدارها:</span>
+                        </span>
+                        <ul className="space-y-1 text-[11px] text-zinc-300">
+                          {executiveReport.vulnerabilitiesFa.map((vuln, idx) => (
+                            <li key={idx} className="flex items-center gap-1.5 text-zinc-300">
+                              <span className="text-rose-500 text-[10px]">•</span>
+                              <span>{vuln}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    </div>
+
+                    {/* جمع‌بندی آمادگی */}
+                    <div className="p-3 bg-[#0d121f] rounded-xl border border-[#1e263c] text-[11px] text-zinc-300 leading-relaxed">
+                      <span className="font-bold text-zinc-200">خلاصه ارزیابی آمادگی: </span>
+                      {executiveReport.readinessSummaryFa}
+                    </div>
+                  </div>
+                )}
+              </div>
+
               {/* گزارش عملکرد بر حسب سشن معاملاتی و روز هفته */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
                 {/* تفکیک سشن */}
@@ -3928,6 +4114,14 @@ export default function ResearchPage() {
           onClose={() => setIsBacktestModalOpen(false)}
           candles={candles}
           symbol={symbol}
+        />
+      )}
+
+      {isShareableModalOpen && (
+        <ShareableTradeCardModal
+          isOpen={isShareableModalOpen}
+          onClose={() => setIsShareableModalOpen(false)}
+          data={shareableCardData}
         />
       )}
     </main>
