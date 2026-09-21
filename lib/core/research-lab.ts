@@ -1024,7 +1024,7 @@ export class ResearchLab {
     };
   }
 
-  // ۴. آزمایش پیش‌روچندپنجره‌ای (Walk-Forward Optimization)
+  // ۴. آزمایش پیش‌روچندپنجره‌ای ساده (Legacy Walk-Forward)
   public static runWalkForward(
     candles: Candle[],
     symbol: SymbolId = 'XAUUSD',
@@ -1077,6 +1077,35 @@ export class ResearchLab {
     }
 
     return windows;
+  }
+
+  // ۴.۱. بهینه‌سازی سیستماتیک پارامترها و اعتبارسنجی فلات همسایگی (Package D)
+  public static runParameterOptimization(
+    candles: Candle[],
+    symbol: SymbolId = 'XAUUSD',
+    baseParams: StrategyParameters,
+    options: import('../contracts/parameter-optimization').ParameterOptimizationOptions
+  ): import('../contracts/parameter-optimization').ParameterOptimizationReport {
+    const { StrategyParameterOptimizer } = require('./parameter-optimizer');
+    return StrategyParameterOptimizer.optimize(candles, symbol, baseParams, options);
+  }
+
+  // ۴.۲. ارزیابی پیش‌رو برون‌نمونه‌ای با بافر قرنطینه (Package D: Purged Walk-Forward)
+  public static runPurgedWalkForward(
+    candles: Candle[],
+    symbol: SymbolId = 'XAUUSD',
+    baseParams: StrategyParameters,
+    config: import('../contracts/parameter-optimization').PurgedWalkForwardConfig,
+    options: {
+      style?: TradingStyleType | 'ALL';
+      initialCash?: number;
+      commissionPerLot?: number;
+      defaultSpreadPips?: number;
+      additionalSlippagePips?: number;
+    } = {}
+  ): import('../contracts/parameter-optimization').PurgedWalkForwardReport {
+    const { PurgedWalkForwardEngine } = require('./walk-forward-engine');
+    return PurgedWalkForwardEngine.run(candles, symbol, baseParams, config, options);
   }
 
   // ۵. تست تنش و تاب‌آوری (Stress Testing)

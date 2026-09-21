@@ -24,6 +24,7 @@ import { AdvancedExecutionStressConfig, ResearchRun, ResearchRunStatus } from '@
 import { GOLD_CANDLES_FIXTURE_5M } from '@/lib/replay/fixtures/gold-candles';
 import { getBundledDataset } from '@/lib/research/bundled-historical-datasets';
 import { useResearchBacktestWorker } from '@/hooks/use-research-backtest-worker';
+import type { PurgedWalkForwardReport, PurgedWalkForwardConfig, ParameterOptimizationReport } from '@/lib/contracts/parameter-optimization';
 import {
   FlaskConical,
   Database,
@@ -142,6 +143,14 @@ export default function ResearchPage() {
     error?: string;
   }>>([]);
   const [scenarioLabExportJson, setScenarioLabExportJson] = useState<string | null>(null);
+
+  // ─── اعتبارسنجی پیش‌رو Purged Walk-Forward (Package D) ───────────────────
+  const [walkForwardWindows, setWalkForwardWindows] = useState<number>(3);
+  const [walkForwardType, setWalkForwardType] = useState<'ANCHORED' | 'ROLLING'>('ANCHORED');
+  const [walkForwardPurgeBars, setWalkForwardPurgeBars] = useState<number>(10);
+  const [isWfRunning, setIsWfRunning] = useState<boolean>(false);
+  const [walkForwardReport, setWalkForwardReport] = useState<PurgedWalkForwardReport | null>(null);
+  const [wfErrorMessage, setWfErrorMessage] = useState<string | null>(null);
 
   // هوک اختصاصی اجرای بکتست خارج از نخ اصلی
   const { run: runWorkerBacktest, cancel: cancelWorkerBacktest, isRunning, progress } =
@@ -2870,6 +2879,219 @@ export default function ResearchPage() {
                     </span>
                   </div>
                 </div>
+              </div>
+
+              {/* کارت اعتبارسنجی پیش‌رو چندپنجره‌ای با بافر قرنطینه (Package D: Purged Walk-Forward) */}
+              <div className="bg-[#141926] p-4 rounded-2xl border border-purple-500/30 space-y-3 text-xs">
+                <div className="flex items-center justify-between border-b border-[#1f2738] pb-2 flex-wrap gap-2">
+                  <div className="flex items-center gap-2 font-bold text-purple-300">
+                    <Layers className="w-4 h-4 text-purple-400" />
+                    <span>اعتبارسنجی برون‌نمونه‌ای پیش‌رو (Purged Walk-Forward Cross-Validation):</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      disabled={isWfRunning || candles.length < 100}
+                      onClick={async () => {
+                        setIsWfRunning(true);
+                        setWfErrorMessage(null);
+                        try {
+                          const { PurgedWalkForwardEngine } = await import('@/lib/core/walk-forward-engine');
+                          const report = PurgedWalkForwardEngine.run(
+                            candles,
+                            symbol,
+                            strategyParams,
+                            {
+                              windowCount: walkForwardWindows,
+                              windowType: walkForwardType,
+                              purgeBars: walkForwardPurgeBars,
+                              minTradesPerWindow: 1,
+                            },
+                            {
+                              style: strategy,
+                              initialCash: initialCapital,
+                              commissionPerLot,
+                              defaultSpreadPips: spreadPips,
+                              additionalSlippagePips,
+                            }
+                          );
+                          setWalkForwardReport(report);
+                        } catch (err: any) {
+                          setWfErrorMessage(err?.message || 'خطا در ارزیابی پیش‌رو');
+                        } finally {
+                          setIsWfRunning(false);
+                        }
+                      }}
+                      className="px-3 py-1.5 bg-purple-600/30 hover:bg-purple-600/50 disabled:opacity-40 border border-purple-500/40 text-purple-200 text-xs font-bold rounded-xl flex items-center gap-1.5 transition-all"
+                    >
+                      <Play className="w-3 h-3" />
+                      <span>{isWfRunning ? 'در حال ارزیابی...' : 'اجرای Walk-Forward'}</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* کنترل‌های پنجره و قرنطینه */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 bg-[#0f1422] p-3 rounded-xl border border-[#1e263c]">
+                  <div className="space-y-1">
+                    <label className="text-[11px] text-zinc-400">حالت پنجره (Window Mode):</label>
+                    <div className="grid grid-cols-2 gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => setWalkForwardType('ANCHORED')}
+                        className={`py-1 rounded-lg text-[10px] font-bold border transition-all ${
+                          walkForwardType === 'ANCHORED'
+                            ? 'bg-purple-950 text-purple-200 border-purple-600'
+                            : 'bg-[#151b2a] text-zinc-400 border-[#222a3d]'
+                        }`}
+                      >
+                        گسترش‌یابنده (Anchored)
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setWalkForwardType('ROLLING')}
+                        className={`py-1 rounded-lg text-[10px] font-bold border transition-all ${
+                          walkForwardType === 'ROLLING'
+                            ? 'bg-purple-950 text-purple-200 border-purple-600'
+                            : 'bg-[#151b2a] text-zinc-400 border-[#222a3d]'
+                        }`}
+                      >
+                        لغزان ثابت (Rolling)
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-[11px] text-zinc-400 flex items-center justify-between">
+                      <span>تعداد پنجره‌ها (Windows):</span>
+                      <span className="font-mono text-purple-300 font-bold">{walkForwardWindows}</span>
+                    </label>
+                    <input
+                      type="range"
+                      min={2}
+                      max={6}
+                      step={1}
+                      value={walkForwardWindows}
+                      onChange={e => setWalkForwardWindows(Number(e.target.value))}
+                      className="w-full accent-purple-500"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-[11px] text-zinc-400 flex items-center justify-between">
+                      <span>کندل‌های قرنطینه حائل (Purge Bars):</span>
+                      <span className="font-mono text-purple-300 font-bold">{walkForwardPurgeBars} کندل</span>
+                    </label>
+                    <input
+                      type="range"
+                      min={5}
+                      max={30}
+                      step={1}
+                      value={walkForwardPurgeBars}
+                      onChange={e => setWalkForwardPurgeBars(Number(e.target.value))}
+                      className="w-full accent-purple-500"
+                    />
+                  </div>
+                </div>
+
+                {wfErrorMessage && (
+                  <div className="p-2.5 bg-rose-500/10 border border-rose-500/30 rounded-xl text-rose-300 text-xs">
+                    {wfErrorMessage}
+                  </div>
+                )}
+
+                {/* نتایج اعتبارسنجی پیش‌رو */}
+                {walkForwardReport && (
+                  <div className="space-y-3 pt-1">
+                    {/* خلاصه استحکام استراتژی */}
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center">
+                      <div className="bg-[#1a2132] p-2.5 rounded-xl border border-[#2a354d]">
+                        <span className="text-[10px] text-zinc-400 block">نسبت کارایی پیش‌رو (WFE):</span>
+                        <span className={`text-xs font-bold font-mono mt-0.5 block ${
+                          walkForwardReport.walkForwardEfficiency >= 0.5 ? 'text-emerald-400' :
+                          walkForwardReport.walkForwardEfficiency >= 0.25 ? 'text-amber-400' : 'text-rose-400'
+                        }`}>
+                          {(walkForwardReport.walkForwardEfficiency * 100).toFixed(1)}٪
+                        </span>
+                      </div>
+
+                      <div className="bg-[#1a2132] p-2.5 rounded-xl border border-[#2a354d]">
+                        <span className="text-[10px] text-zinc-400 block">پایداری پنجره‌ها:</span>
+                        <span className="text-xs font-bold font-mono text-cyan-300 mt-0.5 block">
+                          {walkForwardReport.passedFolds} از {walkForwardReport.totalFolds} فولد ({walkForwardReport.stabilityScorePercent}٪)
+                        </span>
+                      </div>
+
+                      <div className="bg-[#1a2132] p-2.5 rounded-xl border border-[#2a354d]">
+                        <span className="text-[10px] text-zinc-400 block">سود کل برون‌نمونه (OOS):</span>
+                        <span className={`text-xs font-bold font-mono mt-0.5 block ${
+                          walkForwardReport.aggregateOosProfit >= 0 ? 'text-emerald-400' : 'text-rose-400'
+                        }`}>
+                          ${walkForwardReport.aggregateOosProfit.toLocaleString('en-US')}
+                        </span>
+                      </div>
+
+                      <div className="bg-[#1a2132] p-2.5 rounded-xl border border-[#2a354d]">
+                        <span className="text-[10px] text-zinc-400 block">درجه استحکام:</span>
+                        <span className={`text-xs font-bold font-mono mt-0.5 block ${
+                          walkForwardReport.robustnessGrade === 'ROBUST' ? 'text-emerald-400' :
+                          walkForwardReport.robustnessGrade === 'DEGRADED' ? 'text-amber-400' : 'text-rose-400'
+                        }`}>
+                          {walkForwardReport.robustnessGrade === 'ROBUST' ? '✓ مستحکم (ROBUST)' :
+                           walkForwardReport.robustnessGrade === 'DEGRADED' ? '⚠ افت توان (DEGRADED)' : '✗ بیش‌برازش (OVERFITTED)'}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* پیام تشریحی استحکام */}
+                    <div className="p-2.5 bg-[#0f1422] border border-[#1e263c] rounded-xl text-[11px] text-zinc-300">
+                      {walkForwardReport.robustnessSummaryFa}
+                    </div>
+
+                    {/* جدول فولدها */}
+                    <div className="overflow-x-auto rounded-xl border border-[#1e263c]">
+                      <table className="w-full text-[11px] text-zinc-300">
+                        <thead>
+                          <tr className="border-b border-[#1e263c] bg-[#0d1120]">
+                            <th className="px-3 py-1.5 text-right text-zinc-500">فولد</th>
+                            <th className="px-3 py-1.5 text-center text-zinc-500">آموزش (Train)</th>
+                            <th className="px-3 py-1.5 text-center text-zinc-500">حائل (Purge)</th>
+                            <th className="px-3 py-1.5 text-center text-zinc-500">آزمون (OOS)</th>
+                            <th className="px-3 py-1.5 text-center text-zinc-500">سود درون‌نمونه</th>
+                            <th className="px-3 py-1.5 text-center text-zinc-500">سود برون‌نمونه</th>
+                            <th className="px-3 py-1.5 text-center text-zinc-500">کارایی فولد</th>
+                            <th className="px-3 py-1.5 text-center text-zinc-500">وضعیت</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {walkForwardReport.folds.map(f => (
+                            <tr key={f.foldIndex} className="border-b border-[#181f30]">
+                              <td className="px-3 py-1.5 text-right font-mono text-purple-300 font-bold">پنجره #{f.foldIndex}</td>
+                              <td className="px-3 py-1.5 text-center font-mono text-zinc-400">{f.trainCandlesCount} کندل</td>
+                              <td className="px-3 py-1.5 text-center font-mono text-amber-400">{f.purgeCandlesCount} کندل</td>
+                              <td className="px-3 py-1.5 text-center font-mono text-cyan-400">{f.testCandlesCount} کندل</td>
+                              <td className={`px-3 py-1.5 text-center font-mono ${f.trainMetrics.netProfit >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                                ${f.trainMetrics.netProfit.toFixed(0)}
+                              </td>
+                              <td className={`px-3 py-1.5 text-center font-mono font-bold ${f.testMetrics.netProfit >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                                ${f.testMetrics.netProfit.toFixed(0)}
+                              </td>
+                              <td className="px-3 py-1.5 text-center font-mono">
+                                {(f.foldEfficiencyRatio * 100).toFixed(0)}٪
+                              </td>
+                              <td className="px-3 py-1.5 text-center">
+                                {f.isFoldPassed ? (
+                                  <span className="text-emerald-400">✓ قبول</span>
+                                ) : (
+                                  <span className="text-rose-400">✗ افت</span>
+                                )}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* گزارش عملکرد بر حسب سشن معاملاتی و روز هفته */}
