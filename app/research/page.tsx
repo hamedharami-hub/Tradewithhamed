@@ -18,6 +18,8 @@ import {
 import { EndOfDataPolicy } from '@/lib/core/ports';
 import { DataWorkbench, ValidationReport } from '@/lib/core/data-workbench';
 import { PerformanceMetrics } from '@/lib/core/research-lab';
+import { DatasetPassport } from '@/lib/contracts/dataset-contract';
+import { DatasetQualityEngine } from '@/lib/core/dataset-quality';
 import { AdvancedExecutionStressConfig, ResearchRun, ResearchRunStatus } from '@/lib/contracts/research-run';
 import { GOLD_CANDLES_FIXTURE_5M } from '@/lib/replay/fixtures/gold-candles';
 import { getBundledDataset } from '@/lib/research/bundled-historical-datasets';
@@ -272,6 +274,22 @@ export default function ResearchPage() {
     }
     return DataWorkbench.validateCandles(candles, symbol, selectedTimeframe, sourceName);
   }, [candles, symbol, selectedTimeframe, sourceName]);
+
+  // شناسنامه جامع کیفیت و اثرانگشت دیتاست (Package A DatasetPassport)
+  const datasetPassport: DatasetPassport | null = useMemo(() => {
+    if (candles.length === 0) return null;
+    const { passport } = DatasetQualityEngine.inspectAndValidate(
+      candles,
+      symbol,
+      selectedTimeframe,
+      {
+        minimumCandles: 14,
+        minimumWarmupBars: 200,
+        dropIncompleteTrailingBar: true,
+      }
+    );
+    return passport;
+  }, [candles, symbol, selectedTimeframe]);
 
   // گام ۱: بارگذاری دیتای آماده بر اساس نماد و تایم‌فریم انتخابی
   const handleLoadBundledData = async () => {
@@ -749,6 +767,88 @@ export default function ResearchPage() {
                   </div>
                 )}
               </div>
+
+              {/* شناسنامه جامع و دسته‌بندی کیفیت داده (Package A Dataset Passport) */}
+              {datasetPassport && (
+                <div className="bg-[#141926] border border-[#232c40] p-4 rounded-2xl space-y-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#1f2738] pb-2.5">
+                    <div className="flex items-center gap-2">
+                      <ShieldAlert className="w-4 h-4 text-purple-400" />
+                      <span className="text-xs font-bold text-zinc-100">
+                        شناسنامه رسمی دیتاست (Dataset Passport)
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      {/* نوع حجم داده */}
+                      <span
+                        className={`text-[10px] font-bold px-2 py-0.5 rounded-md ${
+                          datasetPassport.volumeType === 'REAL_SOURCE_VOLUME'
+                            ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                            : datasetPassport.volumeType === 'TICK_VOLUME'
+                            ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30'
+                            : datasetPassport.volumeType === 'SYNTHETIC'
+                            ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                            : 'bg-zinc-700/40 text-zinc-400 border border-zinc-600/40'
+                        }`}
+                      >
+                        {datasetPassport.volumeType === 'REAL_SOURCE_VOLUME' && 'حجم واقعی (Real Volume)'}
+                        {datasetPassport.volumeType === 'TICK_VOLUME' && 'حجم تیک (Tick Volume)'}
+                        {datasetPassport.volumeType === 'SYNTHETIC' && 'حجم شبیه‌سازی (Synthetic)'}
+                        {datasetPassport.volumeType === 'MISSING' && 'فاقد حجم (Missing Volume)'}
+                      </span>
+                      {/* امتیاز کیفیت */}
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-purple-500/20 text-purple-300 border border-purple-500/30">
+                        کیفیت: {datasetPassport.quality.qualityScorePercent}٪
+                      </span>
+                      {/* وارم‌آپ */}
+                      <span
+                        className={`text-[10px] font-bold px-2 py-0.5 rounded-md ${
+                          datasetPassport.hasSufficientWarmup
+                            ? 'bg-emerald-500/15 text-emerald-400'
+                            : 'bg-amber-500/15 text-amber-400'
+                        }`}
+                      >
+                        {datasetPassport.hasSufficientWarmup ? 'وارم‌آپ کافی ✓' : 'وارم‌آپ محدود ⚠'}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 text-xs">
+                    <div className="space-y-0.5">
+                      <span className="text-[10px] text-zinc-500 block">گپ‌های آخر هفته / درون‌هفته:</span>
+                      <span className="font-mono text-zinc-300 font-bold">
+                        {datasetPassport.quality.weekendGapCount} تعطیلات / {datasetPassport.quality.gapCount} درون‌هفته
+                      </span>
+                    </div>
+                    <div className="space-y-0.5">
+                      <span className="text-[10px] text-zinc-500 block">کندل‌های مسطح (Zero Range):</span>
+                      <span className="font-mono text-zinc-300 font-bold">
+                        {datasetPassport.quality.flatCandleCount}
+                      </span>
+                    </div>
+                    <div className="space-y-0.5">
+                      <span className="text-[10px] text-zinc-500 block">کندل ناقص پایانی:</span>
+                      <span className="font-mono text-zinc-300 font-bold">
+                        {datasetPassport.hasIncompleteTrailingBar ? 'حذف شد (ضد سوگیری)' : 'یافت نشد'}
+                      </span>
+                    </div>
+                    <div className="space-y-0.5">
+                      <span className="text-[10px] text-zinc-500 block">پوشش زمانی:</span>
+                      <span className="text-zinc-300 font-sans text-[11px]">
+                        {datasetPassport.coverageLabelFa}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* اثرانگشت SHA-256 */}
+                  <div className="pt-1 flex items-center gap-2 text-[10px] text-zinc-400 bg-[#0f131d] px-3 py-1.5 rounded-lg border border-[#1b2234]">
+                    <span className="text-zinc-500 shrink-0">اثرانگشت SHA-256:</span>
+                    <span className="font-mono text-purple-300 truncate select-all">
+                      {datasetPassport.fingerprintSha256}
+                    </span>
+                  </div>
+                </div>
+              )}
 
               {/* گزارش اعتبارسنجی ساختار */}
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs bg-[#141926] p-4 rounded-2xl border border-[#232c40]">

@@ -29,6 +29,8 @@ import { AdvancedExecutionStressConfig } from '../contracts/research-run';
 import { aggregateCandles, validateTimeframeCombination } from './timeframe-aggregator';
 import { MtfAlignmentCursor } from './mtf-alignment';
 import { checkStyleTimeframeCompatibility } from '../contracts/parameter-registry';
+import { DatasetPassport } from '../contracts/dataset-contract';
+import { DatasetQualityEngine } from './dataset-quality';
 
 function timeframeToMs(timeframe: Timeframe): number {
   const durations: Record<Timeframe, number> = {
@@ -112,6 +114,7 @@ export interface ResearchDiagnostics {
   accountCurrency?: string;
   maxConcurrentPositions?: number;
   rejectedOrdersBreakdown?: { reason: string; count: number }[];
+  datasetPassport?: DatasetPassport;
   timingDataPreparationMs?: number;
   timingAggregationMs?: number;
   timingIndicatorsMs?: number;
@@ -138,6 +141,7 @@ export interface PerformanceMetrics {
   avgMfePips: number;
   equityCurve: { timestamp: number; equity: number; drawdownPercent: number }[];
   ambiguousTradesCount: number; // تعداد معاملاتی که ابهام Intrabar داشتند
+  datasetPassport?: DatasetPassport;
   diagnostics?: ResearchDiagnostics;
 }
 
@@ -224,6 +228,25 @@ export class ResearchLab {
     const strategyParameters = options.strategyParameters;
     const additionalSlippagePips = options.additionalSlippagePips ?? 0;
 
+    // پالایش و اعتبارسنجی کیفیت داده و تولید شناسنامه دیتاست
+    const { acceptedCandles, passport: datasetPassport } = DatasetQualityEngine.inspectAndValidate(
+      candles,
+      symbol,
+      timeframe,
+      {
+        minimumCandles: 14,
+        minimumWarmupBars: lookbackCandles,
+        dropIncompleteTrailingBar: true,
+      }
+    );
+
+    if (acceptedCandles.length < 14) {
+      throw new Error(`تعداد کندل‌های معتبر دیتاست (${acceptedCandles.length}) پس از پالایش کمتر از حداقل مورد نیاز (۱۴ کندل) است.`);
+    }
+
+    // استفاده از کندل‌های پالایش‌شده در تمام محاسبات بعدی
+    const sanitizedCandles = acceptedCandles;
+
     // بررسی سازگاری سبک و تایم‌فریم
     let nonRecommendedConfiguration = false;
     if (style !== 'ALL') {
@@ -274,7 +297,7 @@ export class ResearchLab {
       } else {
         // تجمیع قطعی از روی کندل‌های بسته تایم‌فریم اجرا
         const tAgg0 = performance.now();
-        htfCandlesToUse = aggregateCandles(candles, htfTimeframe, false);
+        htfCandlesToUse = aggregateCandles(sanitizedCandles, htfTimeframe, false);
         tAggDuration = performance.now() - tAgg0;
         reportedHtfSource = 'AGGREGATED_FROM_EXECUTION';
       }
@@ -287,9 +310,9 @@ export class ResearchLab {
     const tPrepDuration = performance.now() - tPrepStart;
 
     // مدیریت بازه تاریخی و وارم‌آپ (Date Range & Warmup)
-    const earliestCandle = candles[0].timestamp;
-    const latestCandle = candles[candles.length - 1].timestamp;
-    const totalAvailableCandles = candles.length;
+    const earliestCandle = sanitizedCandles[0].timestamp;
+    const latestCandle = sanitizedCandles[sanitizedCandles.length - 1].timestamp;
+    const totalAvailableCandles = sanitizedCandles.length;
 
     let selectedStart = earliestCandle;
     let selectedEnd = latestCandle;
@@ -297,14 +320,14 @@ export class ResearchLab {
 
     switch (rangeMode) {
       case 'FIRST_25':
-        selectedEnd = candles[Math.max(0, Math.floor(candles.length * 0.25) - 1)].timestamp;
+        selectedEnd = sanitizedCandles[Math.max(0, Math.floor(sanitizedCandles.length * 0.25) - 1)].timestamp;
         break;
       case 'MIDDLE_50':
-        selectedStart = candles[Math.floor(candles.length * 0.25)].timestamp;
-        selectedEnd = candles[Math.max(0, Math.floor(candles.length * 0.75) - 1)].timestamp;
+        selectedStart = sanitizedCandles[Math.floor(sanitizedCandles.length * 0.25)].timestamp;
+        selectedEnd = sanitizedCandles[Math.max(0, Math.floor(sanitizedCandles.length * 0.75) - 1)].timestamp;
         break;
       case 'LAST_25':
-        selectedStart = candles[Math.floor(candles.length * 0.75)].timestamp;
+        selectedStart = sanitizedCandles[Math.floor(sanitizedCandles.length * 0.75)].timestamp;
         break;
       case 'ROLLING_3M':
         selectedStart = Math.max(earliestCandle, latestCandle - 90 * 24 * 60 * 60_000);
@@ -330,14 +353,14 @@ export class ResearchLab {
         break;
     }
 
-    let evaluationStartIndex = candles.findIndex(c => c.timestamp >= selectedStart);
+    let evaluationStartIndex = sanitizedCandles.findIndex(c => c.timestamp >= selectedStart);
     if (evaluationStartIndex === -1) {
       throw new Error('هیچ کندلی در بازهٔ تاریخی انتخاب‌شده یافت نشد.');
     }
 
     let evaluationEndIndex = -1;
-    for (let j = candles.length - 1; j >= 0; j--) {
-      if (candles[j].timestamp <= selectedEnd) {
+    for (let j = sanitizedCandles.length - 1; j >= 0; j--) {
+      if (sanitizedCandles[j].timestamp <= selectedEnd) {
         evaluationEndIndex = j;
         break;
       }
@@ -410,7 +433,7 @@ export class ResearchLab {
 
     // ─── حلقه اصلی ارزیابی و شبیه‌سازی ──────────────────────────────────────
     for (let i = evaluationStartIndex; i <= evaluationEndIndex; i++) {
-      const currentCandle = candles[i];
+      const currentCandle = sanitizedCandles[i];
 
       // ۱. پردازش اجرای کندل در موتور
       engine.processCandle(currentCandle, symbol);
@@ -463,7 +486,7 @@ export class ResearchLab {
       }
 
       const lookbackStart = Math.max(0, i - lookbackCandles + 1);
-      const slice = candles.slice(lookbackStart, i + 1);
+      const slice = sanitizedCandles.slice(lookbackStart, i + 1);
 
       // ۷. ارزیابی استراتژی‌ها و فیلتر MTF
       const evalRes = MultiStyleEngine.evaluate(
@@ -607,7 +630,7 @@ export class ResearchLab {
     const tBacktestDuration = performance.now() - tBacktestStart;
 
     // د. مدیریت پایان دیتاست (End of Data Policy)
-    const lastCandle = candles[evaluationEndIndex];
+    const lastCandle = sanitizedCandles[evaluationEndIndex];
     const endOfDataResult = lastCandle
       ? engine.finalizeEndOfData(lastCandle, symbol, endOfDataPolicy)
       : { events: [], closedPositionsCount: 0, cancelledOrdersCount: 0, openPositionsCount: 0 };
@@ -735,6 +758,7 @@ export class ResearchLab {
       profitByWeekday,
       accountCurrency: options.accountConfig?.accountCurrency || 'USD',
       maxConcurrentPositions: maxConcurrent,
+      datasetPassport,
       rejectedOrdersBreakdown: [
         { reason: 'daily_loss_limit_reached', count: ordersRejectedByDailyLoss },
         { reason: 'max_drawdown_reached', count: ordersRejectedByDrawdownLimit },
@@ -753,6 +777,8 @@ export class ResearchLab {
       timingBacktestMs: Number(tBacktestDuration.toFixed(1)),
       timingMetricsMs: Number(tMetricsDuration.toFixed(1)),
     };
+
+    metrics.datasetPassport = datasetPassport;
 
     return {
       metrics,
