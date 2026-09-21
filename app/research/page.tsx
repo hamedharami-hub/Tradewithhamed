@@ -3120,7 +3120,14 @@ export default function ResearchPage() {
               {/* کارت‌های شاخص‌های کلیدی عملکرد با موجودی آغازین و نهایی */}
               <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 text-center">
                 <div className="bg-[#141926] p-3.5 rounded-2xl border border-[#232c40]">
-                  <span className="text-[11px] text-zinc-500 block">سود/زیان خالص کل:</span>
+                  <div className="flex items-center justify-center gap-1 text-[11px] text-zinc-400">
+                    <span>سود/زیان خالص کل:</span>
+                    <HelpTooltip
+                      titleFa="سود/زیان خالص کل (Net Profit)"
+                      explanationFa="مجموع بازدهی دلاری و درصدی استراتژی پس از کسر تمام اسپردها، لغزش نرخ (اسلیپیج) و کمیسیون‌های معاملاتی."
+                      impactOnPropFirmFa="معیار اصلی احراز سود هدف (مثلاً ۱۰٪ در فاز اول یا ۵٪ در فاز دوم چالش)."
+                    />
+                  </div>
                   <span
                     className={`text-base font-bold font-mono mt-1 block ${
                       backtestResult.netProfit >= 0 ? 'text-emerald-400' : 'text-rose-400'
@@ -3136,7 +3143,13 @@ export default function ResearchPage() {
                 </div>
 
                 <div className="bg-[#141926] p-3.5 rounded-2xl border border-[#232c40]">
-                  <span className="text-[11px] text-zinc-500 block">موجودی / اکوئیتی نهایی:</span>
+                  <div className="flex items-center justify-center gap-1 text-[11px] text-zinc-400">
+                    <span>موجودی نهایی (Equity):</span>
+                    <HelpTooltip
+                      titleFa="اکوئیتی نهایی حساب"
+                      explanationFa="مانده کل سرمایه در انتهای بازه آزمایشی با احتساب سود یا زیان تمام پوزیشن‌های بسته شده."
+                    />
+                  </div>
                   <span className="text-base font-bold text-zinc-100 font-mono mt-1 block">
                     {currencySymbol}{backtestResult.diagnostics?.finalEquity?.toLocaleString('en-US', {
                       minimumFractionDigits: 1,
@@ -3149,7 +3162,15 @@ export default function ResearchPage() {
                 </div>
 
                 <div className="bg-[#141926] p-3.5 rounded-2xl border border-[#232c40]">
-                  <span className="text-[11px] text-zinc-500 block">حداکثر افت (Drawdown):</span>
+                  <div className="flex items-center justify-center gap-1 text-[11px] text-zinc-400">
+                    <span>حداکثر افت (Drawdown):</span>
+                    <HelpTooltip
+                      titleFa="حداکثر افت سرمایه (Max Drawdown)"
+                      explanationFa="بزرگ‌ترین افت حساب از بالاترین قله ثروت تا عمیق‌ترین دره در طول فعالیت استراتژی."
+                      practicalTipFa="اگر دروداون بیش از ۸٪ باشد، ریسک شکست استراتژی در چالش‌های پراپ بسیار بالا خواهد بود."
+                      impactOnPropFirmFa="قانون حیاتی و خط قرمز پراپ‌فرم‌ها؛ عبور از سقف مجاز (مثلاً ۱۰٪) منجر به رد فوری حساب می‌شود."
+                    />
+                  </div>
                   <span className="text-base font-bold text-amber-400 font-mono mt-1 block">
                     {backtestResult.maxDrawdownPercent}%
                   </span>
@@ -3157,7 +3178,14 @@ export default function ResearchPage() {
                 </div>
 
                 <div className="bg-[#141926] p-3.5 rounded-2xl border border-[#232c40]">
-                  <span className="text-[11px] text-zinc-500 block">تعداد معاملات / نرخ برد:</span>
+                  <div className="flex items-center justify-center gap-1 text-[11px] text-zinc-400">
+                    <span>تعداد معاملات / برد:</span>
+                    <HelpTooltip
+                      titleFa="تعداد معاملات و نرخ برد (Win Rate)"
+                      explanationFa="تعداد کل پوزیشن‌های اجرا شده و درصد معاملاتی که با سود مثبت بسته شده‌اند."
+                      practicalTipFa="در سبک‌های با R:R بالاتر از ۲، حتی با وین‌ریت ۴۰٪ هم حساب به شدت سودآور است."
+                    />
+                  </div>
                   <span className="text-base font-bold text-zinc-200 font-mono mt-1 block">
                     {backtestResult.totalTrades} معامله ({backtestResult.winRatePercent}٪)
                   </span>
@@ -3165,7 +3193,14 @@ export default function ResearchPage() {
                 </div>
 
                 <div className="bg-[#141926] p-3.5 rounded-2xl border border-[#232c40]">
-                  <span className="text-[11px] text-zinc-500 block">فاکتور سود (Profit Factor):</span>
+                  <div className="flex items-center justify-center gap-1 text-[11px] text-zinc-400">
+                    <span>فاکتور سود (Profit Factor):</span>
+                    <HelpTooltip
+                      titleFa="فاکتور سود (Profit Factor)"
+                      explanationFa="نسبت کل دلارهای سود ساخته شده به کل دلارهای از دست رفته در ضررها. عدد بالای ۱.۵ نشان‌دهنده استراتژی مستحکم و بالای ۲ بسیار ایده‌آل است."
+                      practicalTipFa="فاکتور سود زیر ۱.۲ در حساب‌های زنده به دلیل اسلیپیج به راحتی به زیان تبدیل می‌شود."
+                    />
+                  </div>
                   <span className="text-base font-bold text-cyan-400 font-mono mt-1 block">
                     {backtestResult.profitFactor}
                   </span>
