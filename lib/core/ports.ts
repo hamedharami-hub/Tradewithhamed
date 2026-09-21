@@ -33,12 +33,14 @@ export interface OrderIntentPayload {
   idempotencyKey: string;
 }
 
+export type EndOfDataPolicy = 'CLOSE_AT_LAST_CLOSE' | 'KEEP_OPEN_AND_EXCLUDE';
+
 export interface ExecutionEventPayload {
   eventId: string;
   intentId: string;
   environment: TradingEnvironment;
   timestamp: number;
-  status: 'PENDING' | 'FILLED' | 'PARTIALLY_FILLED' | 'CANCELLED' | 'REJECTED' | 'EXPIRED';
+  status: 'PENDING' | 'FILLED' | 'PARTIALLY_FILLED' | 'CANCELLED' | 'REJECTED' | 'EXPIRED' | 'CANCELLED_END_OF_DATA';
   fillPrice?: number;
   filledVolume?: number;
   slippagePips?: number;
@@ -68,7 +70,9 @@ export interface PositionLedgerEntry {
   isOpen: boolean;
   openedTimestamp: number;
   closedTimestamp?: number;
-  closeReason?: 'SL' | 'TP' | 'MANUAL' | 'EXPIRED' | 'MARGIN_CALL';
+  closeReason?: 'SL' | 'TP' | 'MANUAL' | 'EXPIRED' | 'MARGIN_CALL' | 'END_OF_DATA';
+  plannedRiskDollar?: number;
+  actualRiskDollar?: number;
   maePips: number; // Maximum Adverse Excursion
   mfePips: number; // Maximum Favorable Excursion
 }

@@ -29,6 +29,16 @@ export interface ValidationReport {
     toTime: number;
     missingCandlesEstimated: number;
   }[];
+  cleanCandles?: Candle[];
+  metrics?: {
+    totalRows: number;
+    validCandles: number;
+    rejectedRows: number;
+    ohlcInvalidCount: number;
+    duplicateCount: number;
+    gapCount: number;
+    inferredTimeframe: Timeframe | null;
+  };
 }
 
 export class DataWorkbench {
@@ -49,41 +59,98 @@ export class DataWorkbench {
         errors: ['فایل ورودی فاقد کندل است.'],
         warnings: [],
         gapSummary: [],
+        metrics: {
+          totalRows: 0,
+          validCandles: 0,
+          rejectedRows: 0,
+          ohlcInvalidCount: 0,
+          duplicateCount: 0,
+          gapCount: 0,
+          inferredTimeframe: null,
+        },
       };
     }
 
     // مرتب‌سازی زمانی تضمینی
     const sorted = [...rawCandles].sort((a, b) => a.timestamp - b.timestamp);
     let duplicates = 0;
+    let ohlcInvalid = 0;
+    let timeReversed = 0;
     const intervalMs = this.timeframeToMs(timeframe);
+    const cleanCandles: Candle[] = [];
+
+    // تخمین تایم‌فریم از روی دلتای میانگین کندل‌ها
+    const deltas: number[] = [];
+    for (let i = 1; i < Math.min(sorted.length, 100); i++) {
+      const diff = sorted[i].timestamp - sorted[i - 1].timestamp;
+      if (diff > 0 && diff <= 24 * 3600 * 1000) {
+        deltas.push(diff);
+      }
+    }
+    let inferredTf: Timeframe | null = null;
+    if (deltas.length > 0) {
+      deltas.sort((a, b) => a - b);
+      const medianDelta = deltas[Math.floor(deltas.length / 2)];
+      const tfMap: Record<Timeframe, number> = {
+        '1M': 60_000,
+        '5M': 300_000,
+        '15M': 900_000,
+        '1H': 3_600_000,
+        '4H': 14_400_000,
+        D1: 86_400_000,
+        W1: 7 * 86_400_000,
+      };
+      for (const [tf, ms] of Object.entries(tfMap) as [Timeframe, number][]) {
+        if (Math.abs(medianDelta - ms) <= ms * 0.25) {
+          inferredTf = tf;
+          break;
+        }
+      }
+      if (inferredTf && inferredTf !== timeframe) {
+        warnings.push(`هشدار تایم‌فریم: داده‌ها به صورت ${inferredTf} به نظر می‌رسند، اما تایم‌فریم پردازش ${timeframe} تنظیم شده است.`);
+      }
+    }
 
     for (let i = 0; i < sorted.length; i++) {
-      const c = sorted[i];
+      const c = { ...sorted[i] };
 
       // بررسی صحت منطقی OHLC
+      let isOhlcOk = true;
       if (c.high < c.low) {
-        errors.push(`کندل در زمان ${c.timestamp} دارای سقف کمتر از کف است (High < Low).`);
-      }
-      if (c.high < c.open || c.high < c.close) {
-        errors.push(`کندل در زمان ${c.timestamp} دارای سقف کمتر از قیمت باز/بسته است.`);
-      }
-      if (c.low > c.open || c.low > c.close) {
-        errors.push(`کندل در زمان ${c.timestamp} دارای کف بالاتر از قیمت باز/بسته است.`);
+        isOhlcOk = false;
+        ohlcInvalid++;
+      } else if (c.high < c.open || c.high < c.close || c.low > c.open || c.low > c.close) {
+        // ناهماهنگی جزئی اعشار/اسپرد را تطبیق می‌دهیم
+        const highDiff = Math.max(c.open, c.close) - c.high;
+        const lowDiff = c.low - Math.min(c.open, c.close);
+        if (highDiff <= 0.002 && lowDiff <= 0.002) {
+          c.high = Math.max(c.high, c.open, c.close);
+          c.low = Math.min(c.low, c.open, c.close);
+          ohlcInvalid++;
+        } else {
+          isOhlcOk = false;
+          ohlcInvalid++;
+        }
       }
 
-      // بررسی تکرار زمانی
-      if (i > 0) {
-        const prev = sorted[i - 1];
+      if (!isOhlcOk) {
+        continue;
+      }
+
+      // بررسی تکرار زمانی یا معکوس بودن
+      if (cleanCandles.length > 0) {
+        const prev = cleanCandles[cleanCandles.length - 1];
         if (c.timestamp === prev.timestamp) {
           duplicates++;
+          continue;
         } else if (c.timestamp < prev.timestamp) {
-          errors.push(`ترتیب زمانی معکوس در کندل ${c.timestamp}`);
+          timeReversed++;
+          continue;
         } else {
           // بررسی گپ غیرعادی (به جز آخر هفته)
           const diff = c.timestamp - prev.timestamp;
           if (diff > intervalMs * 2.5) {
             const missing = Math.round(diff / intervalMs) - 1;
-            // فیلتر کردن گپ‌های عادی تعطیلات آخر هفته (بیشتر از ۴۸ ساعت)
             const isWeekend = diff > 40 * 3600 * 1000;
             if (!isWeekend) {
               gapSummary.push({
@@ -95,27 +162,35 @@ export class DataWorkbench {
           }
         }
       }
+
+      cleanCandles.push(c);
     }
 
+    if (ohlcInvalid > 0) {
+      warnings.push(`تعداد ${ohlcInvalid} کندل دارای ناهماهنگی جزئی OHLC شناسایی و پالایش شدند.`);
+    }
     if (duplicates > 0) {
-      warnings.push(`تعداد ${duplicates} کندل دارای زمان یکسان و تکراری شناسایی شد.`);
+      warnings.push(`تعداد ${duplicates} کندل دارای زمان یکسان و تکراری حذف شدند.`);
+    }
+    if (timeReversed > 0) {
+      warnings.push(`تعداد ${timeReversed} کندل خارج از ترتیب زمانی پالایش شدند.`);
     }
     if (gapSummary.length > 0) {
       warnings.push(`تعداد ${gapSummary.length} گپ زمانی غیرتعطیل در داده‌ها شناسایی شد.`);
     }
 
-    const hasWarmupData = sorted.length >= 14;
+    const hasWarmupData = cleanCandles.length >= 14;
     if (!hasWarmupData) {
-      errors.push('تعداد کندل‌ها کمتر از ۱۴ عدد است (فاز Warmup اندیکاتور ATR تکمیل نمی‌شود).');
+      errors.push('تعداد کندل‌های معتبر کمتر از ۱۴ عدد است (فاز Warmup اندیکاتور ATR تکمیل نمی‌شود).');
     }
 
     const manifest: DatasetManifest = {
       id: `DS-${symbol}-${Date.now()}`,
       symbol,
       baseTimeframe: timeframe,
-      startTime: sorted[0].timestamp,
-      endTime: sorted[sorted.length - 1].timestamp,
-      totalCandles: sorted.length,
+      startTime: cleanCandles[0]?.timestamp ?? 0,
+      endTime: cleanCandles[cleanCandles.length - 1]?.timestamp ?? 0,
+      totalCandles: cleanCandles.length,
       gapsDetected: gapSummary.length,
       duplicatesFound: duplicates,
       sha256Hash: 'UNVERIFIED-CLIENT-IMPORT',
@@ -131,6 +206,16 @@ export class DataWorkbench {
       warnings,
       manifest,
       gapSummary,
+      cleanCandles,
+      metrics: {
+        totalRows: rawCandles.length,
+        validCandles: cleanCandles.length,
+        rejectedRows: rawCandles.length - cleanCandles.length,
+        ohlcInvalidCount: ohlcInvalid,
+        duplicateCount: duplicates,
+        gapCount: gapSummary.length,
+        inferredTimeframe: inferredTf,
+      },
     };
   }
 

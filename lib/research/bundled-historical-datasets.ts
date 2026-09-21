@@ -73,3 +73,7 @@ export function bundledIntradayDatasetForSymbol(symbol: SymbolId, timeframe: Tim
   }
   return undefined;
 }
+
+export function getBundledDataset(symbol: SymbolId, timeframe: Timeframe = '15M'): BundledHistoricalDataset | undefined {
+  return bundledIntradayDatasetForSymbol(symbol, timeframe) || bundledDatasetForSymbol(symbol);
+}

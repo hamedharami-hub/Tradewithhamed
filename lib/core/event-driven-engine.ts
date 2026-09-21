@@ -5,6 +5,7 @@ import { Candle, SYMBOL_SPECS, SymbolId } from '../contracts/market';
 import {
   TradingEnvironment,
   IntrabarAmbiguityPolicy,
+  EndOfDataPolicy,
   OrderIntentPayload,
   ExecutionEventPayload,
   PositionLedgerEntry,
@@ -79,9 +80,11 @@ export interface EngineConfig {
   useNewsBlackout?: boolean;
   enablePartialTp?: boolean;
   ambiguityPolicy: IntrabarAmbiguityPolicy;
+  endOfDataPolicy?: EndOfDataPolicy;
   slippageModel: {
     baseSlippagePips: number;
     volatilityMultiplier: number;
+    additionalSlippagePips?: number;
   };
 }
 
@@ -110,9 +113,11 @@ export class EventDrivenExecutionEngine implements IExecutionPort {
       useNewsBlackout: config.useNewsBlackout ?? false,
       enablePartialTp: config.enablePartialTp ?? false,
       ambiguityPolicy: config.ambiguityPolicy || 'PESSIMISTIC',
-      slippageModel: config.slippageModel || {
-        baseSlippagePips: 0.2,
-        volatilityMultiplier: 0.1,
+      endOfDataPolicy: config.endOfDataPolicy || 'CLOSE_AT_LAST_CLOSE',
+      slippageModel: {
+        baseSlippagePips: config.slippageModel?.baseSlippagePips ?? 0.2,
+        volatilityMultiplier: config.slippageModel?.volatilityMultiplier ?? 0.1,
+        additionalSlippagePips: config.slippageModel?.additionalSlippagePips ?? 0,
       },
     };
 
@@ -148,6 +153,10 @@ export class EventDrivenExecutionEngine implements IExecutionPort {
 
   public getClock(): IClockPort {
     return this.clock;
+  }
+
+  public getEventStore(): IEventStorePort {
+    return this.eventStore;
   }
 
   private nextEventId(kind: string): string {
@@ -237,7 +246,9 @@ export class EventDrivenExecutionEngine implements IExecutionPort {
 
       if (order.orderType === 'MARKET') {
         // خرید از Ask و فروش از Bid (عدم محاسبه مجدد دوبرابری اسپرد)
-        slippagePips = this.config.slippageModel.baseSlippagePips;
+        slippagePips =
+          this.config.slippageModel.baseSlippagePips +
+          (this.config.slippageModel.additionalSlippagePips || 0);
         const pipVal = SYMBOL_SPECS[order.symbol].pipSize;
         fillPrice =
           order.direction === 'BUY'
@@ -334,7 +345,10 @@ export class EventDrivenExecutionEngine implements IExecutionPort {
           fillPrice = order.entryPrice;
         }
       } else if (order.orderType === 'MARKET') {
-        const adverseEntrySlippage = this.config.slippageModel.baseSlippagePips * pipVal;
+        const totalSlippagePips =
+          this.config.slippageModel.baseSlippagePips +
+          (this.config.slippageModel.additionalSlippagePips || 0);
+        const adverseEntrySlippage = totalSlippagePips * pipVal;
         fillPrice = order.direction === 'BUY'
           ? candle.open + spreadPoints * 0.5 + adverseEntrySlippage
           : candle.open - spreadPoints * 0.5 - adverseEntrySlippage;
@@ -446,7 +460,10 @@ export class EventDrivenExecutionEngine implements IExecutionPort {
       const finalReason = intraRes.firstExit || (slHit ? 'SL' : 'TP');
       pos.closeReason = finalReason;
       const triggerPrice = finalReason === 'SL' ? pos.stopLossPrice : pos.takeProfitPrice;
-      const adverseExitSlippage = (this.config.slippageModel.baseSlippagePips + this.config.defaultSpreadPips * 0.5) * pipVal;
+      const totalSlippagePips =
+        this.config.slippageModel.baseSlippagePips +
+        (this.config.slippageModel.additionalSlippagePips || 0);
+      const adverseExitSlippage = (totalSlippagePips + this.config.defaultSpreadPips * 0.5) * pipVal;
       const exitPrice = pos.direction === 'BUY'
         ? triggerPrice - adverseExitSlippage
         : triggerPrice + adverseExitSlippage;
@@ -557,6 +574,110 @@ export class EventDrivenExecutionEngine implements IExecutionPort {
         this.ledger.maxDrawdownPercent = Number(ddPercent.toFixed(2));
       }
     }
+  }
+
+  public finalizeEndOfData(
+    lastCandle: Candle,
+    symbol: SymbolId,
+    policy: EndOfDataPolicy = this.config.endOfDataPolicy || 'CLOSE_AT_LAST_CLOSE'
+  ): {
+    events: ExecutionEventPayload[];
+    closedPositionsCount: number;
+    cancelledOrdersCount: number;
+    openPositionsCount: number;
+  } {
+    this.clock.advanceTo(lastCandle.timestamp);
+    const events: ExecutionEventPayload[] = [];
+    let cancelledOrdersCount = 0;
+    let closedPositionsCount = 0;
+
+    // ۱. لغو تمام سفارش‌های معلق پرنشده
+    for (const order of this.pendingOrders) {
+      cancelledOrdersCount++;
+      const cancelEvent: ExecutionEventPayload = {
+        eventId: this.nextEventId('CNC'),
+        intentId: order.intentId,
+        environment: this.config.environment,
+        timestamp: lastCandle.timestamp,
+        status: 'CANCELLED_END_OF_DATA',
+        commissionPaid: 0,
+        notes: 'سفارش معلق در پایان دیتاست لغو شد (CANCELLED_END_OF_DATA).',
+      };
+      this.eventStore.recordEvent(cancelEvent);
+      events.push(cancelEvent);
+    }
+    this.pendingOrders = [];
+    this.orderAgeMap.clear();
+
+    // ۲. مدیریت پوزیشن‌های باز با توجه به سیاست پایان داده
+    const openPositions = this.ledger.positions.filter(p => p.isOpen);
+    const pipVal = SYMBOL_SPECS[symbol].pipSize;
+    const totalSlippagePips =
+      this.config.slippageModel.baseSlippagePips +
+      (this.config.slippageModel.additionalSlippagePips || 0);
+
+    if (policy === 'CLOSE_AT_LAST_CLOSE') {
+      for (const pos of openPositions) {
+        closedPositionsCount++;
+        const adverseExitSlippage =
+          (totalSlippagePips + this.config.defaultSpreadPips * 0.5) * pipVal;
+        const exitPrice =
+          pos.direction === 'BUY'
+            ? lastCandle.close - adverseExitSlippage
+            : lastCandle.close + adverseExitSlippage;
+
+        pos.isOpen = false;
+        pos.closedTimestamp = lastCandle.timestamp;
+        pos.closeReason = 'END_OF_DATA';
+
+        const priceDiff =
+          pos.direction === 'BUY' ? exitPrice - pos.entryPrice : pos.entryPrice - exitPrice;
+        const exitCommission = 0;
+        pos.commissionPaid = Number((pos.commissionPaid + exitCommission).toFixed(2));
+        const realizedPnl = this.pnlInAccountCurrency(symbol, pos.volumeLots, priceDiff, exitPrice);
+        pos.realizedPnl = Number((realizedPnl - pos.commissionPaid).toFixed(2));
+        pos.unrealizedPnl = 0;
+        pos.currentPrice = exitPrice;
+
+        this.ledger.cashBalance = Number(
+          (this.ledger.cashBalance + realizedPnl - exitCommission).toFixed(2)
+        );
+        this.ledger.totalCommissions = Number(
+          (this.ledger.totalCommissions + exitCommission).toFixed(2)
+        );
+        this.ledger.totalRealizedPnl = Number(
+          (this.ledger.totalRealizedPnl + pos.realizedPnl).toFixed(2)
+        );
+
+        const closeEvent: ExecutionEventPayload = {
+          eventId: this.nextEventId('CLS'),
+          intentId: pos.intentId,
+          environment: this.config.environment,
+          timestamp: lastCandle.timestamp,
+          status: 'FILLED',
+          fillPrice: exitPrice,
+          filledVolume: pos.volumeLots,
+          commissionPaid: exitCommission,
+          notes: `پوزیشن با پایان دیتاست در قیمت کلوز ${exitPrice} بسته شد (END_OF_DATA).`,
+        };
+        this.eventStore.recordEvent(closeEvent);
+        events.push(closeEvent);
+      }
+    }
+
+    this.updateLedgerTotals();
+
+    const remainingOpen = this.ledger.positions.filter(p => p.isOpen).length;
+    return {
+      events,
+      closedPositionsCount,
+      cancelledOrdersCount,
+      openPositionsCount: remainingOpen,
+    };
+  }
+
+  public getPendingOrders(): OrderIntentPayload[] {
+    return [...this.pendingOrders];
   }
 
   public resetLedger(initialBalance?: number): void {

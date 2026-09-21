@@ -1,10 +1,27 @@
-import { Candle, SymbolId } from '../contracts/market';
+import { Candle, SymbolId, Timeframe } from '../contracts/market';
 import { StrategyCandidate } from '../contracts/strategy';
 import { MarketRegimeAnalysis, TradingStyleType } from '../contracts/regimes';
 import { MarketRegimeClassifier } from './market-regime-classifier';
 import { evaluateS0Strategy } from './s0-engine';
 import { calculateWilderATR } from './atr';
 import { detectSwingPoints } from './swings';
+import {
+  StrategyParameters,
+  getDefaultStrategyParameters,
+} from '../contracts/strategy-parameters';
+
+function timeframeToMs(timeframe: Timeframe): number {
+  const durations: Record<Timeframe, number> = {
+    '1M': 60_000,
+    '5M': 5 * 60_000,
+    '15M': 15 * 60_000,
+    '1H': 60 * 60_000,
+    '4H': 4 * 60 * 60_000,
+    D1: 24 * 60 * 60_000,
+    W1: 7 * 24 * 60 * 60_000,
+  };
+  return durations[timeframe] || 300_000;
+}
 
 function calculateEMA(values: number[], period: number): number[] {
   if (values.length === 0) return [];
@@ -18,7 +35,7 @@ function calculateEMA(values: number[], period: number): number[] {
 
 /**
  * موتور جامع سبک‌های معاملاتی چندگانه (Multi-Style Trading Engine 2026)
- * پشتیبانی از اسکلپینگ سریع M1/M5، اسمارت‌مانی SMC، سوئینگ کلان، و بازگشت به میانگین
+ * با قابلیت تنظیم پارامترهای اختصاصی، تایم‌فریم و رژیم‌های بازار
  */
 export class MultiStyleEngine {
   /**
@@ -26,16 +43,31 @@ export class MultiStyleEngine {
    */
   public static evaluateScalp(
     symbol: SymbolId,
-    candles: Candle[]
+    candles: Candle[],
+    timeframe: Timeframe = '5M',
+    params?: StrategyParameters
   ): StrategyCandidate | null {
     if (candles.length < 10) return null;
 
     const currentCandle = candles[candles.length - 1];
     if (!currentCandle.isClosed) return null;
 
+    const common = params?.common;
+    const scalpParams = params?.scalp;
+
     const prevCandle = candles[candles.length - 2];
-    const atrs = calculateWilderATR(candles, 7);
+    const atrs = calculateWilderATR(candles, common?.atrPeriod || 7);
     const currentAtr = atrs.length > 0 ? atrs[atrs.length - 1] : symbol === 'XAUUSD' ? 1.5 : 0.0008;
+
+    if (currentAtr < (scalpParams?.minAtr || 0.0002)) return null;
+
+    const canBuy = !common || common.directionMode === 'BOTH' || common.directionMode === 'LONG_ONLY';
+    const canSell = !common || common.directionMode === 'BOTH' || common.directionMode === 'SHORT_ONLY';
+    const rr = common?.riskRewardRatio ?? 1.5;
+    const tfMs = timeframeToMs(timeframe);
+    const expiryMs = (common?.expiryBars ?? 3) * tfMs;
+    const precision = symbol === 'XAUUSD' || symbol === 'BTCUSD' ? 2 : symbol === 'USDJPY' ? 3 : 5;
+    const atrMultiplier = common?.atrMultiplier ?? 0.2;
 
     // اسکلپ خرید: سوییپ میکرو کف کندل قبل و بسته شدن پرقدرت در یک‌سوم بالایی
     const isBullishMicroReversal =
@@ -43,27 +75,27 @@ export class MultiStyleEngine {
       currentCandle.close > prevCandle.close &&
       currentCandle.close > currentCandle.open;
 
-    if (isBullishMicroReversal) {
+    if (canBuy && isBullishMicroReversal) {
       const entryPrice = currentCandle.close;
-      const stopLossPrice = Number((currentCandle.low - currentAtr * 0.25).toFixed(symbol === 'XAUUSD' ? 2 : 5));
+      const stopLossPrice = Number((currentCandle.low - currentAtr * atrMultiplier).toFixed(precision));
       const slDist = entryPrice - stopLossPrice;
       if (slDist > 0) {
-        const takeProfitPrice = Number((entryPrice + slDist * 1.5).toFixed(symbol === 'XAUUSD' ? 2 : 5));
+        const takeProfitPrice = Number((entryPrice + slDist * rr).toFixed(precision));
         return {
           id: `SCALP-BUY-${currentCandle.timestamp}`,
           strategyName: 'اسکلپ مومنتوم سریع (M1/M5 Micro-Sweep)',
           symbol,
-          timeframe: '5M',
+          timeframe,
           direction: 'BUY',
           style: 'SCALP_M1_M5',
           createdAtTimestamp: currentCandle.timestamp,
-          expiresAtTimestamp: currentCandle.timestamp + 3 * 5 * 60 * 1000, // انقضای سریع ۳ کندل
+          expiresAtTimestamp: currentCandle.timestamp + expiryMs,
           entryPrice,
           stopLossPrice,
           takeProfitPrice,
-          riskRewardRatio: 1.5,
+          riskRewardRatio: rr,
           evidenceIds: { sweepId: `MICRO-LOW-${prevCandle.timestamp}` },
-          rationale: `سوییپ سریع میکروکف با بازگشت شتابان؛ تارگت کوتاه 1.5R با خروج نقطه‌ای زیر ۱۵ دقیقه.`,
+          rationale: `سوییپ سریع میکروکف با بازگشت شتابان در تایم‌فریم ${timeframe}؛ تارگت ${rr}R.`,
           status: 'CONFIRMED',
         };
       }
@@ -75,27 +107,27 @@ export class MultiStyleEngine {
       currentCandle.close < prevCandle.close &&
       currentCandle.close < currentCandle.open;
 
-    if (isBearishMicroReversal) {
+    if (canSell && isBearishMicroReversal) {
       const entryPrice = currentCandle.close;
-      const stopLossPrice = Number((currentCandle.high + currentAtr * 0.25).toFixed(symbol === 'XAUUSD' ? 2 : 5));
+      const stopLossPrice = Number((currentCandle.high + currentAtr * atrMultiplier).toFixed(precision));
       const slDist = stopLossPrice - entryPrice;
       if (slDist > 0) {
-        const takeProfitPrice = Number((entryPrice - slDist * 1.5).toFixed(symbol === 'XAUUSD' ? 2 : 5));
+        const takeProfitPrice = Number((entryPrice - slDist * rr).toFixed(precision));
         return {
           id: `SCALP-SELL-${currentCandle.timestamp}`,
           strategyName: 'اسکلپ مومنتوم سریع (M1/M5 Micro-Sweep)',
           symbol,
-          timeframe: '5M',
+          timeframe,
           direction: 'SELL',
           style: 'SCALP_M1_M5',
           createdAtTimestamp: currentCandle.timestamp,
-          expiresAtTimestamp: currentCandle.timestamp + 3 * 5 * 60 * 1000,
+          expiresAtTimestamp: currentCandle.timestamp + expiryMs,
           entryPrice,
           stopLossPrice,
           takeProfitPrice,
-          riskRewardRatio: 1.5,
+          riskRewardRatio: rr,
           evidenceIds: { sweepId: `MICRO-HIGH-${prevCandle.timestamp}` },
-          rationale: `سوییپ سریع میکروسقف با فشار فروش لحظه‌ای؛ تارگت کوتاه 1.5R و خروج سریع.`,
+          rationale: `سوییپ سریع میکروسقف با فشار فروش لحظه‌ای در تایم‌فریم ${timeframe}؛ تارگت ${rr}R.`,
           status: 'CONFIRMED',
         };
       }
@@ -109,9 +141,11 @@ export class MultiStyleEngine {
    */
   public static evaluateSMC(
     symbol: SymbolId,
-    candles: Candle[]
+    candles: Candle[],
+    timeframe: Timeframe = '5M',
+    params?: StrategyParameters
   ): StrategyCandidate | null {
-    const candidate = evaluateS0Strategy(symbol, candles, candles);
+    const candidate = evaluateS0Strategy(symbol, candles, candles, timeframe, params);
     if (candidate) {
       return {
         ...candidate,
@@ -123,82 +157,102 @@ export class MultiStyleEngine {
   }
 
   /**
-   * ۳. شکست کانال در جهت رژیم روند. سطح کانال فقط از کندل‌های قبل از
-   * کندل فعلی ساخته می‌شود تا سیگنال نگاه‌به‌آینده نداشته باشد.
+   * ۳. شکست کانال در جهت رژیم روند.
    */
   public static evaluateTrendBreakout(
     symbol: SymbolId,
     candles: Candle[],
-    regime: MarketRegimeAnalysis
+    regime: MarketRegimeAnalysis,
+    timeframe: Timeframe = '15M',
+    params?: StrategyParameters
   ): StrategyCandidate | null {
-    const lookback = 55;
-    const emaPeriod = 200;
-    if (candles.length < emaPeriod + 1) return null;
+    const common = params?.common;
+    const tbParams = params?.trendBreakout;
+
+    const lookback = tbParams?.channelPeriod || 55;
+    const slowEmaPeriod = tbParams?.slowEmaPeriod || 200;
+    const minCandles = Math.min(slowEmaPeriod + 1, Math.max(30, lookback + 1));
+    if (candles.length < minCandles) return null;
 
     const current = candles[candles.length - 1];
     if (!current.isClosed) return null;
 
     const history = candles.slice(0, -1);
     const channel = history.slice(-lookback);
+    if (channel.length === 0) return null;
+
     const priorHigh = Math.max(...channel.map(candle => candle.high));
     const priorLow = Math.min(...channel.map(candle => candle.low));
     const closes = candles.map(candle => candle.close);
-    const ema200 = calculateEMA(closes, emaPeriod);
+    const effectiveEmaPeriod = candles.length >= slowEmaPeriod ? slowEmaPeriod : Math.max(10, Math.floor(candles.length / 2));
+    const ema200 = calculateEMA(closes, effectiveEmaPeriod);
     const currentEma = ema200[ema200.length - 1];
-    const previousEma = ema200[ema200.length - 2];
-    const atrs = calculateWilderATR(candles, 20);
+    const previousEma = ema200[ema200.length - 2] || currentEma;
+    const atrs = calculateWilderATR(candles, common?.atrPeriod || 20);
     const atr = atrs[atrs.length - 1] || (symbol === 'XAUUSD' ? 2.5 : 0.0015);
     const precision = symbol === 'XAUUSD' || symbol === 'BTCUSD' ? 2 : symbol === 'USDJPY' ? 3 : 5;
+    const tfMs = timeframeToMs(timeframe);
+    const expiryMs = (common?.expiryBars || 6) * tfMs;
+    const rr = common?.riskRewardRatio ?? 2.0;
+    const buffer = (tbParams?.breakoutBufferAtr || 0) * atr;
 
     const canBuy =
-      regime.regime === 'TRENDING_BULLISH' || regime.regime === 'COMPRESSION';
+      (!common || common.directionMode === 'BOTH' || common.directionMode === 'LONG_ONLY') &&
+      (regime.regime === 'TRENDING_BULLISH' || regime.regime === 'COMPRESSION');
     const canSell =
-      regime.regime === 'TRENDING_BEARISH' || regime.regime === 'COMPRESSION';
+      (!common || common.directionMode === 'BOTH' || common.directionMode === 'SHORT_ONLY') &&
+      (regime.regime === 'TRENDING_BEARISH' || regime.regime === 'COMPRESSION');
 
-    if (canBuy && current.close > priorHigh && currentEma >= previousEma) {
+    if (canBuy && current.close > (priorHigh + buffer) && currentEma >= previousEma) {
       const entryPrice = current.close;
-      const stopLossPrice = Number((entryPrice - atr * 2).toFixed(precision));
-      const takeProfitPrice = Number((entryPrice + atr * 4).toFixed(precision));
-      return {
-        id: `BREAKOUT-BUY-${current.timestamp}`,
-        strategyName: 'شکست روندی کانال (Regime-Filtered Breakout)',
-        symbol,
-        timeframe: '15M',
-        direction: 'BUY',
-        style: 'TREND_BREAKOUT',
-        createdAtTimestamp: current.timestamp,
-        expiresAtTimestamp: current.timestamp + 4 * 60 * 60 * 1000,
-        entryPrice,
-        stopLossPrice,
-        takeProfitPrice,
-        riskRewardRatio: 2,
-        evidenceIds: { contextSwingId: `CHANNEL-HIGH-${priorHigh}` },
-        rationale: 'بسته‌شدن بالای سقف کانال ۵۵ دوره‌ای، هم‌جهت با شیب EMA200؛ ورود فرضی فقط در کندل بعد قابل شبیه‌سازی است.',
-        status: 'CONFIRMED',
-      };
+      const stopLossPrice = Number((entryPrice - atr * (common?.atrMultiplier || 2)).toFixed(precision));
+      const slDist = entryPrice - stopLossPrice;
+      if (slDist > 0) {
+        const takeProfitPrice = Number((entryPrice + slDist * rr).toFixed(precision));
+        return {
+          id: `BREAKOUT-BUY-${current.timestamp}`,
+          strategyName: 'شکست روندی کانال (Regime-Filtered Breakout)',
+          symbol,
+          timeframe,
+          direction: 'BUY',
+          style: 'TREND_BREAKOUT',
+          createdAtTimestamp: current.timestamp,
+          expiresAtTimestamp: current.timestamp + expiryMs,
+          entryPrice,
+          stopLossPrice,
+          takeProfitPrice,
+          riskRewardRatio: rr,
+          evidenceIds: { contextSwingId: `CHANNEL-HIGH-${priorHigh}` },
+          rationale: `بسته‌شدن بالای سقف کانال ${lookback} دوره‌ای در تایم‌فریم ${timeframe} با R:R=${rr}.`,
+          status: 'CONFIRMED',
+        };
+      }
     }
 
-    if (canSell && current.close < priorLow && currentEma <= previousEma) {
+    if (canSell && current.close < (priorLow - buffer) && currentEma <= previousEma) {
       const entryPrice = current.close;
-      const stopLossPrice = Number((entryPrice + atr * 2).toFixed(precision));
-      const takeProfitPrice = Number((entryPrice - atr * 4).toFixed(precision));
-      return {
-        id: `BREAKOUT-SELL-${current.timestamp}`,
-        strategyName: 'شکست روندی کانال (Regime-Filtered Breakout)',
-        symbol,
-        timeframe: '15M',
-        direction: 'SELL',
-        style: 'TREND_BREAKOUT',
-        createdAtTimestamp: current.timestamp,
-        expiresAtTimestamp: current.timestamp + 4 * 60 * 60 * 1000,
-        entryPrice,
-        stopLossPrice,
-        takeProfitPrice,
-        riskRewardRatio: 2,
-        evidenceIds: { contextSwingId: `CHANNEL-LOW-${priorLow}` },
-        rationale: 'بسته‌شدن زیر کف کانال ۵۵ دوره‌ای، هم‌جهت با شیب EMA200؛ ورود فرضی فقط در کندل بعد قابل شبیه‌سازی است.',
-        status: 'CONFIRMED',
-      };
+      const stopLossPrice = Number((entryPrice + atr * (common?.atrMultiplier || 2)).toFixed(precision));
+      const slDist = stopLossPrice - entryPrice;
+      if (slDist > 0) {
+        const takeProfitPrice = Number((entryPrice - slDist * rr).toFixed(precision));
+        return {
+          id: `BREAKOUT-SELL-${current.timestamp}`,
+          strategyName: 'شکست روندی کانال (Regime-Filtered Breakout)',
+          symbol,
+          timeframe,
+          direction: 'SELL',
+          style: 'TREND_BREAKOUT',
+          createdAtTimestamp: current.timestamp,
+          expiresAtTimestamp: current.timestamp + expiryMs,
+          entryPrice,
+          stopLossPrice,
+          takeProfitPrice,
+          riskRewardRatio: rr,
+          evidenceIds: { contextSwingId: `CHANNEL-LOW-${priorLow}` },
+          rationale: `بسته‌شدن زیر کف کانال ${lookback} دوره‌ای در تایم‌فریم ${timeframe} با R:R=${rr}.`,
+          status: 'CONFIRMED',
+        };
+      }
     }
 
     return null;
@@ -210,79 +264,87 @@ export class MultiStyleEngine {
   public static evaluateSwing(
     symbol: SymbolId,
     candles: Candle[],
-    regime: MarketRegimeAnalysis
+    regime: MarketRegimeAnalysis,
+    timeframe: Timeframe = '1H',
+    params?: StrategyParameters
   ): StrategyCandidate | null {
     if (candles.length < 25) return null;
 
-    // سوئینگ صرفاً در روندهای تاییدشده صعودی یا نزولی معتبر است
-    if (regime.regime !== 'TRENDING_BULLISH' && regime.regime !== 'TRENDING_BEARISH') {
-      return null;
-    }
+    const common = params?.common;
+    const canBuy = (!common || common.directionMode === 'BOTH' || common.directionMode === 'LONG_ONLY') && regime.regime === 'TRENDING_BULLISH';
+    const canSell = (!common || common.directionMode === 'BOTH' || common.directionMode === 'SHORT_ONLY') && regime.regime === 'TRENDING_BEARISH';
+
+    if (!canBuy && !canSell) return null;
 
     const currentCandle = candles[candles.length - 1];
     if (!currentCandle.isClosed) return null;
 
-    const swings = detectSwingPoints(candles, '1H');
-    const atrs = calculateWilderATR(candles, 14);
+    const swings = detectSwingPoints(candles, timeframe);
+    const atrs = calculateWilderATR(candles, common?.atrPeriod || 14);
     const currentAtr = atrs.length > 0 ? atrs[atrs.length - 1] : symbol === 'XAUUSD' ? 4.0 : 0.0025;
+    const precision = symbol === 'XAUUSD' || symbol === 'BTCUSD' ? 2 : symbol === 'USDJPY' ? 3 : 5;
+    const tfMs = timeframeToMs(timeframe);
+    const expiryMs = (common?.expiryBars || 24) * tfMs;
+    const rr = common?.riskRewardRatio ?? 3.5;
+    const atrMultiplier = common?.atrMultiplier ?? 0.5;
 
     // روند صعودی سوئینگ: پولبک به میانگین و حرکت مجدد در جهت روند
-    if (regime.regime === 'TRENDING_BULLISH') {
+    if (canBuy) {
       const recentLows = swings.filter(s => s.type === 'LOW').slice(-2);
       const structuralLow = recentLows.length > 0 ? recentLows[recentLows.length - 1].price : currentCandle.low - currentAtr * 1.5;
 
       const entryPrice = currentCandle.close;
-      const stopLossPrice = Number((structuralLow - currentAtr * 0.5).toFixed(symbol === 'XAUUSD' ? 2 : 5));
+      const stopLossPrice = Number((structuralLow - currentAtr * atrMultiplier).toFixed(precision));
       const slDist = entryPrice - stopLossPrice;
 
       if (slDist > 0 && currentCandle.close > currentCandle.open) {
-        const takeProfitPrice = Number((entryPrice + slDist * 3.5).toFixed(symbol === 'XAUUSD' ? 2 : 5));
+        const takeProfitPrice = Number((entryPrice + slDist * rr).toFixed(precision));
         return {
           id: `SWING-BUY-${currentCandle.timestamp}`,
           strategyName: 'سوئینگ و ترند کلان (Macro Trend Continuation)',
           symbol,
-          timeframe: '1H',
+          timeframe,
           direction: 'BUY',
           style: 'SWING_MACRO',
           createdAtTimestamp: currentCandle.timestamp,
-          expiresAtTimestamp: currentCandle.timestamp + 24 * 60 * 60 * 1000, // ۲۴ ساعت انقضا
+          expiresAtTimestamp: currentCandle.timestamp + expiryMs,
           entryPrice,
           stopLossPrice,
           takeProfitPrice,
-          riskRewardRatio: 3.5,
+          riskRewardRatio: rr,
           evidenceIds: { contextSwingId: `STRUCT-LOW-${structuralLow}` },
-          rationale: `تداوم روند پرشتاب کلان صعودی همراه با تثبیت بالای پیوت ساختاری؛ نسبت ریسک به ریوارد 1:3.5.`,
+          rationale: `تداوم روند پرشتاب کلان صعودی در تایم‌فریم ${timeframe}؛ نسبت ریسک به ریوارد 1:${rr}.`,
           status: 'CONFIRMED',
         };
       }
     }
 
     // روند نزولی سوئینگ
-    if (regime.regime === 'TRENDING_BEARISH') {
+    if (canSell) {
       const recentHighs = swings.filter(s => s.type === 'HIGH').slice(-2);
       const structuralHigh = recentHighs.length > 0 ? recentHighs[recentHighs.length - 1].price : currentCandle.high + currentAtr * 1.5;
 
       const entryPrice = currentCandle.close;
-      const stopLossPrice = Number((structuralHigh + currentAtr * 0.5).toFixed(symbol === 'XAUUSD' ? 2 : 5));
+      const stopLossPrice = Number((structuralHigh + currentAtr * atrMultiplier).toFixed(precision));
       const slDist = stopLossPrice - entryPrice;
 
       if (slDist > 0 && currentCandle.close < currentCandle.open) {
-        const takeProfitPrice = Number((entryPrice - slDist * 3.5).toFixed(symbol === 'XAUUSD' ? 2 : 5));
+        const takeProfitPrice = Number((entryPrice - slDist * rr).toFixed(precision));
         return {
           id: `SWING-SELL-${currentCandle.timestamp}`,
           strategyName: 'سوئینگ و ترند کلان (Macro Trend Continuation)',
           symbol,
-          timeframe: '1H',
+          timeframe,
           direction: 'SELL',
           style: 'SWING_MACRO',
           createdAtTimestamp: currentCandle.timestamp,
-          expiresAtTimestamp: currentCandle.timestamp + 24 * 60 * 60 * 1000,
+          expiresAtTimestamp: currentCandle.timestamp + expiryMs,
           entryPrice,
           stopLossPrice,
           takeProfitPrice,
-          riskRewardRatio: 3.5,
+          riskRewardRatio: rr,
           evidenceIds: { contextSwingId: `STRUCT-HIGH-${structuralHigh}` },
-          rationale: `فروش در ریتریسمنت روند نزولی کلان همسو با فشار فروش مارکت؛ نسبت سود به ضرر 1:3.5.`,
+          rationale: `فروش در ریتریسمنت روند نزولی کلان در تایم‌فریم ${timeframe}؛ نسبت سود به ضرر 1:${rr}.`,
           status: 'CONFIRMED',
         };
       }
@@ -296,48 +358,62 @@ export class MultiStyleEngine {
    */
   public static evaluateMeanReversion(
     symbol: SymbolId,
-    candles: Candle[]
+    candles: Candle[],
+    timeframe: Timeframe = '5M',
+    params?: StrategyParameters
   ): StrategyCandidate | null {
-    if (candles.length < 20) return null;
+    const common = params?.common;
+    const mrParams = params?.meanReversion;
+
+    const lookback = mrParams?.lookbackPeriod || 20;
+    if (candles.length < lookback) return null;
 
     const currentCandle = candles[candles.length - 1];
     if (!currentCandle.isClosed) return null;
 
-    const sample = candles.slice(-20).map(c => c.close);
+    const sample = candles.slice(-lookback).map(c => c.close);
     const mean = sample.reduce((a, b) => a + b, 0) / sample.length;
     const variance = sample.reduce((a, b) => a + Math.pow(b - mean, 2), 0) / sample.length;
     const stdDev = Math.sqrt(variance);
 
-    const upperBand = mean + stdDev * 2.0;
-    const lowerBand = mean - stdDev * 2.0;
-    const atrs = calculateWilderATR(candles, 14);
+    const zThresh = mrParams?.zScoreThreshold || 2.0;
+    const upperBand = mean + stdDev * zThresh;
+    const lowerBand = mean - stdDev * zThresh;
+    const atrs = calculateWilderATR(candles, common?.atrPeriod || 14);
     const currentAtr = atrs.length > 0 ? atrs[atrs.length - 1] : symbol === 'XAUUSD' ? 2.0 : 0.001;
+    const precision = symbol === 'XAUUSD' || symbol === 'BTCUSD' ? 2 : symbol === 'USDJPY' ? 3 : 5;
+    const tfMs = timeframeToMs(timeframe);
+    const expiryMs = (common?.expiryBars || 8) * tfMs;
+    const atrMultiplier = common?.atrMultiplier ?? 0.2;
+
+    const canBuy = !common || common.directionMode === 'BOTH' || common.directionMode === 'LONG_ONLY';
+    const canSell = !common || common.directionMode === 'BOTH' || common.directionMode === 'SHORT_ONLY';
 
     // خرید از باند پایین به سمت میانگین: نفوذ به زیر باند و بازگشت به سمت خط تعادل
     const isLowerRejection = currentCandle.low < lowerBand && currentCandle.close > currentCandle.low;
-    if (isLowerRejection && currentCandle.close < mean) {
+    if (canBuy && isLowerRejection && currentCandle.close < mean) {
       const entryPrice = currentCandle.close;
-      const stopLossPrice = Number((currentCandle.low - currentAtr * 0.2).toFixed(symbol === 'XAUUSD' ? 2 : 5));
+      const stopLossPrice = Number((currentCandle.low - currentAtr * atrMultiplier).toFixed(precision));
       const slDist = entryPrice - stopLossPrice;
       if (slDist > 0 && mean > entryPrice) {
-        const takeProfitPrice = Number(mean.toFixed(symbol === 'XAUUSD' ? 2 : 5));
-        const rr = Number(((takeProfitPrice - entryPrice) / slDist).toFixed(2));
-        if (rr >= 0.8) {
+        const takeProfitPrice = Number(mean.toFixed(precision));
+        const calculatedRr = Number(((takeProfitPrice - entryPrice) / slDist).toFixed(2));
+        if (calculatedRr >= 0.8) {
           return {
             id: `MEANREV-BUY-${currentCandle.timestamp}`,
             strategyName: 'بازگشت به میانگین آماری (Band Exhaustion Reversion)',
             symbol,
-            timeframe: '5M',
+            timeframe,
             direction: 'BUY',
             style: 'MEAN_REVERSION',
             createdAtTimestamp: currentCandle.timestamp,
-            expiresAtTimestamp: currentCandle.timestamp + 8 * 5 * 60 * 1000,
+            expiresAtTimestamp: currentCandle.timestamp + expiryMs,
             entryPrice,
             stopLossPrice,
             takeProfitPrice,
-            riskRewardRatio: rr,
+            riskRewardRatio: calculatedRr,
             evidenceIds: { sweepId: `BAND-LOWER-${lowerBand.toFixed(2)}` },
-            rationale: `اشباع فروش در انحراف معیار ۲٫۰- و بازگشت قیمت به سمت میانگین مرکزی (${mean.toFixed(2)}) با R:R=${rr}.`,
+            rationale: `اشباع فروش در انحراف معیار ${zThresh}- در تایم‌فریم ${timeframe} و بازگشت قیمت با R:R=${calculatedRr}.`,
             status: 'CONFIRMED',
           };
         }
@@ -346,29 +422,29 @@ export class MultiStyleEngine {
 
     // فروش از باند بالا به سمت میانگین
     const isUpperRejection = currentCandle.high > upperBand && currentCandle.close < currentCandle.high;
-    if (isUpperRejection && currentCandle.close > mean) {
+    if (canSell && isUpperRejection && currentCandle.close > mean) {
       const entryPrice = currentCandle.close;
-      const stopLossPrice = Number((currentCandle.high + currentAtr * 0.2).toFixed(symbol === 'XAUUSD' ? 2 : 5));
+      const stopLossPrice = Number((currentCandle.high + currentAtr * atrMultiplier).toFixed(precision));
       const slDist = stopLossPrice - entryPrice;
       if (slDist > 0 && mean < entryPrice) {
-        const takeProfitPrice = Number(mean.toFixed(symbol === 'XAUUSD' ? 2 : 5));
-        const rr = Number(((entryPrice - takeProfitPrice) / slDist).toFixed(2));
-        if (rr >= 0.8) {
+        const takeProfitPrice = Number(mean.toFixed(precision));
+        const calculatedRr = Number(((entryPrice - takeProfitPrice) / slDist).toFixed(2));
+        if (calculatedRr >= 0.8) {
           return {
             id: `MEANREV-SELL-${currentCandle.timestamp}`,
             strategyName: 'بازگشت به میانگین آماری (Band Exhaustion Reversion)',
             symbol,
-            timeframe: '5M',
+            timeframe,
             direction: 'SELL',
             style: 'MEAN_REVERSION',
             createdAtTimestamp: currentCandle.timestamp,
-            expiresAtTimestamp: currentCandle.timestamp + 8 * 5 * 60 * 1000,
+            expiresAtTimestamp: currentCandle.timestamp + expiryMs,
             entryPrice,
             stopLossPrice,
             takeProfitPrice,
-            riskRewardRatio: rr,
+            riskRewardRatio: calculatedRr,
             evidenceIds: { sweepId: `BAND-UPPER-${upperBand.toFixed(2)}` },
-            rationale: `اشباع خرید در انحراف معیار ۲٫۰+ و بازگشت قیمت به خط تعادلی میانگین (${mean.toFixed(2)}) با R:R=${rr}.`,
+            rationale: `اشباع خرید در انحراف معیار ${zThresh}+ در تایم‌فریم ${timeframe} و بازگشت قیمت با R:R=${calculatedRr}.`,
             status: 'CONFIRMED',
           };
         }
@@ -384,7 +460,9 @@ export class MultiStyleEngine {
   public static evaluate(
     candles: Candle[],
     symbol: SymbolId = 'XAUUSD',
-    filterStyle: TradingStyleType | 'ALL' = 'ALL'
+    filterStyle: TradingStyleType | 'ALL' = 'ALL',
+    timeframe: Timeframe = '5M',
+    params?: StrategyParameters
   ): {
     regime: MarketRegimeAnalysis;
     candidate: StrategyCandidate | null;
@@ -395,31 +473,31 @@ export class MultiStyleEngine {
 
     // ۱. بررسی سبک اسکلپ
     if (filterStyle === 'ALL' || filterStyle === 'SCALP_M1_M5') {
-      const scalpCand = this.evaluateScalp(symbol, candles);
+      const scalpCand = this.evaluateScalp(symbol, candles, timeframe, params);
       if (scalpCand) candidates.push(scalpCand);
     }
 
     // ۲. بررسی سبک اسمارت‌مانی
     if (filterStyle === 'ALL' || filterStyle === 'SMC_INTRADAY') {
-      const smcCand = this.evaluateSMC(symbol, candles);
+      const smcCand = this.evaluateSMC(symbol, candles, timeframe, params);
       if (smcCand) candidates.push(smcCand);
     }
 
     // ۳. بررسی شکست روندی فقط در رژیم سازگار
     if (filterStyle === 'ALL' || filterStyle === 'TREND_BREAKOUT') {
-      const breakoutCand = this.evaluateTrendBreakout(symbol, candles, regime);
+      const breakoutCand = this.evaluateTrendBreakout(symbol, candles, regime, timeframe, params);
       if (breakoutCand) candidates.push(breakoutCand);
     }
 
     // ۴. بررسی سبک سوئینگ
     if (filterStyle === 'ALL' || filterStyle === 'SWING_MACRO') {
-      const swingCand = this.evaluateSwing(symbol, candles, regime);
+      const swingCand = this.evaluateSwing(symbol, candles, regime, timeframe, params);
       if (swingCand) candidates.push(swingCand);
     }
 
     // ۵. بررسی سبک بازگشت به میانگین
     if (filterStyle === 'ALL' || filterStyle === 'MEAN_REVERSION') {
-      const mrCand = this.evaluateMeanReversion(symbol, candles);
+      const mrCand = this.evaluateMeanReversion(symbol, candles, timeframe, params);
       if (mrCand) candidates.push(mrCand);
     }
 
