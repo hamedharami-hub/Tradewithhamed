@@ -1108,6 +1108,31 @@ export class ResearchLab {
     return PurgedWalkForwardEngine.run(candles, symbol, baseParams, config, options);
   }
 
+  // ۵.۱. شبیه‌سازی پیشرفته مونت‌کارلو و محاسبه ریسک ورشکستگی (Package E)
+  public static runMonteCarloSimulation(
+    tradePnls: number[],
+    config: import('../contracts/monte-carlo-stress').MonteCarloSimulationConfig
+  ): import('../contracts/monte-carlo-stress').MonteCarloSimulationReport {
+    const { AdvancedMonteCarloEngine } = require('./monte-carlo-engine');
+    return AdvancedMonteCarloEngine.simulate(tradePnls, config);
+  }
+
+  // ۵.۲. ارزیابی ماتریس تنش چندبعدی و نقطه شکست اصطکاک (Package E)
+  public static runStressMatrix(
+    candles: Candle[],
+    symbol: SymbolId = 'XAUUSD',
+    baseParams: StrategyParameters,
+    options: {
+      style?: TradingStyleType | 'ALL';
+      initialCash?: number;
+      dimensions?: Partial<import('../contracts/monte-carlo-stress').StressDimensionOptions>;
+      randomSeed?: number;
+    } = {}
+  ): import('../contracts/monte-carlo-stress').StressMatrixReport {
+    const { StressMatrixEngine } = require('./stress-matrix-engine');
+    return StressMatrixEngine.evaluateMatrix(candles, symbol, baseParams, options);
+  }
+
   // ۵. تست تنش و تاب‌آوری (Stress Testing)
   public static runStressTests(
     candles: Candle[],

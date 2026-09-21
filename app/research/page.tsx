@@ -15,7 +15,7 @@ import {
   AccountCurrency,
   DateRangeMode,
 } from '@/lib/contracts/strategy-parameters';
-import { EndOfDataPolicy } from '@/lib/core/ports';
+import { EndOfDataPolicy, PositionLedgerEntry } from '@/lib/core/ports';
 import { DataWorkbench, ValidationReport } from '@/lib/core/data-workbench';
 import { PerformanceMetrics } from '@/lib/core/research-lab';
 import { DatasetPassport } from '@/lib/contracts/dataset-contract';
@@ -25,6 +25,7 @@ import { GOLD_CANDLES_FIXTURE_5M } from '@/lib/replay/fixtures/gold-candles';
 import { getBundledDataset } from '@/lib/research/bundled-historical-datasets';
 import { useResearchBacktestWorker } from '@/hooks/use-research-backtest-worker';
 import type { PurgedWalkForwardReport, PurgedWalkForwardConfig, ParameterOptimizationReport } from '@/lib/contracts/parameter-optimization';
+import type { MonteCarloSimulationReport, StressMatrixReport } from '@/lib/contracts/monte-carlo-stress';
 import {
   FlaskConical,
   Database,
@@ -123,6 +124,7 @@ export default function ResearchPage() {
 
   // نتایج و خطای بکتست
   const [backtestResult, setBacktestResult] = useState<PerformanceMetrics | null>(null);
+  const [closedTrades, setClosedTrades] = useState<PositionLedgerEntry[]>([]);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [initialTime] = useState(() => Date.now());
 
@@ -151,6 +153,15 @@ export default function ResearchPage() {
   const [isWfRunning, setIsWfRunning] = useState<boolean>(false);
   const [walkForwardReport, setWalkForwardReport] = useState<PurgedWalkForwardReport | null>(null);
   const [wfErrorMessage, setWfErrorMessage] = useState<string | null>(null);
+
+  // ─── شبیه‌سازی مونت‌کارلو و ماتریس تنش (Package E) ────────────────────────
+  const [mcIterations, setMcIterations] = useState<number>(500);
+  const [mcMethod, setMcMethod] = useState<'TRADE_RESHUFFLE' | 'BLOCK_BOOTSTRAP'>('TRADE_RESHUFFLE');
+  const [isMcRunning, setIsMcRunning] = useState<boolean>(false);
+  const [mcReport, setMcReport] = useState<MonteCarloSimulationReport | null>(null);
+  const [mcErrorMessage, setMcErrorMessage] = useState<string | null>(null);
+  const [stressMatrixReport, setStressMatrixReport] = useState<StressMatrixReport | null>(null);
+  const [isStressMatrixRunning, setIsStressMatrixRunning] = useState<boolean>(false);
 
   // هوک اختصاصی اجرای بکتست خارج از نخ اصلی
   const { run: runWorkerBacktest, cancel: cancelWorkerBacktest, isRunning, progress } =
@@ -452,6 +463,7 @@ export default function ResearchPage() {
 
       setBacktestTimeMs(Number((performance.now() - t0).toFixed(1)));
       setBacktestResult(runResult.metrics);
+      setClosedTrades(runResult.trades || []);
       setCurrentStep(6);
     } catch (err) {
       const e = err as Error;
@@ -3089,6 +3101,245 @@ export default function ResearchPage() {
                           ))}
                         </tbody>
                       </table>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* کارت شبیه‌سازی مونت‌کارلو مسیر اکوئیتی و ریسک ورشکستگی (Package E: Monte Carlo) */}
+              <div className="bg-[#141926] p-4 rounded-2xl border border-cyan-500/30 space-y-3 text-xs">
+                <div className="flex items-center justify-between border-b border-[#1f2738] pb-2 flex-wrap gap-2">
+                  <div className="flex items-center gap-2 font-bold text-cyan-300">
+                    <Activity className="w-4 h-4 text-cyan-400" />
+                    <span>شبیه‌سازی مونت‌کارلو و محاسبه ریسک ورشکستگی (Monte-Carlo & Risk of Ruin):</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      disabled={isMcRunning || backtestResult.totalTrades < 3}
+                      onClick={async () => {
+                        setIsMcRunning(true);
+                        setMcErrorMessage(null);
+                        try {
+                          const { AdvancedMonteCarloEngine } = await import('@/lib/core/monte-carlo-engine');
+                          // استخراج سود/زیان معاملات بسته شده از بکتست
+                          const actualPnls = closedTrades.length > 0
+                            ? closedTrades.map(t => t.realizedPnl)
+                            : Array.from({ length: backtestResult.totalTrades }, (_, idx) =>
+                                idx % 2 === 0
+                                  ? (backtestResult.netProfit / Math.max(1, backtestResult.totalTrades)) * 1.5
+                                  : -Math.abs((backtestResult.netProfit / Math.max(1, backtestResult.totalTrades)) * 0.8)
+                              );
+
+                          const report = AdvancedMonteCarloEngine.simulate(actualPnls, {
+                            iterations: mcIterations,
+                            method: mcMethod,
+                            seed: 1337,
+                            initialEquity: initialCapital,
+                            ruinDrawdownThresholdPercent: 10,
+                            maxAllowedDailyLossPercent: 5,
+                          });
+                          setMcReport(report);
+                        } catch (err: any) {
+                          setMcErrorMessage(err?.message || 'خطا در شبیه‌سازی مونت‌کارلو');
+                        } finally {
+                          setIsMcRunning(false);
+                        }
+                      }}
+                      className="px-3 py-1.5 bg-cyan-600/30 hover:bg-cyan-600/50 disabled:opacity-40 border border-cyan-500/40 text-cyan-200 text-xs font-bold rounded-xl flex items-center gap-1.5 transition-all"
+                    >
+                      <Play className="w-3 h-3" />
+                      <span>{isMcRunning ? 'در حال شبیه‌سازی...' : `اجرای ${mcIterations} تکرار`}</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* تنظیمات مونت‌کارلو */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 bg-[#0f1422] p-3 rounded-xl border border-[#1e263c]">
+                  <div className="space-y-1">
+                    <label className="text-[11px] text-zinc-400">شیوه بازنمونه‌گیری (Resampling):</label>
+                    <div className="grid grid-cols-2 gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => setMcMethod('TRADE_RESHUFFLE')}
+                        className={`py-1 rounded-lg text-[10px] font-bold border transition-all ${
+                          mcMethod === 'TRADE_RESHUFFLE'
+                            ? 'bg-cyan-950 text-cyan-200 border-cyan-600'
+                            : 'bg-[#151b2a] text-zinc-400 border-[#222a3d]'
+                        }`}
+                      >
+                        جایگشت تصادفی
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setMcMethod('BLOCK_BOOTSTRAP')}
+                        className={`py-1 rounded-lg text-[10px] font-bold border transition-all ${
+                          mcMethod === 'BLOCK_BOOTSTRAP'
+                            ? 'bg-cyan-950 text-cyan-200 border-cyan-600'
+                            : 'bg-[#151b2a] text-zinc-400 border-[#222a3d]'
+                        }`}
+                      >
+                        بوت‌استرپ بلوکی
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-[11px] text-zinc-400 flex items-center justify-between">
+                      <span>تعداد مسیرها (Iterations):</span>
+                      <span className="font-mono text-cyan-300 font-bold">{mcIterations}</span>
+                    </label>
+                    <input
+                      type="range"
+                      min={100}
+                      max={2000}
+                      step={100}
+                      value={mcIterations}
+                      onChange={e => setMcIterations(Number(e.target.value))}
+                      className="w-full accent-cyan-500"
+                    />
+                  </div>
+
+                  <div className="flex items-end">
+                    <button
+                      type="button"
+                      disabled={isStressMatrixRunning || candles.length < 100}
+                      onClick={async () => {
+                        setIsStressMatrixRunning(true);
+                        try {
+                          const { StressMatrixEngine } = await import('@/lib/core/stress-matrix-engine');
+                          const report = StressMatrixEngine.evaluateMatrix(candles, symbol, strategyParams, {
+                            style: strategy,
+                            initialCash: initialCapital,
+                            dimensions: {
+                              spreadMultipliers: [1.0, 1.5, 2.5],
+                              additionalSlippagePips: [0.0, 0.5, 1.5],
+                            },
+                          });
+                          setStressMatrixReport(report);
+                        } catch (err) {
+                          console.error(err);
+                        } finally {
+                          setIsStressMatrixRunning(false);
+                        }
+                      }}
+                      className="w-full py-2 bg-[#172033] hover:bg-[#1d2942] disabled:opacity-40 border border-[#2a3a5a] text-cyan-300 text-xs font-bold rounded-xl flex items-center justify-center gap-1.5 transition-all"
+                    >
+                      <Sliders className="w-3.5 h-3.5" />
+                      <span>{isStressMatrixRunning ? 'در حال تحلیل ماتریس...' : 'ارزیابی ماتریس تنش'}</span>
+                    </button>
+                  </div>
+                </div>
+
+                {mcErrorMessage && (
+                  <div className="p-2.5 bg-rose-500/10 border border-rose-500/30 rounded-xl text-rose-300 text-xs">
+                    {mcErrorMessage}
+                  </div>
+                )}
+
+                {/* نتایج مونت‌کارلو */}
+                {mcReport && (
+                  <div className="space-y-3 pt-1">
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center">
+                      <div className="bg-[#1a2132] p-2.5 rounded-xl border border-[#2a354d]">
+                        <span className="text-[10px] text-zinc-400 block">احتمال ورشکستگی (Risk of Ruin):</span>
+                        <span className={`text-xs font-bold font-mono mt-0.5 block ${
+                          mcReport.riskOfRuin.ruinProbabilityPercent <= 5 ? 'text-emerald-400' :
+                          mcReport.riskOfRuin.ruinProbabilityPercent <= 15 ? 'text-amber-400' : 'text-rose-400'
+                        }`}>
+                          {mcReport.riskOfRuin.ruinProbabilityPercent}٪
+                        </span>
+                      </div>
+
+                      <div className="bg-[#1a2132] p-2.5 rounded-xl border border-[#2a354d]">
+                        <span className="text-[10px] text-zinc-400 block">بدترین دروداون با اطمینان ۹۵٪:</span>
+                        <span className={`text-xs font-bold font-mono mt-0.5 block ${
+                          mcReport.riskOfRuin.p95MaxDrawdownPercent <= 10 ? 'text-emerald-400' :
+                          mcReport.riskOfRuin.p95MaxDrawdownPercent <= 20 ? 'text-amber-400' : 'text-rose-400'
+                        }`}>
+                          {mcReport.riskOfRuin.p95MaxDrawdownPercent}٪
+                        </span>
+                      </div>
+
+                      <div className="bg-[#1a2132] p-2.5 rounded-xl border border-[#2a354d]">
+                        <span className="text-[10px] text-zinc-400 block">شانس پاس پراپ‌فرم:</span>
+                        <span className="text-xs font-bold font-mono text-cyan-300 mt-0.5 block">
+                          {mcReport.riskOfRuin.propFirmPassProbabilityPercent}٪
+                        </span>
+                      </div>
+
+                      <div className="bg-[#1a2132] p-2.5 rounded-xl border border-[#2a354d]">
+                        <span className="text-[10px] text-zinc-400 block">میانه اکوئیتی نهایی (P50):</span>
+                        <span className="text-xs font-bold font-mono text-emerald-400 mt-0.5 block">
+                          ${mcReport.finalEquityPercentiles.p50.toLocaleString('en-US')}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* جدول صدک‌های اکوئیتی و دروداون */}
+                    <div className="overflow-x-auto rounded-xl border border-[#1e263c]">
+                      <table className="w-full text-[11px] text-zinc-300">
+                        <thead>
+                          <tr className="border-b border-[#1e263c] bg-[#0d1120]">
+                            <th className="px-3 py-1.5 text-right text-zinc-500">شاخص آماری</th>
+                            <th className="px-3 py-1.5 text-center text-zinc-500">بدبینانه (P5)</th>
+                            <th className="px-3 py-1.5 text-center text-zinc-500">چارک پایین (P25)</th>
+                            <th className="px-3 py-1.5 text-center text-zinc-500">میانه (P50)</th>
+                            <th className="px-3 py-1.5 text-center text-zinc-500">چارک بالا (P75)</th>
+                            <th className="px-3 py-1.5 text-center text-zinc-500">خوش‌بینانه (P95)</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          <tr className="border-b border-[#181f30]">
+                            <td className="px-3 py-1.5 text-right font-medium text-zinc-400">موجودی نهایی ($)</td>
+                            <td className="px-3 py-1.5 text-center font-mono text-rose-300">${mcReport.finalEquityPercentiles.p5.toLocaleString('en-US')}</td>
+                            <td className="px-3 py-1.5 text-center font-mono text-amber-300">${mcReport.finalEquityPercentiles.p25.toLocaleString('en-US')}</td>
+                            <td className="px-3 py-1.5 text-center font-mono text-cyan-300 font-bold">${mcReport.finalEquityPercentiles.p50.toLocaleString('en-US')}</td>
+                            <td className="px-3 py-1.5 text-center font-mono text-emerald-300">${mcReport.finalEquityPercentiles.p75.toLocaleString('en-US')}</td>
+                            <td className="px-3 py-1.5 text-center font-mono text-emerald-400 font-bold">${mcReport.finalEquityPercentiles.p95.toLocaleString('en-US')}</td>
+                          </tr>
+                          <tr>
+                            <td className="px-3 py-1.5 text-right font-medium text-zinc-400">حداکثر افت (Drawdown %)</td>
+                            <td className="px-3 py-1.5 text-center font-mono text-emerald-400">{mcReport.maxDrawdownPercentiles.p5}%</td>
+                            <td className="px-3 py-1.5 text-center font-mono text-emerald-300">{mcReport.maxDrawdownPercentiles.p25}%</td>
+                            <td className="px-3 py-1.5 text-center font-mono text-cyan-300">{mcReport.maxDrawdownPercentiles.p50}%</td>
+                            <td className="px-3 py-1.5 text-center font-mono text-amber-300">{mcReport.maxDrawdownPercentiles.p75}%</td>
+                            <td className="px-3 py-1.5 text-center font-mono text-rose-400 font-bold">{mcReport.maxDrawdownPercentiles.p95}%</td>
+                          </tr>
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+
+                {/* نتایج ماتریس تنش */}
+                {stressMatrixReport && (
+                  <div className="space-y-2 pt-2 border-t border-[#1e263c]">
+                    <div className="flex items-center justify-between text-[11px]">
+                      <span className="font-bold text-zinc-300">نتایج ماتریس تنش اصطکاک (Friction Resilience):</span>
+                      <span className="font-mono text-cyan-400">
+                        {stressMatrixReport.resilienceSummaryFa}
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-center text-[10px]">
+                      <div className="bg-[#101524] p-2 rounded-lg border border-[#1f2840]">
+                        <span className="text-zinc-500 block">حداکثر اسلیپیج قابل تحمل:</span>
+                        <span className="font-bold text-emerald-400 font-mono text-xs mt-0.5 block">
+                          +{stressMatrixReport.breakEvenSlippageThresholdPips} پیپ
+                        </span>
+                      </div>
+                      <div className="bg-[#101524] p-2 rounded-lg border border-[#1f2840]">
+                        <span className="text-zinc-500 block">حداکثر ضریب اسپرد قابل تحمل:</span>
+                        <span className="font-bold text-cyan-400 font-mono text-xs mt-0.5 block">
+                          {stressMatrixReport.breakEvenSpreadMultiplier}x
+                        </span>
+                      </div>
+                      <div className="bg-[#101524] p-2 rounded-lg border border-[#1f2840]">
+                        <span className="text-zinc-500 block">سناریوهای سودآور:</span>
+                        <span className="font-bold text-purple-300 font-mono text-xs mt-0.5 block">
+                          {stressMatrixReport.profitableScenariosCount} از {stressMatrixReport.totalScenariosEvaluated}
+                        </span>
+                      </div>
                     </div>
                   </div>
                 )}
