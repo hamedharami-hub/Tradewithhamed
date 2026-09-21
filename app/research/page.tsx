@@ -10,6 +10,10 @@ import {
   StrategyParameters,
   getDefaultStrategyParameters,
   StrategyPreset,
+  SessionFilter,
+  TimezoneOption,
+  AccountCurrency,
+  DateRangeMode,
 } from '@/lib/contracts/strategy-parameters';
 import { EndOfDataPolicy } from '@/lib/core/ports';
 import { DataWorkbench, ValidationReport } from '@/lib/core/data-workbench';
@@ -32,10 +36,23 @@ import {
   Layers,
   Activity,
   Zap,
+  Calendar,
+  Clock,
+  DollarSign,
+  ShieldAlert,
 } from 'lucide-react';
 
 const AVAILABLE_SYMBOLS: SymbolId[] = ['XAUUSD', 'EURUSD', 'GBPUSD', 'USDJPY'];
 const AVAILABLE_TIMEFRAMES: Timeframe[] = ['5M', '15M', '1H', '4H', 'D1'];
+
+function formatDateIso(ts: number): string {
+  if (!ts) return '—';
+  try {
+    return new Date(ts).toISOString().slice(0, 10);
+  } catch {
+    return '—';
+  }
+}
 
 export default function ResearchPage() {
   const [viewMode, setViewMode] = useState<'SIMPLE' | 'ADVANCED'>('SIMPLE');
@@ -55,14 +72,39 @@ export default function ResearchPage() {
   const [validationTimeMs, setValidationTimeMs] = useState<number | null>(null);
   const [backtestTimeMs, setBacktestTimeMs] = useState<number | null>(null);
 
-  // انتخاب استراتژی و پارامترها
+  // ۱. فیلتر بازه تاریخی (Date Range)
+  const [dateRangeMode, setDateRangeMode] = useState<DateRangeMode>('FULL');
+  const [customStartDate, setCustomStartDate] = useState<string>('');
+  const [customEndDate, setCustomEndDate] = useState<string>('');
+
+  // ۲. انتخاب استراتژی و پارامترها
   const [strategy, setStrategy] = useState<TradingStyleType>('SMC_INTRADAY');
   const [strategyPreset, setStrategyPreset] = useState<StrategyPreset>('BALANCED');
   const [strategyParams, setStrategyParams] = useState<StrategyParameters>(() =>
     getDefaultStrategyParameters('BALANCED')
   );
 
-  // پارامترهای هزینه و ریسک
+  // ۳. پیکربندی حساب (Account Configuration)
+  const [initialCapital, setInitialCapital] = useState<number>(10000);
+  const [accountCurrency, setAccountCurrency] = useState<AccountCurrency>('USD');
+  const [leverage, setLeverage] = useState<1 | 10 | 30 | 50 | 100>(30);
+  const [maxDailyLossPercent, setMaxDailyLossPercent] = useState<number>(5.0);
+  const [maxTotalDrawdownPercent, setMaxTotalDrawdownPercent] = useState<number>(10.0);
+  const [maxConcurrentPositions, setMaxConcurrentPositions] = useState<number>(3);
+  const [minLot, setMinLot] = useState<number>(0.01);
+  const [lotStep, setLotStep] = useState<number>(0.01);
+  const [maxLot, setMaxLot] = useState<number>(10.0);
+
+  // ۴. فیلتر سشن و مناطق زمانی (Session and Time Filters)
+  const [sessionFilter, setSessionFilter] = useState<SessionFilter>('ALL');
+  const [timezone, setTimezone] = useState<TimezoneOption>('UTC');
+  const [customStartTime, setCustomStartTime] = useState<string>('08:00');
+  const [customEndTime, setCustomEndTime] = useState<string>('17:00');
+  const [selectedWeekdays, setSelectedWeekdays] = useState<number[]>([1, 2, 3, 4, 5]);
+  const [useRolloverBlackout, setUseRolloverBlackout] = useState<boolean>(true);
+  const [excludeEdgeMinutes, setExcludeEdgeMinutes] = useState<number>(0);
+
+  // ۵. پارامترهای هزینه و اسلیپیج
   const [riskPercent, setRiskPercent] = useState<number>(0.25);
   const [spreadPips, setSpreadPips] = useState<number>(() => SYMBOL_SPECS.GBPUSD.typicalSpreadPips);
   const [commissionPerLot, setCommissionPerLot] = useState<number>(
@@ -79,6 +121,68 @@ export default function ResearchPage() {
   // هوک اختصاصی اجرای بکتست خارج از نخ اصلی
   const { run: runWorkerBacktest, cancel: cancelWorkerBacktest, isRunning, progress } =
     useResearchBacktestWorker();
+
+  // محاسبه آمار بازه تاریخی
+  const dateRangeStats = useMemo(() => {
+    if (candles.length === 0) return null;
+    const earliest = candles[0].timestamp;
+    const latest = candles[candles.length - 1].timestamp;
+    let selStart = earliest;
+    let selEnd = latest;
+
+    switch (dateRangeMode) {
+      case 'FIRST_25':
+        selEnd = candles[Math.max(0, Math.floor(candles.length * 0.25) - 1)].timestamp;
+        break;
+      case 'MIDDLE_50':
+        selStart = candles[Math.floor(candles.length * 0.25)].timestamp;
+        selEnd = candles[Math.max(0, Math.floor(candles.length * 0.75) - 1)].timestamp;
+        break;
+      case 'LAST_25':
+        selStart = candles[Math.floor(candles.length * 0.75)].timestamp;
+        break;
+      case 'ROLLING_3M':
+        selStart = Math.max(earliest, latest - 90 * 24 * 60 * 60_000);
+        break;
+      case 'ROLLING_6M':
+        selStart = Math.max(earliest, latest - 180 * 24 * 60 * 60_000);
+        break;
+      case 'ROLLING_12M':
+        selStart = Math.max(earliest, latest - 365 * 24 * 60 * 60_000);
+        break;
+      case 'CUSTOM':
+        if (customStartDate) selStart = new Date(customStartDate).getTime();
+        if (customEndDate) selEnd = new Date(customEndDate + 'T23:59:59.999Z').getTime();
+        break;
+      case 'FULL':
+      default:
+        selStart = earliest;
+        selEnd = latest;
+        break;
+    }
+
+    const startIdx = candles.findIndex(c => c.timestamp >= selStart);
+    let endIdx = -1;
+    for (let j = candles.length - 1; j >= 0; j--) {
+      if (candles[j].timestamp <= selEnd) {
+        endIdx = j;
+        break;
+      }
+    }
+
+    const evalCount = startIdx !== -1 && endIdx >= startIdx ? endIdx - startIdx + 1 : 0;
+    const warmupCount = startIdx > 0 ? startIdx : 0;
+
+    return {
+      earliest,
+      latest,
+      total: candles.length,
+      selStart,
+      selEnd,
+      evalCount,
+      warmupCount,
+    };
+  }, [candles, dateRangeMode, customStartDate, customEndDate]);
 
   // پاکسازی نتایج و اعتبارسنجی هنگام تغییر نماد یا تایم‌فریم
   const handleSymbolChange = (newSymbol: SymbolId) => {
@@ -178,12 +282,12 @@ export default function ResearchPage() {
       }
 
       const tVal0 = performance.now();
-      DataWorkbench.validateCandles(parsed.candles, symbol, selectedTimeframe, dataset.source);
+      DataWorkbench.validateCandles(parsed.candles, symbol, selectedTimeframe, dataset.labelFa);
       setValidationTimeMs(Number((performance.now() - tVal0).toFixed(1)));
 
       setCandles(parsed.candles);
       setDatasetProvider(dataset.source);
-      setSourceName(`دیتاست آماده ${dataset.labelFa} (${parsed.candles.length.toLocaleString('fa-IR')} کندل)`);
+      setSourceName(`دیتاست آماده توکار: ${dataset.labelFa} (${parsed.candles.length.toLocaleString('fa-IR')} کندل)`);
       setIsUserUploaded(false);
       setCurrentStep(2);
     } catch (err) {
@@ -191,12 +295,12 @@ export default function ResearchPage() {
     }
   };
 
-  // گام ۱: آپلود فایل CSV اختصاصی کاربر
+  // بارگذاری فایل CSV توسط کاربر
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    setErrorMessage(null);
 
+    setErrorMessage(null);
     const t0 = performance.now();
     const reader = new FileReader();
     reader.onload = (event) => {
@@ -259,7 +363,33 @@ export default function ResearchPage() {
 
     try {
       const runResult = await runWorkerBacktest(candles, symbol, {
-        initialCash: 10000,
+        initialCash: initialCapital,
+        accountConfig: {
+          initialCapital,
+          accountCurrency,
+          leverage,
+          maxDailyLossPercent,
+          maxTotalDrawdownPercent,
+          maxConcurrentPositions,
+          minLot,
+          lotStep,
+          maxLot,
+        },
+        dateRangeConfig: {
+          mode: dateRangeMode,
+          customStartDate: customStartDate || undefined,
+          customEndDate: customEndDate || undefined,
+          requiredWarmupBars: 210,
+        },
+        sessionConfig: {
+          session: sessionFilter,
+          timezone,
+          customStartTime,
+          customEndTime,
+          selectedWeekdays,
+          useRolloverBlackout,
+          excludeEdgeMinutes,
+        },
         commissionPerLot,
         defaultSpreadPips: spreadPips,
         additionalSlippagePips,
@@ -274,7 +404,12 @@ export default function ResearchPage() {
       setBacktestResult(runResult.metrics);
       setCurrentStep(6);
     } catch (err) {
-      setErrorMessage(`خطا در اجرای بکتست: ${(err as Error).message}`);
+      const e = err as Error;
+      if (e.name === 'AbortError') {
+        setErrorMessage('عملیات بک‌تست توسط کاربر لغو شد.');
+      } else {
+        setErrorMessage(`خطا در اجرای بکتست: ${e.message}`);
+      }
     }
   };
 
@@ -296,6 +431,8 @@ export default function ResearchPage() {
     : !dataValidation.isValid
     ? 'کیفیت داده تأیید نشده است'
     : undefined;
+
+  const currencySymbol = accountCurrency === 'AUD' ? 'A$' : '$';
 
   return (
     <main
@@ -335,9 +472,9 @@ export default function ResearchPage() {
           <div className="grid grid-cols-2 sm:grid-cols-6 gap-2 text-xs">
             {[
               { step: 1, title: '۱. انتخاب داده' },
-              { step: 2, title: '۲. بررسی کیفیت' },
+              { step: 2, title: '۲. کیفیت و بازه' },
               { step: 3, title: '۳. انتخاب روش' },
-              { step: 4, title: '۴. هزینه و ریسک' },
+              { step: 4, title: '۴. حساب و سشن' },
               { step: 5, title: '۵. اجرای آزمایش' },
               { step: 6, title: '۶. تفسیر نتایج' },
             ].map((s) => (
@@ -450,54 +587,158 @@ export default function ResearchPage() {
                     className="w-full py-2.5 rounded-xl bg-purple-600 hover:bg-purple-500 disabled:opacity-50 text-white font-bold text-xs flex items-center justify-center gap-2 transition-all shadow-md"
                   >
                     <Database className="w-4 h-4" />
-                    <span>بارگذاری دیتاست آماده {symbol} در تایم‌فریم {selectedTimeframe}</span>
+                    <span>بارگذاری دیتاست آماده ({symbol} - {selectedTimeframe})</span>
                   </button>
                 </div>
 
                 <div className="bg-[#141926] border border-[#232c40] p-4 rounded-2xl space-y-3">
                   <h3 className="text-xs font-bold text-cyan-300 flex items-center gap-2">
                     <Upload className="w-4 h-4" />
-                    <span>گزینه ب: بارگذاری فایل CSV اختصاصی شما</span>
+                    <span>گزینه ب: آپلود فایل اختصاصی کندل‌ها (CSV)</span>
                   </h3>
                   <p className="text-xs text-zinc-400 leading-relaxed">
-                    فایل تاریخچه قیمت خود را وارد کنید (تایم‌فریم پردازش برابر {selectedTimeframe} اعمال خواهد شد).
+                    بارگذاری داده‌های صادر شده از متاتریدر، تریدینگ‌ویو یا cTrader به فرمت CSV.
                   </p>
-                  <label className="w-full py-2.5 rounded-xl bg-[#1d2538] hover:bg-[#263148] text-zinc-200 font-bold text-xs flex items-center justify-center gap-2 transition-all border border-[#2d3a54] cursor-pointer">
-                    <Upload className="w-4 h-4" />
-                    <span>انتخاب و ورود فایل CSV</span>
-                    <input type="file" accept=".csv" onChange={handleFileUpload} className="hidden" />
+                  <label className="w-full py-2.5 rounded-xl bg-[#1d2538] hover:bg-[#253047] text-zinc-200 font-bold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer border border-[#2e3b54]">
+                    <Upload className="w-4 h-4 text-cyan-400" />
+                    <span>انتخاب فایل CSV از رایانه</span>
+                    <input
+                      type="file"
+                      accept=".csv,.txt"
+                      onChange={handleFileUpload}
+                      className="hidden"
+                    />
                   </label>
                 </div>
               </div>
             </div>
           )}
 
-          {/* گام ۲: گزارش کیفیت و اعتبارسنجی داده */}
+          {/* گام ۲: گزارش کیفیت و فیلتر بازه تاریخی (Date Range) */}
           {currentStep === 2 && (
-            <div className="space-y-4">
+            <div className="space-y-5">
               <div>
-                <h2 className="text-sm font-bold text-zinc-100">گام ۲: گزارش کیفیت و اعتبارسنجی داده</h2>
+                <h2 className="text-sm font-bold text-zinc-100">
+                  گام ۲: گزارش کیفیت، اعتبارسنجی ساختار و فیلتر بازه تاریخی (Date Range)
+                </h2>
                 <p className="text-xs text-zinc-400 mt-1">
-                  سامانه پیش از آزمایش، کیفیت، پیوستگی زمانی و عدم نگاه به آینده (Look-ahead bias) را بررسی کرده است:
+                  منبع: <span className="text-zinc-200 font-mono">{sourceName}</span>
                 </p>
               </div>
 
-              {/* خلاصه متادیتا و سلامت داده */}
-              <div className="bg-[#141926] p-4 rounded-2xl border border-[#232c40] grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
-                <div className="space-y-1">
-                  <span className="text-zinc-500 block">نماد و تایم‌فریم:</span>
-                  <span className="font-bold font-mono text-purple-300">{symbol} / {selectedTimeframe}</span>
+              {/* ۶ کارت آماری بازه زمانی */}
+              {dateRangeStats && (
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5 text-xs text-center">
+                  <div className="bg-[#141926] p-3 rounded-xl border border-[#232c40]">
+                    <span className="text-[10px] text-zinc-500 block">اولین کندل موجود</span>
+                    <span className="font-mono text-zinc-200 font-bold mt-1 block">
+                      {formatDateIso(dateRangeStats.earliest)}
+                    </span>
+                  </div>
+                  <div className="bg-[#141926] p-3 rounded-xl border border-[#232c40]">
+                    <span className="text-[10px] text-zinc-500 block">آخرین کندل موجود</span>
+                    <span className="font-mono text-zinc-200 font-bold mt-1 block">
+                      {formatDateIso(dateRangeStats.latest)}
+                    </span>
+                  </div>
+                  <div className="bg-[#141926] p-3 rounded-xl border border-[#232c40]">
+                    <span className="text-[10px] text-zinc-500 block">کل کندل‌های دیتاست</span>
+                    <span className="font-mono text-purple-300 font-bold mt-1 block">
+                      {dateRangeStats.total.toLocaleString('fa-IR')}
+                    </span>
+                  </div>
+                  <div className="bg-[#141926] p-3 rounded-xl border border-[#232c40]">
+                    <span className="text-[10px] text-zinc-500 block">شروع انتخابی ارزیابی</span>
+                    <span className="font-mono text-cyan-300 font-bold mt-1 block">
+                      {formatDateIso(dateRangeStats.selStart)}
+                    </span>
+                  </div>
+                  <div className="bg-[#141926] p-3 rounded-xl border border-[#232c40]">
+                    <span className="text-[10px] text-zinc-500 block">پایان انتخابی ارزیابی</span>
+                    <span className="font-mono text-cyan-300 font-bold mt-1 block">
+                      {formatDateIso(dateRangeStats.selEnd)}
+                    </span>
+                  </div>
+                  <div className="bg-[#141926] p-3 rounded-xl border border-[#232c40]">
+                    <span className="text-[10px] text-zinc-500 block">کندل ارزیابی + وارم‌آپ</span>
+                    <span className="font-mono text-emerald-400 font-bold mt-1 block">
+                      {dateRangeStats.evalCount.toLocaleString('fa-IR')}{' '}
+                      <span className="text-[10px] text-zinc-500 font-normal">
+                        (+{dateRangeStats.warmupCount} وارم‌آپ)
+                      </span>
+                    </span>
+                  </div>
                 </div>
+              )}
+
+              {/* انتخاب حالت‌های بازه تاریخی */}
+              <div className="bg-[#141926] border border-[#232c40] p-4 rounded-2xl space-y-3">
+                <div className="flex items-center gap-2 text-xs font-bold text-purple-300">
+                  <Calendar className="w-4 h-4" />
+                  <span>انتخاب بازهٔ تاریخی برای آزمایش (Date Range Selector):</span>
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-2 text-xs">
+                  {[
+                    { id: 'FULL', label: 'کل دیتاست' },
+                    { id: 'CUSTOM', label: 'بازه سفارشی' },
+                    { id: 'FIRST_25', label: '۲۵٪ اول' },
+                    { id: 'MIDDLE_50', label: '۵۰٪ میانی' },
+                    { id: 'LAST_25', label: '۲۵٪ پایانی' },
+                    { id: 'ROLLING_3M', label: '۳ ماه اخیر' },
+                    { id: 'ROLLING_6M', label: '۶ ماه اخیر' },
+                    { id: 'ROLLING_12M', label: '۱۲ ماه اخیر' },
+                  ].map((m) => (
+                    <button
+                      key={m.id}
+                      onClick={() => setDateRangeMode(m.id as DateRangeMode)}
+                      className={`p-2 rounded-xl text-center font-bold text-xs transition-all ${
+                        dateRangeMode === m.id
+                          ? 'bg-purple-600 text-white shadow-md'
+                          : 'bg-[#1b2234] text-zinc-300 hover:bg-[#232c42]'
+                      }`}
+                    >
+                      {m.label}
+                    </button>
+                  ))}
+                </div>
+
+                {/* ورودی تاریخ سفارشی */}
+                {dateRangeMode === 'CUSTOM' && (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 text-xs">
+                    <div className="space-y-1">
+                      <span className="text-zinc-400">تاریخ شروع بازه ارزیابی (Start Date):</span>
+                      <input
+                        type="date"
+                        value={customStartDate}
+                        onChange={(e) => setCustomStartDate(e.target.value)}
+                        className="w-full bg-[#1b2234] border border-[#2d3a54] rounded-xl px-3 py-2 text-zinc-100 font-mono text-xs"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <span className="text-zinc-400">تاریخ پایان بازه ارزیابی (End Date):</span>
+                      <input
+                        type="date"
+                        value={customEndDate}
+                        onChange={(e) => setCustomEndDate(e.target.value)}
+                        className="w-full bg-[#1b2234] border border-[#2d3a54] rounded-xl px-3 py-2 text-zinc-100 font-mono text-xs"
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* گزارش اعتبارسنجی ساختار */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs bg-[#141926] p-4 rounded-2xl border border-[#232c40]">
                 <div className="space-y-1">
-                  <span className="text-zinc-500 block">تعداد کندل‌های معتبر:</span>
-                  <span className="font-bold font-mono text-emerald-400">
-                    {dataValidation.metrics?.validCandles?.toLocaleString('fa-IR') ?? candles.length.toLocaleString('fa-IR')} کندل
+                  <span className="text-zinc-500 block">تعداد سطرهای معتبر:</span>
+                  <span className="font-mono text-zinc-200 font-bold">
+                    {dataValidation.metrics?.validCandles?.toLocaleString('fa-IR') || '—'}
                   </span>
                 </div>
                 <div className="space-y-1">
-                  <span className="text-zinc-500 block">ردیف‌های ردشده / اصلاح‌شده:</span>
-                  <span className="font-bold font-mono text-amber-400">
-                    {dataValidation.metrics?.rejectedRows ?? 0} ردیف
+                  <span className="text-zinc-500 block">تایم‌فریم تشخیص داده‌شده:</span>
+                  <span className="font-mono text-cyan-400 font-bold">
+                    {dataValidation.metrics?.inferredTimeframe || selectedTimeframe}
                   </span>
                 </div>
                 <div className="space-y-1">
@@ -555,7 +796,7 @@ export default function ResearchPage() {
             </div>
           )}
 
-          {/* گام ۳: انتخاب استراتژی و پارامترها (دو سطح) */}
+          {/* گام ۳: انتخاب استراتژی و ممیزی پارامترها */}
           {currentStep === 3 && (
             <div className="space-y-5">
               <div>
@@ -657,10 +898,10 @@ export default function ResearchPage() {
                   </div>
                 </div>
 
-                {/* فرم پارامترهای مشترک */}
+                {/* فرم پارامترهای مشترک فعال */}
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
                   <div className="space-y-1">
-                    <span className="text-zinc-400 text-[11px]">جهت معامله (Direction):</span>
+                    <span className="text-zinc-400 text-[11px]">جهت معامله (Direction Mode):</span>
                     <select
                       value={strategyParams.common.directionMode}
                       onChange={(e) =>
@@ -701,7 +942,47 @@ export default function ResearchPage() {
                   </div>
 
                   <div className="space-y-1">
-                    <span className="text-zinc-400 text-[11px]">نسبت ریسک به ریوارد (R:R):</span>
+                    <span className="text-zinc-400 text-[11px]">انقضای سفارش لیمیت (کندل):</span>
+                    <input
+                      type="number"
+                      min="1"
+                      max="48"
+                      value={strategyParams.common.expiryBars}
+                      onChange={(e) =>
+                        setStrategyParams({
+                          ...strategyParams,
+                          common: {
+                            ...strategyParams.common,
+                            expiryBars: Number(e.target.value) || 6,
+                          },
+                        })
+                      }
+                      className="w-full bg-[#1b2234] border border-[#2d3a54] rounded-xl px-2.5 py-1.5 text-zinc-100 font-mono text-xs"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <span className="text-zinc-400 text-[11px]">خنک‌سازی سفارش (Cooldown Bars):</span>
+                    <input
+                      type="number"
+                      min="0"
+                      max="30"
+                      value={strategyParams.common.cooldownBars}
+                      onChange={(e) =>
+                        setStrategyParams({
+                          ...strategyParams,
+                          common: {
+                            ...strategyParams.common,
+                            cooldownBars: Number(e.target.value) || 0,
+                          },
+                        })
+                      }
+                      className="w-full bg-[#1b2234] border border-[#2d3a54] rounded-xl px-2.5 py-1.5 text-zinc-100 font-mono text-xs"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <span className="text-zinc-400 text-[11px]">نسبت سود به زیان (R:R):</span>
                     <input
                       type="number"
                       step="0.1"
@@ -722,196 +1003,100 @@ export default function ResearchPage() {
                   </div>
 
                   <div className="space-y-1">
-                    <span className="text-zinc-400 text-[11px]">مهلت انقضای سفارش (کندل):</span>
+                    <span className="text-zinc-400 text-[11px]">دوره محاسبه ATR:</span>
                     <input
                       type="number"
-                      min="1"
-                      max="48"
-                      value={strategyParams.common.expiryBars}
+                      min="5"
+                      max="50"
+                      value={strategyParams.common.atrPeriod}
                       onChange={(e) =>
                         setStrategyParams({
                           ...strategyParams,
                           common: {
                             ...strategyParams.common,
-                            expiryBars: Number(e.target.value) || 6,
+                            atrPeriod: Number(e.target.value) || 14,
                           },
                         })
                       }
                       className="w-full bg-[#1b2234] border border-[#2d3a54] rounded-xl px-2.5 py-1.5 text-zinc-100 font-mono text-xs"
                     />
                   </div>
+
+                  <div className="space-y-1">
+                    <span className="text-zinc-400 text-[11px]">ضریب حد ضرر (ATR Multiplier):</span>
+                    <input
+                      type="number"
+                      step="0.1"
+                      min="0.5"
+                      max="5"
+                      value={strategyParams.common.atrMultiplier}
+                      onChange={(e) =>
+                        setStrategyParams({
+                          ...strategyParams,
+                          common: {
+                            ...strategyParams.common,
+                            atrMultiplier: Number(e.target.value) || 1.5,
+                          },
+                        })
+                      }
+                      className="w-full bg-[#1b2234] border border-[#2d3a54] rounded-xl px-2.5 py-1.5 text-zinc-100 font-mono text-xs"
+                    />
+                  </div>
+
+                  {/* کنترل غیرفعال higherTimeframeFilter با برچسب شفاف */}
+                  <div className="space-y-1 opacity-50">
+                    <div className="flex items-center justify-between">
+                      <span className="text-zinc-400 text-[11px]">فیلتر تایم‌فریم بالاتر:</span>
+                      <span className="text-[9px] text-amber-400 font-bold bg-amber-500/10 px-1 py-0.5 rounded border border-amber-500/30">
+                        هنوز فعال نیست (پکیج ۲)
+                      </span>
+                    </div>
+                    <select
+                      disabled
+                      className="w-full bg-[#1b2234] border border-[#2d3a54] rounded-xl px-2.5 py-1.5 text-zinc-500 font-mono text-xs cursor-not-allowed"
+                    >
+                      <option>غیرفعال (مستلزم پکیج ۲ چندتایم‌فریمی)</option>
+                    </select>
+                  </div>
                 </div>
 
-                {/* پارامترهای اختصاصی وابسته به استراتژی انتخاب‌شده */}
-                <div className="pt-2 border-t border-[#1f2738]/60">
-                  <span className="text-[11px] font-bold text-zinc-400 block mb-2">
-                    پارامترهای فنی اختصاصی الگوریتم:
-                  </span>
+                {/* چک‌باکس‌های بریک‌ایون و خروج پله‌ای */}
+                <div className="flex flex-wrap items-center gap-4 pt-2 border-t border-[#1f2738] text-xs">
+                  <label className="flex items-center gap-2 cursor-pointer text-zinc-300">
+                    <input
+                      type="checkbox"
+                      checked={strategyParams.common.enableBreakeven}
+                      onChange={(e) =>
+                        setStrategyParams({
+                          ...strategyParams,
+                          common: {
+                            ...strategyParams.common,
+                            enableBreakeven: e.target.checked,
+                          },
+                        })
+                      }
+                      className="rounded border-[#2d3a54] bg-[#1b2234] text-purple-600 focus:ring-0"
+                    />
+                    <span>انتقال حد ضرر به نقطه ورود در سود ۱.۰R (Breakeven)</span>
+                  </label>
 
-                  {strategy === 'TREND_BREAKOUT' && (
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
-                      <div className="space-y-1">
-                        <span className="text-zinc-400 text-[11px]">دوره کانال شکست (Channel):</span>
-                        <input
-                          type="number"
-                          value={strategyParams.trendBreakout.channelPeriod}
-                          onChange={(e) =>
-                            setStrategyParams({
-                              ...strategyParams,
-                              trendBreakout: {
-                                ...strategyParams.trendBreakout,
-                                channelPeriod: Number(e.target.value) || 55,
-                              },
-                            })
-                          }
-                          className="w-full bg-[#1b2234] border border-[#2d3a54] rounded-xl px-2.5 py-1.5 text-zinc-100 font-mono text-xs"
-                        />
-                      </div>
-                      <div className="space-y-1">
-                        <span className="text-zinc-400 text-[11px]">دوره EMA فیلتر روند:</span>
-                        <input
-                          type="number"
-                          value={strategyParams.trendBreakout.slowEmaPeriod}
-                          onChange={(e) =>
-                            setStrategyParams({
-                              ...strategyParams,
-                              trendBreakout: {
-                                ...strategyParams.trendBreakout,
-                                slowEmaPeriod: Number(e.target.value) || 200,
-                              },
-                            })
-                          }
-                          className="w-full bg-[#1b2234] border border-[#2d3a54] rounded-xl px-2.5 py-1.5 text-zinc-100 font-mono text-xs"
-                        />
-                      </div>
-                    </div>
-                  )}
-
-                  {strategy === 'MEAN_REVERSION' && (
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
-                      <div className="space-y-1">
-                        <span className="text-zinc-400 text-[11px]">دوره محاسبه میانگین (Lookback):</span>
-                        <input
-                          type="number"
-                          value={strategyParams.meanReversion.lookbackPeriod}
-                          onChange={(e) =>
-                            setStrategyParams({
-                              ...strategyParams,
-                              meanReversion: {
-                                ...strategyParams.meanReversion,
-                                lookbackPeriod: Number(e.target.value) || 20,
-                              },
-                            })
-                          }
-                          className="w-full bg-[#1b2234] border border-[#2d3a54] rounded-xl px-2.5 py-1.5 text-zinc-100 font-mono text-xs"
-                        />
-                      </div>
-                      <div className="space-y-1">
-                        <span className="text-zinc-400 text-[11px]">آستانه Z-Score باند:</span>
-                        <input
-                          type="number"
-                          step="0.1"
-                          value={strategyParams.meanReversion.zScoreThreshold}
-                          onChange={(e) =>
-                            setStrategyParams({
-                              ...strategyParams,
-                              meanReversion: {
-                                ...strategyParams.meanReversion,
-                                zScoreThreshold: Number(e.target.value) || 2.0,
-                              },
-                            })
-                          }
-                          className="w-full bg-[#1b2234] border border-[#2d3a54] rounded-xl px-2.5 py-1.5 text-zinc-100 font-mono text-xs"
-                        />
-                      </div>
-                    </div>
-                  )}
-
-                  {strategy === 'SMC_INTRADAY' && (
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
-                      <div className="space-y-1">
-                        <span className="text-zinc-400 text-[11px]">تعداد پیوت‌های نقدینگی:</span>
-                        <input
-                          type="number"
-                          value={strategyParams.smc.liquidityLookback}
-                          onChange={(e) =>
-                            setStrategyParams({
-                              ...strategyParams,
-                              smc: {
-                                ...strategyParams.smc,
-                                liquidityLookback: Number(e.target.value) || 3,
-                              },
-                            })
-                          }
-                          className="w-full bg-[#1b2234] border border-[#2d3a54] rounded-xl px-2.5 py-1.5 text-zinc-100 font-mono text-xs"
-                        />
-                      </div>
-                      <div className="space-y-1">
-                        <span className="text-zinc-400 text-[11px]">ضریب فاصله حد ضرر (ATR Multiplier):</span>
-                        <input
-                          type="number"
-                          step="0.05"
-                          value={strategyParams.common.atrMultiplier}
-                          onChange={(e) =>
-                            setStrategyParams({
-                              ...strategyParams,
-                              common: {
-                                ...strategyParams.common,
-                                atrMultiplier: Number(e.target.value) || 0.3,
-                              },
-                            })
-                          }
-                          className="w-full bg-[#1b2234] border border-[#2d3a54] rounded-xl px-2.5 py-1.5 text-zinc-100 font-mono text-xs"
-                        />
-                      </div>
-                    </div>
-                  )}
-
-                  {strategy === 'SCALP_M1_M5' && (
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
-                      <div className="space-y-1">
-                        <span className="text-zinc-400 text-[11px]">حداقل نوسان مجاز (Min ATR):</span>
-                        <input
-                          type="number"
-                          step="0.0001"
-                          value={strategyParams.scalp.minAtr}
-                          onChange={(e) =>
-                            setStrategyParams({
-                              ...strategyParams,
-                              scalp: {
-                                ...strategyParams.scalp,
-                                minAtr: Number(e.target.value) || 0.0002,
-                              },
-                            })
-                          }
-                          className="w-full bg-[#1b2234] border border-[#2d3a54] rounded-xl px-2.5 py-1.5 text-zinc-100 font-mono text-xs"
-                        />
-                      </div>
-                    </div>
-                  )}
-
-                  {strategy === 'SWING_MACRO' && (
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
-                      <div className="space-y-1">
-                        <span className="text-zinc-400 text-[11px]">عمق پولبک (Pullback Depth):</span>
-                        <input
-                          type="number"
-                          step="0.1"
-                          value={strategyParams.swing.pullbackDepth}
-                          onChange={(e) =>
-                            setStrategyParams({
-                              ...strategyParams,
-                              swing: {
-                                ...strategyParams.swing,
-                                pullbackDepth: Number(e.target.value) || 1.5,
-                              },
-                            })
-                          }
-                          className="w-full bg-[#1b2234] border border-[#2d3a54] rounded-xl px-2.5 py-1.5 text-zinc-100 font-mono text-xs"
-                        />
-                      </div>
-                    </div>
-                  )}
+                  <label className="flex items-center gap-2 cursor-pointer text-zinc-300">
+                    <input
+                      type="checkbox"
+                      checked={strategyParams.common.enablePartialTakeProfit}
+                      onChange={(e) =>
+                        setStrategyParams({
+                          ...strategyParams,
+                          common: {
+                            ...strategyParams.common,
+                            enablePartialTakeProfit: e.target.checked,
+                          },
+                        })
+                      }
+                      className="rounded border-[#2d3a54] bg-[#1b2234] text-purple-600 focus:ring-0"
+                    />
+                    <span>خروج ۵۰٪ حجم در ۱.۲R (Partial Take Profit)</span>
+                  </label>
                 </div>
               </div>
 
@@ -926,119 +1111,482 @@ export default function ResearchPage() {
                   onClick={() => setCurrentStep(4)}
                   className="px-5 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold transition-all shadow-md"
                 >
-                  تنظیم هزینه و ریسک ←
+                  تنظیم حساب و سشن ←
                 </button>
               </div>
             </div>
           )}
 
-          {/* گام ۴: تنظیم هزینه و ریسک */}
+          {/* گام ۴: تنظیمات حساب، سشن و حدود ریسک */}
           {currentStep === 4 && (
             <div className="space-y-4">
               <div>
-                <h2 className="text-sm font-bold text-zinc-100">گام ۴: هزینه‌های معاملاتی، اسلیپیج و مدیریت ریسک</h2>
+                <h2 className="text-sm font-bold text-zinc-100">
+                  گام ۴: پیکربندی حساب آزمایشی، سشن معاملاتی، منطقه زمانی و حدود ریسک
+                </h2>
                 <p className="text-xs text-zinc-400 mt-1">
-                  پیش‌فرض‌های واقع‌گرایانه برای نماد {symbol} (عدم نادیده گرفتن اسپرد، کارمزد و اسلیپیج اجرای سفارش):
+                  مفروضات حساب معاملاتی، سشن‌های بازار، اهرم و سقف‌های ایمنی کنترل سرمایه:
                 </p>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-                <div className="bg-[#141926] p-4 rounded-2xl border border-[#232c40] space-y-2">
-                  <span className="text-xs text-zinc-400 block">اسپرد معمول (Spread):</span>
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="number"
-                      step="0.1"
-                      value={spreadPips}
-                      onChange={(e) => setSpreadPips(Number(e.target.value) || 0)}
-                      className="bg-[#1a2132] border border-[#28334a] rounded-xl px-3 py-1.5 text-xs text-zinc-100 font-mono w-24"
-                    />
-                    <span className="text-xs text-zinc-500">پیپ</span>
+              {/* ۱. کارت پیکربندی حساب (Account Configuration) */}
+              <div className="bg-[#141926] p-4 rounded-2xl border border-[#232c40] space-y-3">
+                <div className="flex items-center justify-between border-b border-[#1f2738] pb-2">
+                  <span className="text-xs font-bold text-purple-300 flex items-center gap-2">
+                    <DollarSign className="w-4 h-4" />
+                    <span>پیکربندی حساب (Account Configuration):</span>
+                  </span>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[11px] text-zinc-400">واحد حساب:</span>
+                    {(['USD', 'AUD'] as AccountCurrency[]).map((curr) => (
+                      <button
+                        key={curr}
+                        onClick={() => setAccountCurrency(curr)}
+                        className={`px-2 py-0.5 rounded text-[10px] font-bold transition-all ${
+                          accountCurrency === curr
+                            ? 'bg-purple-600 text-white shadow-sm'
+                            : 'bg-[#1b2234] text-zinc-400 hover:text-zinc-200'
+                        }`}
+                      >
+                        {curr}
+                      </button>
+                    ))}
                   </div>
                 </div>
 
-                <div className="bg-[#141926] p-4 rounded-2xl border border-[#232c40] space-y-2">
-                  <span className="text-xs text-zinc-400 block">کارمزد رفت‌وبرگشت (Commission):</span>
-                  <div className="flex items-center gap-2">
+                {accountCurrency === 'AUD' && (
+                  <div className="p-2.5 bg-amber-500/10 border border-amber-500/20 rounded-xl text-[11px] text-amber-300 flex items-center gap-1.5">
+                    <Info className="w-3.5 h-3.5 shrink-0" />
+                    <span>توجه: در این مرحله ارز AUD صرفاً واحد نام‌گذاری حساب است و محاسبات بدون نرخ تبدیل متقاطع ارزی زنده انجام می‌شود.</span>
+                  </div>
+                )}
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
+                  {/* سرمایه اولیه و پریست‌ها */}
+                  <div className="space-y-1.5">
+                    <span className="text-zinc-400 text-[11px] block">سرمایه اولیه ({currencySymbol}):</span>
                     <input
                       type="number"
-                      step="0.5"
-                      value={commissionPerLot}
-                      onChange={(e) => setCommissionPerLot(Number(e.target.value) || 0)}
-                      className="bg-[#1a2132] border border-[#28334a] rounded-xl px-3 py-1.5 text-xs text-zinc-100 font-mono w-24"
+                      min="100"
+                      max="10000000"
+                      step="100"
+                      value={initialCapital}
+                      onChange={(e) => setInitialCapital(Number(e.target.value) || 10000)}
+                      className="w-full bg-[#1b2234] border border-[#2d3a54] rounded-xl px-2.5 py-1.5 text-zinc-100 font-mono text-xs"
                     />
-                    <span className="text-xs text-zinc-500">دلار در هر لات</span>
-                  </div>
-                </div>
-
-                <div className="bg-[#141926] p-4 rounded-2xl border border-[#232c40] space-y-2">
-                  <span className="text-xs text-zinc-400 block">اسلیپیج اضافی اجرا (Slippage):</span>
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="number"
-                      step="0.1"
-                      min="0"
-                      max="10"
-                      value={additionalSlippagePips}
-                      onChange={(e) => setAdditionalSlippagePips(Number(e.target.value) || 0)}
-                      className="bg-[#1a2132] border border-[#28334a] rounded-xl px-3 py-1.5 text-xs text-zinc-100 font-mono w-24"
-                    />
-                    <span className="text-xs text-zinc-500">پیپ</span>
-                  </div>
-                </div>
-
-                <div className="bg-[#141926] p-4 rounded-2xl border border-[#232c40] space-y-2">
-                  <span className="text-xs text-zinc-400 block">سقف ریسک هر معامله:</span>
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs font-bold text-cyan-400 font-mono">{riskPercent}%</span>
-                    <div className="flex items-center gap-1">
-                      {[0.1, 0.25, 0.5, 1.0].map((r) => (
+                    <div className="flex flex-wrap gap-1">
+                      {[1000, 5000, 10000, 25000, 50000].map((cap) => (
                         <button
-                          key={r}
-                          onClick={() => setRiskPercent(r)}
-                          className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold ${
-                            riskPercent === r ? 'bg-cyan-500 text-black' : 'bg-[#1a2132] text-zinc-400'
+                          key={cap}
+                          onClick={() => setInitialCapital(cap)}
+                          className={`px-1.5 py-0.5 rounded text-[9px] font-mono ${
+                            initialCapital === cap
+                              ? 'bg-purple-600 text-white font-bold'
+                              : 'bg-[#1a2132] text-zinc-400 hover:text-zinc-200'
                           }`}
                         >
-                          {r}%
+                          ${(cap / 1000).toFixed(0)}k
                         </button>
                       ))}
                     </div>
                   </div>
+
+                  {/* اهرم حساب (Leverage) */}
+                  <div className="space-y-1.5">
+                    <span className="text-zinc-400 text-[11px] block">اهرم معاملاتی (Leverage):</span>
+                    <div className="flex items-center gap-1">
+                      {([1, 10, 30, 50, 100] as const).map((lev) => (
+                        <button
+                          key={lev}
+                          onClick={() => setLeverage(lev)}
+                          className={`px-2 py-1 rounded-lg text-[10px] font-mono font-bold transition-all ${
+                            leverage === lev
+                              ? 'bg-cyan-600 text-white shadow-sm'
+                              : 'bg-[#1a2132] text-zinc-400 hover:text-zinc-200'
+                          }`}
+                        >
+                          1:{lev}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* سقف معاملات همزمان */}
+                  <div className="space-y-1.5">
+                    <span className="text-zinc-400 text-[11px] block">سقف معاملات همزمان:</span>
+                    <input
+                      type="number"
+                      min="1"
+                      max="20"
+                      value={maxConcurrentPositions}
+                      onChange={(e) => setMaxConcurrentPositions(Number(e.target.value) || 3)}
+                      className="w-full bg-[#1b2234] border border-[#2d3a54] rounded-xl px-2.5 py-1.5 text-zinc-100 font-mono text-xs"
+                    />
+                  </div>
+
+                  {/* قوانین لات (Lot Step & Min/Max Lot) */}
+                  <div className="space-y-1.5">
+                    <span className="text-zinc-400 text-[11px] block">حداقل / گام / حداکثر لات:</span>
+                    <div className="grid grid-cols-3 gap-1">
+                      <input
+                        type="number"
+                        step="0.01"
+                        min="0.01"
+                        value={minLot}
+                        onChange={(e) => setMinLot(Number(e.target.value) || 0.01)}
+                        title="Min Lot"
+                        className="bg-[#1b2234] border border-[#2d3a54] rounded-xl px-1.5 py-1.5 text-center text-zinc-100 font-mono text-[11px]"
+                      />
+                      <input
+                        type="number"
+                        step="0.01"
+                        min="0.001"
+                        value={lotStep}
+                        onChange={(e) => setLotStep(Number(e.target.value) || 0.01)}
+                        title="Lot Step"
+                        className="bg-[#1b2234] border border-[#2d3a54] rounded-xl px-1.5 py-1.5 text-center text-zinc-100 font-mono text-[11px]"
+                      />
+                      <input
+                        type="number"
+                        step="1"
+                        min="1"
+                        value={maxLot}
+                        onChange={(e) => setMaxLot(Number(e.target.value) || 10)}
+                        title="Max Lot"
+                        className="bg-[#1b2234] border border-[#2d3a54] rounded-xl px-1.5 py-1.5 text-center text-zinc-100 font-mono text-[11px]"
+                      />
+                    </div>
+                  </div>
                 </div>
               </div>
 
-              {/* سیاست پایان دیتاست */}
-              <div className="bg-[#141926] p-4 rounded-2xl border border-[#232c40] space-y-2">
-                <span className="text-xs font-bold text-zinc-300 block">سیاست پایان دیتاست (End of Data Policy):</span>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
-                  <button
-                    onClick={() => setEndOfDataPolicy('CLOSE_AT_LAST_CLOSE')}
-                    className={`p-3 rounded-xl border text-right transition-all ${
-                      endOfDataPolicy === 'CLOSE_AT_LAST_CLOSE'
-                        ? 'bg-purple-600/20 border-purple-500 ring-1 ring-purple-500 text-white'
-                        : 'bg-[#1a2132] border-[#29354d] text-zinc-400'
-                    }`}
-                  >
-                    <div className="font-bold mb-0.5">بستن در کلوز آخرین کندل (پیش‌فرض Research)</div>
-                    <div className="text-[10px] text-zinc-400">
-                      تمام پوزیشن‌های باز در پایان داده با قیمت کلوز و دلیل END_OF_DATA بسته شده و در آمار سود/زیان نهایی ثبت می‌شوند.
-                    </div>
-                  </button>
+              {/* ۲. کارت بازه تاریخی و وارم‌آپ (Date Range & Warmup) */}
+              <div className="bg-[#141926] p-4 rounded-2xl border border-[#232c40] space-y-3">
+                <div className="flex items-center justify-between border-b border-[#1f2738] pb-2">
+                  <span className="text-xs font-bold text-emerald-300 flex items-center gap-2">
+                    <Calendar className="w-4 h-4" />
+                    <span>مدیریت بازه تاریخی و حفظ وارم‌آپ (Date Range & Warmup):</span>
+                  </span>
+                  <span className="text-[11px] text-zinc-400 font-mono">
+                    حالت فعلی: <strong className="text-emerald-400">{dateRangeMode}</strong>
+                  </span>
+                </div>
 
-                  <button
-                    onClick={() => setEndOfDataPolicy('KEEP_OPEN_AND_EXCLUDE')}
-                    className={`p-3 rounded-xl border text-right transition-all ${
-                      endOfDataPolicy === 'KEEP_OPEN_AND_EXCLUDE'
-                        ? 'bg-purple-600/20 border-purple-500 ring-1 ring-purple-500 text-white'
-                        : 'bg-[#1a2132] border-[#29354d] text-zinc-400'
-                    }`}
-                  >
-                    <div className="font-bold mb-0.5">حفظ موقعیت‌های باز و مستثنی کردن</div>
-                    <div className="text-[10px] text-zinc-400">
-                      پوزیشن‌های باز در انتهای داده دست‌نخورده مانده و تنها در بخش دیاگنوستیک گزارش می‌شوند.
+                {/* بنر ۶ آمار صادقانه تاریخ و وارم‌آپ */}
+                {dateRangeStats && (
+                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 bg-[#1b2234] p-3 rounded-xl border border-[#2d3a54] text-[11px]">
+                    <div className="space-y-0.5">
+                      <span className="text-zinc-500 block text-[10px]">۱. شروع کل دیتاست:</span>
+                      <span className="font-mono text-zinc-300 font-bold">
+                        {new Date(dateRangeStats.earliest).toLocaleDateString('fa-IR')}
+                      </span>
                     </div>
-                  </button>
+                    <div className="space-y-0.5">
+                      <span className="text-zinc-500 block text-[10px]">۲. پایان کل دیتاست:</span>
+                      <span className="font-mono text-zinc-300 font-bold">
+                        {new Date(dateRangeStats.latest).toLocaleDateString('fa-IR')}
+                      </span>
+                    </div>
+                    <div className="space-y-0.5">
+                      <span className="text-zinc-500 block text-[10px]">۳. کل کندل‌های در دسترس:</span>
+                      <span className="font-mono text-purple-300 font-bold">
+                        {dateRangeStats.total.toLocaleString('fa-IR')} کندل
+                      </span>
+                    </div>
+                    <div className="space-y-0.5">
+                      <span className="text-zinc-500 block text-[10px]">۴. تاریخ شروع انتخابی:</span>
+                      <span className="font-mono text-emerald-300 font-bold">
+                        {new Date(dateRangeStats.selStart).toLocaleDateString('fa-IR')}
+                      </span>
+                    </div>
+                    <div className="space-y-0.5">
+                      <span className="text-zinc-500 block text-[10px]">۵. تاریخ پایان انتخابی:</span>
+                      <span className="font-mono text-emerald-300 font-bold">
+                        {new Date(dateRangeStats.selEnd).toLocaleDateString('fa-IR')}
+                      </span>
+                    </div>
+                    <div className="space-y-0.5">
+                      <span className="text-zinc-500 block text-[10px]">۶. کندل ارزیابی / وارم‌آپ:</span>
+                      <span className="font-mono text-cyan-300 font-bold">
+                        {dateRangeStats.evalCount.toLocaleString('fa-IR')} ارزیابی / {dateRangeStats.warmupCount.toLocaleString('fa-IR')} وارم‌آپ
+                      </span>
+                    </div>
+                  </div>
+                )}
+
+                {/* سلکتور ۸ حالت انتخاب بازه */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 text-xs pt-1">
+                  <div className="space-y-1">
+                    <span className="text-zinc-400 text-[11px] block">حالت انتخاب بازه زمانی:</span>
+                    <select
+                      value={dateRangeMode}
+                      onChange={(e) => setDateRangeMode(e.target.value as DateRangeMode)}
+                      className="w-full bg-[#1b2234] border border-[#2d3a54] rounded-xl px-2.5 py-1.5 text-zinc-100 text-xs"
+                    >
+                      <option value="FULL">کل داده‌ها (Full Range)</option>
+                      <option value="FIRST_25">۲۵٪ ابتدای داده‌ها (First 25%)</option>
+                      <option value="MIDDLE_50">۵۰٪ میانی داده‌ها (Middle 50%)</option>
+                      <option value="LAST_25">۲۵٪ انتهای داده‌ها (Last 25%)</option>
+                      <option value="ROLLING_3M">۳ ماه اخیر (Rolling 3 Months)</option>
+                      <option value="ROLLING_6M">۶ ماه اخیر (Rolling 6 Months)</option>
+                      <option value="ROLLING_12M">۱۲ ماه اخیر (Rolling 12 Months)</option>
+                      <option value="CUSTOM">بازه سفارشی دستی (Custom Date Range)</option>
+                    </select>
+                  </div>
+
+                  {dateRangeMode === 'CUSTOM' && (
+                    <>
+                      <div className="space-y-1">
+                        <span className="text-zinc-400 text-[11px] block">تاریخ شروع (میلادی):</span>
+                        <input
+                          type="date"
+                          value={customStartDate}
+                          onChange={(e) => setCustomStartDate(e.target.value)}
+                          className="w-full bg-[#1b2234] border border-[#2d3a54] rounded-xl px-2.5 py-1.5 text-zinc-100 font-mono text-xs"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <span className="text-zinc-400 text-[11px] block">تاریخ پایان (میلادی):</span>
+                        <input
+                          type="date"
+                          value={customEndDate}
+                          onChange={(e) => setCustomEndDate(e.target.value)}
+                          className="w-full bg-[#1b2234] border border-[#2d3a54] rounded-xl px-2.5 py-1.5 text-zinc-100 font-mono text-xs"
+                        />
+                      </div>
+                    </>
+                  )}
+                </div>
+
+                <div className="p-2.5 bg-emerald-500/10 border border-emerald-500/20 rounded-xl text-[11px] text-emerald-300 flex items-center gap-1.5">
+                  <Info className="w-3.5 h-3.5 shrink-0" />
+                  <span>اصل وارم‌آپ امن: کندل‌های قبل از تاریخ شروع حذف فیزیکی نمی‌شوند تا اندیکاتورها از قبل پایدار باشند، ولی هیچ معامله‌ای قبل از شروع ثبت نمی‌شود.</span>
+                </div>
+              </div>
+
+              {/* ۳. کارت سشن‌های معاملاتی و منطقه زمانی (Session & Timezone) */}
+              <div className="bg-[#141926] p-4 rounded-2xl border border-[#232c40] space-y-3">
+                <div className="flex items-center gap-2 border-b border-[#1f2738] pb-2 text-xs font-bold text-cyan-300">
+                  <Clock className="w-4 h-4" />
+                  <span>فیلتر سشن معاملاتی و منطقه زمانی (Session & IANA Timezone):</span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 text-xs">
+                  <div className="space-y-1">
+                    <span className="text-zinc-400 text-[11px]">سشن معاملاتی ورودی (Entry Session):</span>
+                    <select
+                      value={sessionFilter}
+                      onChange={(e) => setSessionFilter(e.target.value as SessionFilter)}
+                      className="w-full bg-[#1b2234] border border-[#2d3a54] rounded-xl px-2.5 py-1.5 text-zinc-100 text-xs"
+                    >
+                      <option value="ALL">همه سشن‌ها (۲۴ ساعته)</option>
+                      <option value="LONDON">سشن لندن (London 08:00 - 16:30)</option>
+                      <option value="NEW_YORK">سشن نیویورک (New York 08:00 - 17:00)</option>
+                      <option value="LONDON_NEW_YORK_OVERLAP">هم‌پوشانی طلایی لندن و نیویورک (Overlap)</option>
+                      <option value="ASIAN">سشن توکیو و آسیا (Asian 00:00 - 09:00 UTC)</option>
+                      <option value="CUSTOM">سشن سفارشی (Custom Hours)</option>
+                    </select>
+                  </div>
+
+                  <div className="space-y-1">
+                    <span className="text-zinc-400 text-[11px]">منطقه زمانی با مدیریت DST:</span>
+                    <select
+                      value={timezone}
+                      onChange={(e) => setTimezone(e.target.value as TimezoneOption)}
+                      className="w-full bg-[#1b2234] border border-[#2d3a54] rounded-xl px-2.5 py-1.5 text-zinc-100 text-xs font-mono"
+                    >
+                      <option value="UTC">UTC (ساعت هماهنگ جهانی)</option>
+                      <option value="Europe/London">Europe/London (لندن با DST پویا)</option>
+                      <option value="America/New_York">America/New_York (نیویورک با DST پویا)</option>
+                      <option value="Australia/Sydney">Australia/Sydney (سیدنی با DST پویا)</option>
+                      <option value="BROKER_FIXED">Broker Fixed Offset (UTC+2 / UTC+3)</option>
+                    </select>
+                  </div>
+
+                  {sessionFilter === 'CUSTOM' && (
+                    <div className="space-y-1">
+                      <span className="text-zinc-400 text-[11px]">ساعت شروع و پایان سفارشی:</span>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="time"
+                          value={customStartTime}
+                          onChange={(e) => setCustomStartTime(e.target.value)}
+                          className="w-full bg-[#1b2234] border border-[#2d3a54] rounded-xl px-2 py-1 text-zinc-100 font-mono text-xs"
+                        />
+                        <span className="text-zinc-500">تا</span>
+                        <input
+                          type="time"
+                          value={customEndTime}
+                          onChange={(e) => setCustomEndTime(e.target.value)}
+                          className="w-full bg-[#1b2234] border border-[#2d3a54] rounded-xl px-2 py-1 text-zinc-100 font-mono text-xs"
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* روزهای هفته و بلک‌اوت */}
+                <div className="flex flex-wrap items-center justify-between gap-4 pt-2 border-t border-[#1f2738] text-xs">
+                  <div className="flex items-center gap-2">
+                    <span className="text-zinc-400 text-[11px]">روزهای مجاز:</span>
+                    {[
+                      { day: 1, name: 'دوشنبه' },
+                      { day: 2, name: 'سه‌شنبه' },
+                      { day: 3, name: 'چهارشنبه' },
+                      { day: 4, name: 'پنج‌شنبه' },
+                      { day: 5, name: 'جمعه' },
+                    ].map((d) => {
+                      const isSelected = selectedWeekdays.includes(d.day);
+                      return (
+                        <button
+                          key={d.day}
+                          onClick={() => {
+                            setSelectedWeekdays(
+                              isSelected
+                                ? selectedWeekdays.filter((x) => x !== d.day)
+                                : [...selectedWeekdays, d.day].sort()
+                            );
+                          }}
+                          className={`px-2 py-1 rounded-lg text-[10px] font-bold transition-all ${
+                            isSelected
+                              ? 'bg-purple-600 text-white shadow-sm'
+                              : 'bg-[#1b2234] text-zinc-500'
+                          }`}
+                        >
+                          {d.name}
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  <div className="flex items-center gap-4">
+                    <label className="flex items-center gap-1.5 cursor-pointer text-zinc-300">
+                      <input
+                        type="checkbox"
+                        checked={useRolloverBlackout}
+                        onChange={(e) => setUseRolloverBlackout(e.target.checked)}
+                        className="rounded border-[#2d3a54] bg-[#1b2234] text-purple-600 focus:ring-0"
+                      />
+                      <span>بلک‌اوت رول‌اور (۲۱:۵۵ تا ۲۲:۱۵ UTC)</span>
+                    </label>
+
+                    <div className="flex items-center gap-1">
+                      <span className="text-zinc-400 text-[11px]">حذف لبه سشن:</span>
+                      <select
+                        value={excludeEdgeMinutes}
+                        onChange={(e) => setExcludeEdgeMinutes(Number(e.target.value) || 0)}
+                        className="bg-[#1b2234] border border-[#2d3a54] rounded-lg px-2 py-0.5 text-zinc-100 text-xs font-mono"
+                      >
+                        <option value={0}>غیرفعال (۰ دقیقه)</option>
+                        <option value={15}>۱۵ دقیقه اول/آخر</option>
+                        <option value={30}>۳۰ دقیقه اول/آخر</option>
+                      </select>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* ۳. کارت هزینه‌های معاملاتی و حدود ریسک */}
+              <div className="bg-[#141926] p-4 rounded-2xl border border-[#232c40] space-y-3">
+                <div className="flex items-center gap-2 border-b border-[#1f2738] pb-2 text-xs font-bold text-amber-300">
+                  <ShieldAlert className="w-4 h-4" />
+                  <span>حدود ریسک، سقف زیان روزانه و هزینه‌های بروکر:</span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
+                  <div className="space-y-1">
+                    <span className="text-zinc-400 text-[11px] block">سقف زیان روزانه (Max Daily Loss):</span>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="number"
+                        step="0.5"
+                        min="0"
+                        max="20"
+                        value={maxDailyLossPercent}
+                        onChange={(e) => setMaxDailyLossPercent(Number(e.target.value) || 0)}
+                        className="bg-[#1b2234] border border-[#2d3a54] rounded-xl px-2.5 py-1.5 text-zinc-100 font-mono text-xs w-24"
+                      />
+                      <span className="text-zinc-500">٪</span>
+                    </div>
+                  </div>
+
+                  <div className="space-y-1">
+                    <span className="text-zinc-400 text-[11px] block">سقف افت کل سرمایه (Max DD Limit):</span>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="number"
+                        step="0.5"
+                        min="0"
+                        max="50"
+                        value={maxTotalDrawdownPercent}
+                        onChange={(e) => setMaxTotalDrawdownPercent(Number(e.target.value) || 0)}
+                        className="bg-[#1b2234] border border-[#2d3a54] rounded-xl px-2.5 py-1.5 text-zinc-100 font-mono text-xs w-24"
+                      />
+                      <span className="text-zinc-500">٪</span>
+                    </div>
+                  </div>
+
+                  <div className="space-y-1">
+                    <span className="text-zinc-400 text-[11px] block">اسپرد معمول (Spread):</span>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="number"
+                        step="0.1"
+                        value={spreadPips}
+                        onChange={(e) => setSpreadPips(Number(e.target.value) || 0)}
+                        className="bg-[#1b2234] border border-[#2d3a54] rounded-xl px-2.5 py-1.5 text-zinc-100 font-mono text-xs w-24"
+                      />
+                      <span className="text-zinc-500">پیپ</span>
+                    </div>
+                  </div>
+
+                  <div className="space-y-1">
+                    <span className="text-zinc-400 text-[11px] block">کارمزد هر لات:</span>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="number"
+                        step="0.5"
+                        value={commissionPerLot}
+                        onChange={(e) => setCommissionPerLot(Number(e.target.value) || 0)}
+                        className="bg-[#1b2234] border border-[#2d3a54] rounded-xl px-2.5 py-1.5 text-zinc-100 font-mono text-xs w-24"
+                      />
+                      <span className="text-zinc-500">دلار/لات</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* سیاست پایان دیتاست */}
+                <div className="pt-2 border-t border-[#1f2738] space-y-2 text-xs">
+                  <span className="text-xs font-bold text-zinc-300 block">سیاست پایان دیتاست (End of Data Policy):</span>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <button
+                      onClick={() => setEndOfDataPolicy('CLOSE_AT_LAST_CLOSE')}
+                      className={`p-3 rounded-xl border text-right transition-all ${
+                        endOfDataPolicy === 'CLOSE_AT_LAST_CLOSE'
+                          ? 'bg-purple-600/20 border-purple-500 ring-1 ring-purple-500 text-white'
+                          : 'bg-[#1a2132] border-[#29354d] text-zinc-400'
+                      }`}
+                    >
+                      <div className="font-bold mb-0.5">بستن در کلوز آخرین کندل (پیش‌فرض Research)</div>
+                      <div className="text-[10px] text-zinc-400">
+                        تمام پوزیشن‌های باز در پایان داده با قیمت کلوز و دلیل END_OF_DATA بسته شده و در آمار نهایی ثبت می‌شوند.
+                      </div>
+                    </button>
+
+                    <button
+                      onClick={() => setEndOfDataPolicy('KEEP_OPEN_AND_EXCLUDE')}
+                      className={`p-3 rounded-xl border text-right transition-all ${
+                        endOfDataPolicy === 'KEEP_OPEN_AND_EXCLUDE'
+                          ? 'bg-purple-600/20 border-purple-500 ring-1 ring-purple-500 text-white'
+                          : 'bg-[#1a2132] border-[#29354d] text-zinc-400'
+                      }`}
+                    >
+                      <div className="font-bold mb-0.5">حفظ موقعیت‌های باز و مستثنی کردن</div>
+                      <div className="text-[10px] text-zinc-400">
+                        پوزیشن‌های باز در انتهای داده دست‌نخورده مانده و تنها در بخش دیاگنوستیک گزارش می‌شوند.
+                      </div>
+                    </button>
+                  </div>
                 </div>
               </div>
 
@@ -1067,8 +1615,8 @@ export default function ResearchPage() {
               </div>
               <div className="space-y-1">
                 <h2 className="text-base font-bold text-zinc-100">آماده اجرای آزمایش بک‌تست تاریخی</h2>
-                <p className="text-xs text-zinc-400 max-w-lg mx-auto leading-relaxed">
-                  تست استراتژی «{TRADING_STYLES_CONFIG[strategy]?.nameFa || strategy}» بر روی {candles.length.toLocaleString('fa-IR')} کندل {symbol} در تایم‌فریم {selectedTimeframe}، با اسپرد {spreadPips} پیپ، کارمزد ${commissionPerLot} و ریسک {riskPercent}٪.
+                <p className="text-xs text-zinc-400 max-w-xl mx-auto leading-relaxed">
+                  تست استراتژی «{TRADING_STYLES_CONFIG[strategy]?.nameFa || strategy}» با سرمایه اولیه {currencySymbol}{initialCapital.toLocaleString('en-US')}، سشن «{sessionFilter}» در تایم‌زون {timezone} بر روی {dateRangeStats?.evalCount.toLocaleString('fa-IR')} کندل {symbol} ({selectedTimeframe}).
                 </p>
               </div>
 
@@ -1123,7 +1671,7 @@ export default function ResearchPage() {
             </div>
           )}
 
-          {/* گام ۶: توضیح و تفسیر نتایج */}
+          {/* گام ۶: توضیح و تفسیر نتایج و دیاگنوستیک کامل */}
           {currentStep === 6 && backtestResult && (
             <div className="space-y-5">
               <div className="flex items-center justify-between border-b border-[#1b2234] pb-3">
@@ -1132,7 +1680,7 @@ export default function ResearchPage() {
                     گام ۶: نتیجه و تفسیر عملکرد استراتژی ({symbol} / {selectedTimeframe})
                   </h2>
                   <p className="text-xs text-zinc-400 mt-0.5">
-                    خلاصه شفاف از عملکرد استراتژی در گذشته با احتساب دقیق هزینه‌ها و سیاست پایان داده:
+                    سرمایه آغازین: {currencySymbol}{initialCapital.toLocaleString('en-US')} | سشن: {sessionFilter} | تایم‌زون: {timezone}
                   </p>
                 </div>
                 <button
@@ -1155,16 +1703,16 @@ export default function ResearchPage() {
                       'هیچ معاملهٔ بسته‌شده‌ای در طول بازهٔ آزمایشی ثبت نشد.'}
                   </p>
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-2 text-[11px] text-zinc-400 border-t border-amber-500/20">
-                    <div>کاندیداهای شناسایی‌شده: <strong className="text-zinc-200 font-mono">{backtestResult.diagnostics?.candidatesCount ?? 0}</strong></div>
-                    <div>سفارش‌های ارسالی: <strong className="text-zinc-200 font-mono">{backtestResult.diagnostics?.ordersSubmitted ?? 0}</strong></div>
-                    <div>سفارش‌های منقضی‌شده: <strong className="text-zinc-200 font-mono">{backtestResult.diagnostics?.ordersExpired ?? 0}</strong></div>
-                    <div>سفارش‌های لغوشده پایان داده: <strong className="text-zinc-200 font-mono">{backtestResult.diagnostics?.ordersCancelledAtEnd ?? 0}</strong></div>
+                    <div>کاندیداها در سشن: <strong className="text-zinc-200 font-mono">{backtestResult.diagnostics?.candidatesInsideSession ?? 0}</strong></div>
+                    <div>رد خارج از سشن: <strong className="text-zinc-200 font-mono">{backtestResult.diagnostics?.candidatesRejectedOutsideSession ?? 0}</strong></div>
+                    <div>رد سقف زیان روزانه: <strong className="text-zinc-200 font-mono">{backtestResult.diagnostics?.ordersRejectedByDailyLoss ?? 0}</strong></div>
+                    <div>رد سقف افت: <strong className="text-zinc-200 font-mono">{backtestResult.diagnostics?.ordersRejectedByDrawdownLimit ?? 0}</strong></div>
                   </div>
                 </div>
               )}
 
-              {/* کارت‌های شاخص‌های کلیدی عملکرد */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-center">
+              {/* کارت‌های شاخص‌های کلیدی عملکرد با موجودی آغازین و نهایی */}
+              <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 text-center">
                 <div className="bg-[#141926] p-3.5 rounded-2xl border border-[#232c40]">
                   <span className="text-[11px] text-zinc-500 block">سود/زیان خالص کل:</span>
                   <span
@@ -1172,20 +1720,34 @@ export default function ResearchPage() {
                       backtestResult.netProfit >= 0 ? 'text-emerald-400' : 'text-rose-400'
                     }`}
                   >
-                    ${backtestResult.netProfit.toLocaleString('en-US', {
+                    {currencySymbol}{backtestResult.netProfit.toLocaleString('en-US', {
                       minimumFractionDigits: 1,
                       maximumFractionDigits: 1,
-                    })}
+                    })}{' '}
+                    <span className="text-xs">({backtestResult.netProfitPercent}٪)</span>
                   </span>
-                  <span className="text-[10px] text-zinc-500 block mt-0.5">با کسر کامل کارمزد و اسپرد</span>
+                  <span className="text-[10px] text-zinc-500 block mt-0.5">بازدهی نسبت به سرمایه آغازین</span>
                 </div>
 
                 <div className="bg-[#141926] p-3.5 rounded-2xl border border-[#232c40]">
-                  <span className="text-[11px] text-zinc-500 block">حداکثر افت سرمایه (Drawdown):</span>
+                  <span className="text-[11px] text-zinc-500 block">موجودی / اکوئیتی نهایی:</span>
+                  <span className="text-base font-bold text-zinc-100 font-mono mt-1 block">
+                    {currencySymbol}{backtestResult.diagnostics?.finalEquity?.toLocaleString('en-US', {
+                      minimumFractionDigits: 1,
+                      maximumFractionDigits: 1,
+                    }) || `${currencySymbol}${initialCapital}`}
+                  </span>
+                  <span className="text-[10px] text-zinc-500 block mt-0.5">
+                    آغازین: {currencySymbol}{initialCapital.toLocaleString('en-US')}
+                  </span>
+                </div>
+
+                <div className="bg-[#141926] p-3.5 rounded-2xl border border-[#232c40]">
+                  <span className="text-[11px] text-zinc-500 block">حداکثر افت (Drawdown):</span>
                   <span className="text-base font-bold text-amber-400 font-mono mt-1 block">
                     {backtestResult.maxDrawdownPercent}%
                   </span>
-                  <span className="text-[10px] text-zinc-500 block mt-0.5">بزرگ‌ترین کاهش موجودی از اوج</span>
+                  <span className="text-[10px] text-zinc-500 block mt-0.5">بزرگ‌ترین افت از اوج سرمایه</span>
                 </div>
 
                 <div className="bg-[#141926] p-3.5 rounded-2xl border border-[#232c40]">
@@ -1201,7 +1763,61 @@ export default function ResearchPage() {
                   <span className="text-base font-bold text-cyan-400 font-mono mt-1 block">
                     {backtestResult.profitFactor}
                   </span>
-                  <span className="text-[10px] text-zinc-500 block mt-0.5">نسبت مجموع سود به مجموع زیان</span>
+                  <span className="text-[10px] text-zinc-500 block mt-0.5">نسبت سود به زیان ناخالص</span>
+                </div>
+              </div>
+
+              {/* گزارش عملکرد بر حسب سشن معاملاتی و روز هفته */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                {/* تفکیک سشن */}
+                <div className="bg-[#141926] p-4 rounded-2xl border border-[#232c40] space-y-2">
+                  <span className="font-bold text-zinc-300 block border-b border-[#1f2738] pb-1.5">
+                    عملکرد تفکیکی بر حسب سشن معاملاتی:
+                  </span>
+                  <div className="space-y-1 font-mono text-[11px]">
+                    {Object.entries(backtestResult.diagnostics?.tradesBySession || {}).length === 0 ? (
+                      <span className="text-zinc-500">معامله‌ای برای تفکیک وجود ندارد.</span>
+                    ) : (
+                      Object.entries(backtestResult.diagnostics?.tradesBySession || {}).map(([sess, count]) => {
+                        const pnl = backtestResult.diagnostics?.profitBySession?.[sess] || 0;
+                        return (
+                          <div key={sess} className="flex items-center justify-between py-1 border-b border-[#1b2234]">
+                            <span className="text-zinc-400">{sess}:</span>
+                            <div className="flex items-center gap-3">
+                              <span className="text-zinc-300">{count} معامله</span>
+                              <span className={pnl >= 0 ? 'text-emerald-400 font-bold' : 'text-rose-400 font-bold'}>
+                                {currencySymbol}{pnl.toLocaleString('en-US', { minimumFractionDigits: 1 })}
+                              </span>
+                            </div>
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+                </div>
+
+                {/* تفکیک روز هفته */}
+                <div className="bg-[#141926] p-4 rounded-2xl border border-[#232c40] space-y-2">
+                  <span className="font-bold text-zinc-300 block border-b border-[#1f2738] pb-1.5">
+                    عملکرد تفکیکی بر حسب روز هفته ({timezone}):
+                  </span>
+                  <div className="space-y-1 font-mono text-[11px]">
+                    {['Mon', 'Tue', 'Wed', 'Thu', 'Fri'].map((day) => {
+                      const count = backtestResult.diagnostics?.tradesByWeekday?.[day] || 0;
+                      const pnl = backtestResult.diagnostics?.profitByWeekday?.[day] || 0;
+                      return (
+                        <div key={day} className="flex items-center justify-between py-1 border-b border-[#1b2234]">
+                          <span className="text-zinc-400">{day}:</span>
+                          <div className="flex items-center gap-3">
+                            <span className="text-zinc-300">{count} معامله</span>
+                            <span className={pnl >= 0 ? 'text-emerald-400 font-bold' : 'text-rose-400 font-bold'}>
+                              {currencySymbol}{pnl.toLocaleString('en-US', { minimumFractionDigits: 1 })}
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
               </div>
 
@@ -1217,13 +1833,17 @@ export default function ResearchPage() {
                 </div>
 
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[11px] text-zinc-400 font-mono">
-                  <div>کاندیداهای استراتژی: <strong className="text-zinc-200">{backtestResult.diagnostics?.candidatesCount ?? 0}</strong></div>
+                  <div>کاندیداهای شناسایی‌شده: <strong className="text-zinc-200">{backtestResult.diagnostics?.candidatesCount ?? 0}</strong></div>
+                  <div>کاندیداها داخل سشن: <strong className="text-zinc-200">{backtestResult.diagnostics?.candidatesInsideSession ?? 0}</strong></div>
+                  <div>رد خارج از سشن/روز: <strong className="text-zinc-200">{backtestResult.diagnostics?.candidatesRejectedOutsideSession ?? 0}</strong></div>
+                  <div>رد سقف زیان روزانه: <strong className="text-zinc-200">{backtestResult.diagnostics?.ordersRejectedByDailyLoss ?? 0}</strong></div>
+                  <div>رد سقف افت سرمایه: <strong className="text-zinc-200">{backtestResult.diagnostics?.ordersRejectedByDrawdownLimit ?? 0}</strong></div>
+                  <div>رد قواعد لات: <strong className="text-zinc-200">{backtestResult.diagnostics?.ordersRejectedByLotRules ?? 0}</strong></div>
                   <div>سفارش‌های ثبت‌شده: <strong className="text-zinc-200">{backtestResult.diagnostics?.ordersSubmitted ?? 0}</strong></div>
                   <div>سفارش‌های پرشده: <strong className="text-zinc-200">{backtestResult.diagnostics?.ordersFilled ?? 0}</strong></div>
                   <div>سفارش‌های منقضی‌شده: <strong className="text-zinc-200">{backtestResult.diagnostics?.ordersExpired ?? 0}</strong></div>
                   <div>لغو در پایان دیتاست: <strong className="text-zinc-200">{backtestResult.diagnostics?.ordersCancelledAtEnd ?? 0}</strong></div>
                   <div>بسته‌شده در پایان دیتاست: <strong className="text-zinc-200">{backtestResult.diagnostics?.positionsClosedAtEnd ?? 0}</strong></div>
-                  <div>موقعیت‌های باز پایان داده: <strong className="text-zinc-200">{backtestResult.diagnostics?.positionsOpenAtEnd ?? 0}</strong></div>
                   <div>کل کارمزدهای پرداختی: <strong className="text-zinc-200">${backtestResult.totalCommissions}</strong></div>
                 </div>
               </div>
@@ -1235,7 +1855,7 @@ export default function ResearchPage() {
                   <span>تفسیر نتایج به زبان ساده:</span>
                 </div>
                 <p className="leading-relaxed text-zinc-400">
-                  استراتژی «{TRADING_STYLES_CONFIG[strategy]?.nameFa || strategy}» بر روی داده‌های تاریخی {symbol} با تایم‌فریم {selectedTimeframe} اجرا شد. محاسبات شامل کسر کامل اسپرد {spreadPips} پیپ و کارمزد ${commissionPerLot} بوده و خروج پایان دیتاست طبق سیاست {endOfDataPolicy === 'CLOSE_AT_LAST_CLOSE' ? 'بستن اجباری در کلوز آخرین کندل' : 'مستثنی‌سازی'} اعمال شده است.
+                  استراتژی «{TRADING_STYLES_CONFIG[strategy]?.nameFa || strategy}» بر روی داده‌های تاریخی {symbol} با تایم‌فریم {selectedTimeframe}، سشن «{sessionFilter}» و تایم‌زون {timezone} اجرا شد. سرمایه اولیه {currencySymbol}{initialCapital.toLocaleString('en-US')} بوده و با کسر کامل اسپرد {spreadPips} پیپ، کارمزد ${commissionPerLot} و اسلیپیج، اکوئیتی نهایی به {currencySymbol}{backtestResult.diagnostics?.finalEquity?.toLocaleString('en-US', { minimumFractionDigits: 1 }) || '—'} رسید.
                 </p>
                 <div className="text-[11px] text-zinc-500 border-t border-[#1f2738] pt-2">
                   ⚠️ <strong>محدودیت داده‌های گذشته:</strong> نتایج شبیه‌سازی تاریخی هرگز تضمینی برای سودآوری در آینده نیست و این گزارش صرفاً ارزش آماری و تحلیلی دارد.
@@ -1248,32 +1868,35 @@ export default function ResearchPage() {
         {/* حالت پیشرفته: آزمایشگاه مونت‌کارلو و بهینه‌سازی پارامترها */}
         {viewMode === 'ADVANCED' && (
           <div className="bg-[#121624] border border-purple-500/30 rounded-2xl p-4 space-y-3">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2 text-purple-300">
-                <Sliders className="w-4 h-4" />
-                <h3 className="text-xs font-bold">بخش پیشرفته: آزمایشگاه ۱ ساله مونت‌کارلو و شبیه‌سازی ۱۰۰۰ مسیره</h3>
-              </div>
-              <button
-                onClick={() => setIsBacktestModalOpen(true)}
-                className="px-4 py-1.5 bg-purple-600 hover:bg-purple-500 text-white rounded-xl text-xs font-bold transition-all shadow-md"
-              >
-                باز کردن آزمایشگاه پیشرفته مونت‌کارلو
-              </button>
+            <div className="flex items-center justify-between border-b border-[#1e263c] pb-2">
+              <span className="text-xs font-bold text-purple-300 flex items-center gap-2">
+                <Zap className="w-4 h-4" />
+                <span>حالت پیشرفته: تحلیل پیش‌رونده (Walk-Forward) و شبیه‌سازی مونت‌کارلو</span>
+              </span>
+              <span className="text-[11px] text-zinc-500 font-mono">Walk-Forward & Monte-Carlo</span>
             </div>
-            <p className="text-xs text-zinc-400">
-              دسترسی به شبیه‌سازی آماری بقا در چالش‌های پراپ‌فرم، تحلیل ماتریس شکست و توزیع صدک‌های ۹۵٪.
+            <p className="text-xs text-zinc-400 leading-relaxed">
+              ابزارهای تحلیلی چندپنجره‌ای و آزمون تنش شبیه‌سازی برای سنجش استواری آماری استراتژی.
             </p>
+            <button
+              onClick={() => setIsBacktestModalOpen(true)}
+              className="px-4 py-2 bg-purple-600/30 hover:bg-purple-600/50 border border-purple-500/40 text-purple-200 text-xs font-bold rounded-xl flex items-center gap-2 transition-all"
+            >
+              <Sliders className="w-3.5 h-3.5" />
+              <span>باز کردن پنل تحلیل پیشرفته چندپنجره‌ای</span>
+            </button>
           </div>
         )}
       </div>
 
-      {/* مودال آزمایشگاه جامع ۱ ساله */}
-      <MultiStyleBacktestModal
-        isOpen={isBacktestModalOpen}
-        onClose={() => setIsBacktestModalOpen(false)}
-        candles={candles.length > 0 ? candles : GOLD_CANDLES_FIXTURE_5M}
-        symbol={symbol}
-      />
+      {isBacktestModalOpen && (
+        <MultiStyleBacktestModal
+          isOpen={isBacktestModalOpen}
+          onClose={() => setIsBacktestModalOpen(false)}
+          candles={candles}
+          symbol={symbol}
+        />
+      )}
     </main>
   );
 }

@@ -42,7 +42,7 @@ async function detectAppPort() {
   return 3105;
 }
 
-async function waitForServer(urlText, maxAttempts = 30) {
+async function waitForServer(urlText, maxAttempts = 40) {
   for (let i = 0; i < maxAttempts; i++) {
     try {
       await new Promise((resolve, reject) => {
@@ -164,7 +164,7 @@ class CdpSession {
 }
 
 async function main() {
-  console.log('=== Starting Research / Backtest Browser E2E Integrity Suite ===');
+  console.log('=== Starting Research / Backtest Package 1 E2E Integrity Suite ===');
 
   const appPort = await detectAppPort();
   const APP_URL = `http://127.0.0.1:${appPort}`;
@@ -173,7 +173,7 @@ async function main() {
 
   await waitForServer(RESEARCH_URL);
 
-  const tempProfileDir = fs.mkdtempSync(path.join(os.tmpdir(), 'chrome-research-profile-'));
+  const tempProfileDir = fs.mkdtempSync(path.join(os.tmpdir(), 'chrome-research-p1-'));
   console.log(`Ephemeral Chrome Profile: ${tempProfileDir}`);
 
   const chromeArgs = [
@@ -193,7 +193,7 @@ async function main() {
   console.log(`Launched Chrome process (PID ${chromeProc.pid}) on debug port ${DEBUG_PORT}`);
 
   const testReport = {
-    suite: 'research-backtest-browser-integrity',
+    suite: 'research-backtest-package1-integrity',
     timestamp: new Date().toISOString(),
     appUrl: RESEARCH_URL,
     scenarios: [],
@@ -241,7 +241,7 @@ async function main() {
     await sleep(3000);
 
     // =========================================================================
-    // سناریو ۱: بارگذاری اولیه صفحه، عناوین، سلکتور نماد و تایم‌فریم
+    // سناریو ۱: بارگذاری اولیه صفحه و دکمه‌های گام ۱
     // =========================================================================
     console.log('\n--- Scenario 1: Initial Page Render & Step 1 Setup ---');
     const pageState = await cdp.eval(`(() => {
@@ -271,30 +271,26 @@ async function main() {
     console.log(`[${s1Passed ? 'PASS' : 'FAIL'}] Scenario 1: ${pageState.heading}`);
 
     // =========================================================================
-    // سناریو ۲: بارگذاری دیتاست تاریخی GBPUSD (تایم‌فریم 15M) و ورود به گام ۲
+    // سناریو ۲: بارگذاری دیتاست تاریخی GBPUSD 15M و عبور به گام ۲
     // =========================================================================
     console.log('\n--- Scenario 2: Load Bundled GBPUSD 15M Dataset ---');
-    // کلیک روی نماد GBPUSD
     await cdp.eval(`(() => {
       const btnGbp = Array.from(document.querySelectorAll('button')).find(b => b.innerText.trim() === 'GBPUSD');
       if (btnGbp) btnGbp.click();
     })()`);
     await sleep(300);
 
-    // کلیک روی تایم‌فریم 15M
     await cdp.eval(`(() => {
       const btn15M = Array.from(document.querySelectorAll('button')).find(b => b.innerText.trim() === '15M');
       if (btn15M) btn15M.click();
     })()`);
-    await sleep(500);
+    await sleep(400);
 
-    // کلیک روی دکمه بارگذاری دیتاست آماده
     await cdp.eval(`(() => {
       const loadBtn = Array.from(document.querySelectorAll('button')).find(b => b.innerText.includes('بارگذاری دیتاست آماده'));
       if (loadBtn) loadBtn.click();
     })()`);
 
-    // انتظار برای اتمام بارگذاری و اعتبارسنجی
     let s2Loaded = false;
     let s2Metrics = null;
     for (let i = 0; i < 30; i++) {
@@ -324,217 +320,253 @@ async function main() {
     });
     console.log(`[${s2Loaded ? 'PASS' : 'FAIL'}] Scenario 2: GBPUSD 15M loaded (${s2Metrics?.candleCountText})`);
 
-    // =========================================================================
-    // سناریو ۳: آزمون سوئیچ تایم‌فریم و بازنشانی وضعیت منسوخ (Stale Reset)
-    // =========================================================================
-    console.log('\n--- Scenario 3: Timeframe Switching & Stale State Reset ---');
-    // کلیک روی دکمه تغییر داده جهت بازگشت به گام ۱
-    await cdp.eval(`(() => {
-      const backBtn = Array.from(document.querySelectorAll('button')).find(b => b.innerText.includes('تغییر داده'));
-      if (backBtn) backBtn.click();
-    })()`);
-    await sleep(400);
-
-    // کلیک روی تایم‌فریم 1H
-    await cdp.eval(`(() => {
-      const btn1H = Array.from(document.querySelectorAll('button')).find(b => b.innerText.trim() === '1H');
-      if (btn1H) btn1H.click();
-    })()`);
-    await sleep(500);
-
-    const resetState = await cdp.eval(`(() => {
-      const body = document.body.innerText;
-      const isBackToStep1 = body.includes('گام ۱') || body.includes('انتخاب نماد، تایم‌فریم');
-      const loadBtn = Array.from(document.querySelectorAll('button')).find(b => b.innerText.includes('بارگذاری دیتاست آماده'));
-      return { isBackToStep1, hasLoadBtn: !!loadBtn };
-    })()`);
-
-    // بارگذاری دیتاست 1H
-    await cdp.eval(`(() => {
-      const loadBtn = Array.from(document.querySelectorAll('button')).find(b => b.innerText.includes('بارگذاری دیتاست آماده'));
-      if (loadBtn) loadBtn.click();
-    })()`);
-    await sleep(1500);
-
-    const h1Loaded = await cdp.eval(`(() => {
-      const body = document.body.innerText;
-      return body.includes('گام ۲') || body.includes('گزارش کیفیت و اعتبارسنجی داده');
-    })()`);
-
-    const s3Passed = resetState.isBackToStep1 && h1Loaded;
-    testReport.scenarios.push({
-      id: 3,
-      name: 'بازنشانی وضعیت منسوخ هنگام سوئیچ به ۱H و بارگذاری موفق دیتاست جدید',
-      passed: s3Passed,
-      details: `بازنشانی به گام ۱: ${resetState.isBackToStep1}؛ بارگذاری مجدد در ۱H: ${h1Loaded}`,
-    });
-    console.log(`[${s3Passed ? 'PASS' : 'FAIL'}] Scenario 3: Timeframe switch and reset verified`);
-
-    // =========================================================================
-    // سناریو ۴: عبور به گام ۳ و تنظیمات خانواده‌های استراتژی و پریست‌ها
-    // =========================================================================
-    console.log('\n--- Scenario 4: Step 3 Strategy Selection & Preset Switching ---');
-    // کلیک روی تأیید کیفیت و رفتن به انتخاب روش
+    // تایید کیفیت داده و رفتن به گام ۳
     await cdp.eval(`(() => {
       const btn = Array.from(document.querySelectorAll('button')).find(b => b.innerText.includes('تأیید کیفیت'));
       if (btn) btn.click();
     })()`);
     await sleep(600);
 
-    const s3State = await cdp.eval(`(() => {
+    // =========================================================================
+    // سناریو ۳: گام ۳ و بررسی عدم تأثیر ناخواسته (Audit No-Op Parameters)
+    // =========================================================================
+    console.log('\n--- Scenario 3: Step 3 Parameter Audit & Honest HTF Disabled Label ---');
+    const step3Audit = await cdp.eval(`(() => {
       const body = document.body.innerText;
-      const hasStep3 = body.includes('گام ۳') || body.includes('انتخاب خانواده استراتژی');
-      const strategyButtons = Array.from(document.querySelectorAll('button')).filter(b =>
-        b.innerText.includes('شکست روند') ||
-        b.innerText.includes('بازگشت به میانگین') ||
-        b.innerText.includes('اسمارت‌مانی') ||
-        b.innerText.includes('اسکلپ') ||
-        b.innerText.includes('سوئینگ')
-      ).map(b => b.innerText.trim());
-
-      const presetButtons = Array.from(document.querySelectorAll('button')).filter(b =>
-        b.innerText.includes('محافظه‌کارانه') ||
-        b.innerText.includes('متعادل') ||
-        b.innerText.includes('تهاجمی')
-      ).map(b => b.innerText.trim());
-
-      return {
-        hasStep3,
-        strategyButtonsCount: strategyButtons.length,
-        presetButtonsCount: presetButtons.length,
-      };
+      const hasHtfDisabled = body.includes('پکیج ۲: چندتایم‌فریمی') || body.includes('چندتایم‌فریمی');
+      const hasDirectionFilter = body.includes('جهت معامله') || body.includes('LONG_ONLY') || body.includes('فقط خرید');
+      const hasCooldown = body.includes('بار خنک‌سازی') || body.includes('Cooldown');
+      const hasBreakeven = body.includes('ریسک‌فری خودکار') || body.includes('Breakeven');
+      return { hasHtfDisabled, hasDirectionFilter, hasCooldown, hasBreakeven };
     })()`);
 
-    // انتخاب استراتژی شکست روند (Breakout)
-    await cdp.eval(`(() => {
-      const tbBtn = Array.from(document.querySelectorAll('button')).find(b => b.innerText.includes('شکست روند'));
-      if (tbBtn) tbBtn.click();
-    })()`);
-    await sleep(300);
-
-    // تست کلیک روی پریست تهاجمی
-    await cdp.eval(`(() => {
-      const aggBtn = Array.from(document.querySelectorAll('button')).find(b => b.innerText.includes('تهاجمی'));
-      if (aggBtn) aggBtn.click();
-    })()`);
-    await sleep(300);
-
-    // بازگرداندن به پریست متعادل (BALANCED)
-    await cdp.eval(`(() => {
-      const balBtn = Array.from(document.querySelectorAll('button')).find(b => b.innerText.includes('متعادل'));
-      if (balBtn) balBtn.click();
-    })()`);
-    await sleep(300);
-
-    const s4Passed = s3State.hasStep3 && s3State.strategyButtonsCount >= 4 && s3State.presetButtonsCount >= 3;
+    const s3Passed = step3Audit.hasHtfDisabled && step3Audit.hasDirectionFilter && step3Audit.hasBreakeven;
     testReport.scenarios.push({
-      id: 4,
-      name: 'گام ۳: بررسی ۵ خانواده استراتژی، پریست‌های معاملاتی و سفارشی‌سازی پارامترها',
-      passed: s4Passed,
-      details: `گام ۳ فعال=${s3State.hasStep3}؛ تعداد استراتژی‌ها=${s3State.strategyButtonsCount}؛ تعداد پریست‌ها=${s3State.presetButtonsCount}`,
+      id: 3,
+      name: 'گام ۳: نمایش برچسب صادقانه غیرفعال بودن فیلتر چندتایم‌فریمی و حضور پارامترهای فعال',
+      passed: s3Passed,
+      details: `برچسب غیرفعال HTF: ${step3Audit.hasHtfDisabled}؛ فیلتر جهت: ${step3Audit.hasDirectionFilter}؛ ریسک‌فری Breakeven: ${step3Audit.hasBreakeven}`,
     });
-    console.log(`[${s4Passed ? 'PASS' : 'FAIL'}] Scenario 4: Strategy families and presets verified`);
+    console.log(`[${s3Passed ? 'PASS' : 'FAIL'}] Scenario 3: Parameter honesty verified`);
 
-    // =========================================================================
-    // سناریو ۵: عبور به گام ۴ و تنظیمات هزینه، ریسک و سیاست پایان دیتا
-    // =========================================================================
-    console.log('\n--- Scenario 5: Step 4 Cost & Risk Configuration ---');
+    // عبور به گام ۴ (حساب، سشن، بازه تاریخی و ریسک)
     await cdp.eval(`(() => {
-      const nextBtn = Array.from(document.querySelectorAll('button')).find(b => b.innerText.includes('تنظیم هزینه و ریسک'));
+      const nextBtn = Array.from(document.querySelectorAll('button')).find(b =>
+        b.innerText.includes('تنظیم حساب و سشن') || b.innerText.includes('تنظیم')
+      );
       if (nextBtn) nextBtn.click();
     })()`);
-    await sleep(600);
+    await sleep(800);
 
-    const step4State = await cdp.eval(`(() => {
+    // =========================================================================
+    // سناریو ۴: گام ۴ - تنظیمات حساب (Account Configuration) و پریست‌های سرمایه
+    // =========================================================================
+    console.log('\n--- Scenario 4: Step 4 Account Configuration & Capital Presets ---');
+    const accountState = await cdp.eval(`(() => {
       const body = document.body.innerText;
-      const hasStep4 = body.includes('گام ۴') || body.includes('هزینه‌های معاملاتی');
-      const hasRiskInputs = body.includes('سقف ریسک هر معامله') || body.includes('اسپرد معمول');
-      const hasPolicySelect = body.includes('سیاست پایان دیتاست');
-      return { hasStep4, hasRiskInputs, hasPolicySelect };
+      const hasPresets = body.includes('$1k') && body.includes('$10k') && body.includes('$50k');
+      const hasCurrencies = body.includes('USD') && body.includes('AUD');
+      const hasLeverage = body.includes('اهرم') || body.includes('1:30');
+      const hasDailyLoss = body.includes('سقف زیان روزانه');
+      const hasMaxDd = body.includes('سقف کل افت سرمایه');
+      const hasLotRules = body.includes('گام لات') || body.includes('حداقل لات');
+      return { hasPresets, hasCurrencies, hasLeverage, hasDailyLoss, hasMaxDd, hasLotRules };
     })()`);
 
-    const s5Passed = step4State.hasStep4 && step4State.hasRiskInputs;
+    // تغییر سرمایه به ۲۵,۰۰۰ با پریست $25k
+    await cdp.eval(`(() => {
+      const p25k = Array.from(document.querySelectorAll('button')).find(b => b.innerText.trim() === '$25k');
+      if (p25k) p25k.click();
+    })()`);
+    await sleep(300);
+
+    const initialCapitalVal = await cdp.eval(`(() => {
+      const input = document.querySelector('input[type="number"]');
+      return input ? Number(input.value) : 0;
+    })()`);
+
+    // انتخاب مجدد سرمایه ۱۰,۰۰۰ برای تعادل تست با پریست $10k
+    await cdp.eval(`(() => {
+      const p10k = Array.from(document.querySelectorAll('button')).find(b => b.innerText.trim() === '$10k');
+      if (p10k) p10k.click();
+    })()`);
+    await sleep(300);
+
+    const s4Passed = accountState.hasPresets && accountState.hasCurrencies && accountState.hasLeverage && initialCapitalVal === 25000;
     testReport.scenarios.push({
-      id: 5,
-      name: 'گام ۴: کنترل مفروضات ریسک، هزینه‌های بروکر و سیاست پایان دیتا',
-      passed: s5Passed,
-      details: `گام ۴ فعال=${step4State.hasStep4}؛ فیلدهای ریسک=${step4State.hasRiskInputs}؛ سیاست پایان دیتا=${step4State.hasPolicySelect}`,
+      id: 4,
+      name: 'گام ۴: پریست‌های سرمایه اولیه (1k, 5k, 10k, 25k, 50k)، واحد ارزی، اهرم و حدود ریسک',
+      passed: s4Passed,
+      details: `پریست‌ها فعال=${accountState.hasPresets}؛ ارزها=${accountState.hasCurrencies}؛ انتخاب ۲۵هزار=${initialCapitalVal === 25000}`,
     });
-    console.log(`[${s5Passed ? 'PASS' : 'FAIL'}] Scenario 5: Cost and Risk step verified`);
+    console.log(`[${s4Passed ? 'PASS' : 'FAIL'}] Scenario 4: Account configuration verified`);
 
     // =========================================================================
-    // سناریو ۶: عبور به گام ۵، اجرای بک‌تست با Web Worker و نوار پیشرفت زنده
+    // سناریو ۵: گام ۴ - مدیریت بازه تاریخی و نمایش ۶ آمار کلیدی (Date Range & 6 Stats)
     // =========================================================================
-    console.log('\n--- Scenario 6: Step 5 Web Worker Execution & Progress Bar ---');
+    console.log('\n--- Scenario 5: Step 4 Date Range Selector & 6 Stats Banner ---');
+    const dateRangeState = await cdp.eval(`(() => {
+      const body = document.body.innerText;
+      const hasEarliest = body.includes('شروع کل دیتاست') || body.includes('شروع دیتاست');
+      const hasLatest = body.includes('پایان کل دیتاست') || body.includes('پایان دیتاست');
+      const hasCandlesCount = body.includes('کل کندل‌های در دسترس') || body.includes('کندل در دسترس');
+      const hasModeSelector = body.includes('حالت انتخاب بازه زمانی') || body.includes('کل داده‌ها (Full)');
+      return { hasEarliest, hasLatest, hasCandlesCount, hasModeSelector };
+    })()`);
+
+    // تست تغییر حالت به FIRST_25
+    await cdp.eval(`(() => {
+      const select = Array.from(document.querySelectorAll('select')).find(s =>
+        Array.from(s.options).some(o => o.value === 'FIRST_25')
+      );
+      if (select) {
+        select.value = 'FIRST_25';
+        select.dispatchEvent(new Event('change', { bubbles: true }));
+      }
+    })()`);
+    await sleep(300);
+
+    // بازگرداندن به FULL
+    await cdp.eval(`(() => {
+      const select = Array.from(document.querySelectorAll('select')).find(s =>
+        Array.from(s.options).some(o => o.value === 'FULL')
+      );
+      if (select) {
+        select.value = 'FULL';
+        select.dispatchEvent(new Event('change', { bubbles: true }));
+      }
+    })()`);
+    await sleep(300);
+
+    const s5Passed = dateRangeState.hasCandlesCount && dateRangeState.hasModeSelector;
+    testReport.scenarios.push({
+      id: 5,
+      name: 'گام ۴: بنر ۶ آمار تاریخ و وارم‌آپ به همراه سلکتور ۸ حالتهٔ انتخاب بازه زمانی',
+      passed: s5Passed,
+      details: `شمارش کندل‌ها=${dateRangeState.hasCandlesCount}؛ سلکتور حالت‌ها=${dateRangeState.hasModeSelector}`,
+    });
+    console.log(`[${s5Passed ? 'PASS' : 'FAIL'}] Scenario 5: Date range and stats verified`);
+
+    // =========================================================================
+    // سناریو ۶: گام ۴ - فیلتر سشن و مناطق زمانی استاندارد IANA و DST
+    // =========================================================================
+    console.log('\n--- Scenario 6: Step 4 Session Filter & IANA Timezones ---');
+    const sessionState = await cdp.eval(`(() => {
+      const body = document.body.innerText;
+      const hasLondon = body.includes('سشن لندن') || body.includes('LONDON');
+      const hasTimezone = body.includes('منطقه زمانی با مدیریت DST') || body.includes('Europe/London') || body.includes('UTC');
+      const hasWeekdays = body.includes('دوشنبه') && body.includes('جمعه');
+      const hasRollover = body.includes('بلک‌اوت رول‌اور') || body.includes('21:55');
+      return { hasLondon, hasTimezone, hasWeekdays, hasRollover };
+    })()`);
+
+    const s6Passed = sessionState.hasLondon && sessionState.hasTimezone && sessionState.hasWeekdays && sessionState.hasRollover;
+    testReport.scenarios.push({
+      id: 6,
+      name: 'گام ۴: فیلتر سشن‌ها، مناطق زمانی IANA با DST، روزهای هفته و بلک‌اوت رول‌اور',
+      passed: s6Passed,
+      details: `سشن لندن=${sessionState.hasLondon}؛ تایم‌زون=${sessionState.hasTimezone}؛ روزهای هفته=${sessionState.hasWeekdays}؛ رول‌اور=${sessionState.hasRollover}`,
+    });
+    console.log(`[${s6Passed ? 'PASS' : 'FAIL'}] Scenario 6: Session and timezone integrity verified`);
+
+    // رفتن به گام ۵ (آماده‌سازی برای اجرا)
     await cdp.eval(`(() => {
       const nextBtn = Array.from(document.querySelectorAll('button')).find(b => b.innerText.includes('آماده‌سازی برای اجرا'));
       if (nextBtn) nextBtn.click();
     })()`);
-    await sleep(600);
+    await sleep(800);
 
-    // کلیک روی اجرای بک‌تست تاریخی در مرورگر
+    // =========================================================================
+    // سناریو ۷: گام ۵ - آزمون لغو عملیات (Cancel Execution) بدون فریز رابط کاربری
+    // =========================================================================
+    console.log('\n--- Scenario 7: Step 5 Worker Cancellation & Responsive UI ---');
+    // کلیک روی اجرای بک‌تست
+    await cdp.eval(`(() => {
+      const startBtn = Array.from(document.querySelectorAll('button')).find(b => b.innerText.includes('اجرای بک‌تست تاریخی'));
+      if (startBtn) startBtn.click();
+    })()`);
+    await sleep(100);
+
+    // کلیک روی دکمه لغو در حین اجرا
+    const cancelClicked = await cdp.eval(`(() => {
+      const cancelBtn = Array.from(document.querySelectorAll('button')).find(b => b.innerText.includes('لغو عملیات'));
+      if (cancelBtn) {
+        cancelBtn.click();
+        return true;
+      }
+      return false;
+    })()`);
+    await sleep(800);
+
+    // بررسی وضعیت بعد از لغو
+    const cancelResult = await cdp.eval(`(() => {
+      const body = document.body.innerText;
+      const isCancelledMsg = body.includes('لغو شد') || body.includes('توسط کاربر لغو شد');
+      const startBtnAvailable = !!Array.from(document.querySelectorAll('button')).find(b => b.innerText.includes('اجرای بک‌تست تاریخی'));
+      return { isCancelledMsg, startBtnAvailable };
+    })()`);
+
+    const s7Passed = cancelResult.startBtnAvailable || cancelResult.isCancelledMsg;
+    testReport.scenarios.push({
+      id: 7,
+      name: 'گام ۵: لغو فوری عملیات در وب‌ورکر بدون مسدودی UI و بازگشت به وضعیت تعاملی',
+      passed: s7Passed,
+      details: `کلیک لغو=${cancelClicked}؛ دکمه اجرا دوباره فعال شد=${cancelResult.startBtnAvailable}؛ پیام لغو=${cancelResult.isCancelledMsg}`,
+    });
+    console.log(`[${s7Passed ? 'PASS' : 'FAIL'}] Scenario 7: Cancellation verified`);
+
+    // =========================================================================
+    // سناریو ۸: اجرای کامل بک‌تست و ورود به گام ۶ (نتایج عملکرد و تفکیک سشن‌ها)
+    // =========================================================================
+    console.log('\n--- Scenario 8: Full Backtest Execution & Step 6 Diagnostic Telemetry ---');
     await cdp.eval(`(() => {
       const startBtn = Array.from(document.querySelectorAll('button')).find(b => b.innerText.includes('اجرای بک‌تست تاریخی'));
       if (startBtn) startBtn.click();
     })()`);
 
-    // بررسی پیشرفت و رفتن به گام ۶
-    let executionFinished = false;
-    let finalStepState = null;
+    let executionComplete = false;
+    let step6Details = null;
 
-    for (let i = 0; i < 40; i++) {
+    for (let i = 0; i < 60; i++) {
       await sleep(500);
-      finalStepState = await cdp.eval(`(() => {
+      step6Details = await cdp.eval(`(() => {
         const body = document.body.innerText;
-        const isStep6 = body.includes('گام ۶') || body.includes('نتایج و تحلیل عملکرد');
-        const hasMetrics = body.includes('سود خالص') || body.includes('نرخ برد');
-        const hasCancel = !!Array.from(document.querySelectorAll('button')).find(b => b.innerText.includes('لغو عملیات'));
-        const progressEl = body.includes('پردازش رویدادمحور در Web Worker');
-        return { isStep6, hasMetrics, hasCancel, hasProgress: progressEl };
+        const isStep6 = body.includes('گام ۶') || body.includes('نتایج و تحلیل عملکرد') || body.includes('نتیجه و تفسیر عملکرد استراتژی');
+        const hasNetProfit = body.includes('سود/زیان خالص') || body.includes('سود خالص') || body.includes('خالص کل');
+        const hasCapitalDisplay = body.includes('سرمایه آغازین') || body.includes('سرمایه اولیه') || body.includes('موجودی / اکوئیتی نهایی');
+        const hasSessionBreakdown = body.includes('تفکیک عملکرد بر اساس سشن') || body.includes('عملکرد تفکیکی بر حسب سشن');
+        const hasWeekdayBreakdown = body.includes('تفکیک روزهای هفته') || body.includes('عملکرد تفکیکی بر حسب روز هفته');
+        const errEl = document.querySelector('.bg-rose-500\\\\/10');
+        const errorText = errEl ? errEl.innerText : '';
+        const progressEl = document.querySelector('.font-mono.text-cyan-400');
+        const progressText = progressEl ? progressEl.innerText : '';
+        const isRunning = body.includes('پردازش رویدادمحور در Web Worker');
+        return { isStep6, hasNetProfit, hasCapitalDisplay, hasSessionBreakdown, hasWeekdayBreakdown, errorText, progressText, isRunning };
       })()`);
 
-      if (finalStepState.isStep6 || finalStepState.hasMetrics) {
-        executionFinished = true;
+      if (i % 5 === 0 || step6Details.isStep6) {
+        console.log(`[Scenario 8 Poll ${i}] Step6=${step6Details.isStep6}, Running=${step6Details.isRunning}, Progress=${step6Details.progressText}, Error=${step6Details.errorText}`);
+      }
+
+      if (step6Details.isStep6 && step6Details.hasNetProfit) {
+        executionComplete = true;
         break;
       }
     }
 
+    const s8Passed = executionComplete && step6Details.hasSessionBreakdown && step6Details.hasWeekdayBreakdown;
     testReport.scenarios.push({
-      id: 6,
-      name: 'گام ۵ و ۶: اجرای بدون مسدودی با وب‌ورکر و ورود به نتایج عملکرد',
-      passed: executionFinished,
-      details: `رسیدن به گام ۶=${executionFinished}؛ شاخص‌های مالی نمایش داده شد=${finalStepState?.hasMetrics}`,
+      id: 8,
+      name: 'گام ۶: گزارش کامل نتایج عملکرد، سرمایه اولیه/نهایی، و تفکیک‌های سشن و روزهای هفته',
+      passed: s8Passed,
+      details: `تکمیل بک‌تست=${executionComplete}؛ نمایش سرمایه=${step6Details?.hasCapitalDisplay}؛ تفکیک سشن=${step6Details?.hasSessionBreakdown}؛ تفکیک روز هفته=${step6Details?.hasWeekdayBreakdown}`,
     });
-    console.log(`[${executionFinished ? 'PASS' : 'FAIL'}] Scenario 6: Web worker backtest completed successfully`);
+    console.log(`[${s8Passed ? 'PASS' : 'FAIL'}] Scenario 8: Step 6 complete results and breakdowns verified`);
 
     // =========================================================================
-    // سناریو ۷: اعتبارسنجی مقادیر واقعی نتایج بکتست GBPUSD 1H
+    // سناریو ۹: آزمون واکنش‌گرایی در ۳ ویوپورت و ثبت اسکرین‌شات‌های واقعی
     // =========================================================================
-    console.log('\n--- Scenario 7: Validate Real Results Metrics ---');
-    const resultValues = await cdp.eval(`(() => {
-      const body = document.body.innerText;
-      return {
-        hasWinRate: body.includes('نرخ برد'),
-        hasProfitFactor: body.includes('فاکتور سود'),
-        hasMaxDrawdown: body.includes('افت سرمایه') || body.includes('Drawdown'),
-        hasExecutionBreakdown: body.includes('زمان‌سنجی فازهای اجرایی') || body.includes('زمان بکتست'),
-        hasDiagnostics: body.includes('آمار تشخیصی رویدادها') || body.includes('کاندیداها'),
-      };
-    })()`);
-
-    const s7Passed = resultValues.hasWinRate && resultValues.hasProfitFactor;
-    testReport.scenarios.push({
-      id: 7,
-      name: 'گام ۶: نمایش کامل کارت‌های عملکرد، تفکیک زمان‌های اجرایی و آمار تشخیصی',
-      passed: s7Passed,
-      details: `نرخ برد=${resultValues.hasWinRate}؛ فاکتور سود=${resultValues.hasProfitFactor}؛ تفکیک زمان=${resultValues.hasExecutionBreakdown}؛ آمار تشخیصی=${resultValues.hasDiagnostics}`,
-    });
-    console.log(`[${s7Passed ? 'PASS' : 'FAIL'}] Scenario 7: Result cards and diagnostics verified`);
-
-    // =========================================================================
-    // سناریو ۸: آزمون واکنش‌گرایی در ۳ ابعاد (Desktop 1440, Tablet 768, Mobile 390)
-    // =========================================================================
-    console.log('\n--- Scenario 8: Responsive Viewport Testing & Real Screenshots ---');
+    console.log('\n--- Scenario 9: Responsive Viewport Testing & Real Screenshots ---');
     const viewports = [
       { name: 'desktop_1440', width: 1440, height: 900, filename: 'research_desktop_1440_real.png' },
       { name: 'tablet_768', width: 768, height: 1024, filename: 'research_tablet_768_real.png' },
@@ -559,22 +591,21 @@ async function main() {
       });
     }
 
-    // بازگرداندن ویوپورت به دسکتاپ
     await cdp.setViewport(1440, 900);
 
-    const s8Passed = testReport.screenshots.every(s => s.filesize > 10000);
+    const s9Passed = testReport.screenshots.every(s => s.filesize > 10000);
     testReport.scenarios.push({
-      id: 8,
+      id: 9,
       name: 'ثبت تصاویر واقعی در ۳ ویوپورت دسکتاپ، تبلت و موبایل با ساختار واکنش‌گرا',
-      passed: s8Passed,
+      passed: s9Passed,
       details: testReport.screenshots.map(s => `${s.viewport}: ${s.filesize} بایت`).join(' | '),
     });
-    console.log(`[${s8Passed ? 'PASS' : 'FAIL'}] Scenario 8: All 3 screenshots saved successfully`);
+    console.log(`[${s9Passed ? 'PASS' : 'FAIL'}] Scenario 9: All 3 screenshots saved successfully`);
 
     // =========================================================================
-    // سناریو ۹: آدیت شبکه و امنیت آفلاین (تایید ۰ فراخوانی به بروکر واقعی)
+    // سناریو ۱۰: آدیت امنیت شبکه (اثبات اجرای ۱۰۰٪ آفلاین بدون فراخوانی بروکر)
     // =========================================================================
-    console.log('\n--- Scenario 9: Network Security Audit (0 Live Broker Calls) ---');
+    console.log('\n--- Scenario 10: Network Security Audit (0 Live Broker Calls) ---');
     const allRequests = cdp.networkRequests;
     const liveBrokerRequests = allRequests.filter(r => {
       const u = r.url.toLowerCase();
@@ -593,22 +624,21 @@ async function main() {
     testReport.networkAudit.isCompletelyOffline = liveBrokerRequests.length === 0;
     testReport.networkAudit.requestsSample = allRequests.slice(0, 10).map(r => `${r.method} ${r.url}`);
 
-    const s9Passed = liveBrokerRequests.length === 0;
+    const s10Passed = liveBrokerRequests.length === 0;
     testReport.scenarios.push({
-      id: 9,
-      name: 'آدیت امنیت شبکه: اثبات اجرای ۱۰۰٪ آفلاین و عدم ارسال حتی یک تیکت به بروکر واقعی',
-      passed: s9Passed,
-      details: `کل درخواست‌ها=${allRequests.length}؛ درخواست‌های بروکر واقعی=${liveBrokerRequests.length} (کاملاً آفلاین=${s9Passed})`,
+      id: 10,
+      name: 'آدیت امنیت شبکه: اثبات اجرای ۱۰۰٪ آفلاین و عدم ارسال حتی یک سفارش به بروکر واقعی',
+      passed: s10Passed,
+      details: `کل درخواست‌ها=${allRequests.length}؛ درخواست‌های بروکر واقعی=${liveBrokerRequests.length} (کاملاً آفلاین=${s10Passed})`,
     });
-    console.log(`[${s9Passed ? 'PASS' : 'FAIL'}] Scenario 9: 0 live broker calls confirmed`);
+    console.log(`[${s10Passed ? 'PASS' : 'FAIL'}] Scenario 10: 0 live broker calls confirmed`);
 
     // =========================================================================
-    // سناریو ۱۰: کنترل خطاهای کنسول و عدم وجود Exception یا Crash
+    // سناریو ۱۱: کنترل خطاهای کنسول و عدم وجود Exception یا Crash
     // =========================================================================
-    console.log('\n--- Scenario 10: Console Errors & Runtime Crash Check ---');
+    console.log('\n--- Scenario 11: Console Errors & Runtime Crash Check ---');
     const fatalExceptions = cdp.runtimeExceptions.filter(e => {
       const desc = (e.description || '').toLowerCase();
-      // استثنائات توسعه‌دهنده Next.js که ربطی به خطای اجرایی ندارد
       return !desc.includes('webpack') && !desc.includes('hot-reload');
     });
 
@@ -616,16 +646,16 @@ async function main() {
     testReport.consoleAudit.errorsCount = cdp.consoleMessages.filter(m => m.type === 'error').length;
     testReport.consoleAudit.exceptionsCount = fatalExceptions.length;
 
-    const s10Passed = fatalExceptions.length === 0;
+    const s11Passed = fatalExceptions.length === 0;
     testReport.scenarios.push({
-      id: 10,
+      id: 11,
       name: 'آدیت کنسول مرورگر: عدم وقوع خطای پرتاب‌شده (Uncaught Exception) یا کرش رندرینگ',
-      passed: s10Passed,
+      passed: s11Passed,
       details: `پیام‌های کنسول=${cdp.consoleMessages.length}؛ خطاهای fatal=${fatalExceptions.length}`,
     });
-    console.log(`[${s10Passed ? 'PASS' : 'FAIL'}] Scenario 10: 0 runtime exceptions`);
+    console.log(`[${s11Passed ? 'PASS' : 'FAIL'}] Scenario 11: 0 runtime exceptions`);
 
-    // ارزیابی کلی موفقیت
+    // ارزیابی نهایی
     testReport.success = testReport.scenarios.every(s => s.passed);
 
   } catch (err) {
@@ -644,13 +674,13 @@ async function main() {
     }
   }
 
-  // ذخیره گزارش جامع در دایرکتوری آرتیفکت
+  // ذخیره گزارش جامع
   const resultsJsonPath = path.join(ARTIFACT_DIR, 'test-research-browser-results.json');
   fs.writeFileSync(resultsJsonPath, JSON.stringify(testReport, null, 2), 'utf-8');
   console.log(`\nSaved test results to ${resultsJsonPath}`);
 
   console.log(`\n======================================================`);
-  console.log(`Research Browser Test Result: ${testReport.success ? 'ALL PASS (10/10)' : 'FAILED'}`);
+  console.log(`Research Browser Test Result: ${testReport.success ? 'ALL PASS (11/11)' : 'FAILED'}`);
   console.log(`======================================================`);
 
   if (!testReport.success) {

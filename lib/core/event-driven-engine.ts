@@ -78,6 +78,7 @@ export interface EngineConfig {
   useDynamicSpread?: boolean;
   useRolloverBlackout?: boolean;
   useNewsBlackout?: boolean;
+  enableBreakeven?: boolean;
   enablePartialTp?: boolean;
   ambiguityPolicy: IntrabarAmbiguityPolicy;
   endOfDataPolicy?: EndOfDataPolicy;
@@ -111,6 +112,7 @@ export class EventDrivenExecutionEngine implements IExecutionPort {
       useDynamicSpread: config.useDynamicSpread ?? false,
       useRolloverBlackout: config.useRolloverBlackout ?? false,
       useNewsBlackout: config.useNewsBlackout ?? false,
+      enableBreakeven: config.enableBreakeven ?? false,
       enablePartialTp: config.enablePartialTp ?? false,
       ambiguityPolicy: config.ambiguityPolicy || 'PESSIMISTIC',
       endOfDataPolicy: config.endOfDataPolicy || 'CLOSE_AT_LAST_CLOSE',
@@ -410,9 +412,22 @@ export class EventDrivenExecutionEngine implements IExecutionPort {
       pos.mfePips = Math.max(pos.mfePips, favorablePips);
     }
 
-    // الف. خروج پله‌ای ۵۰٪ در ۱.۲R و انتقال خودکار حد ضرر به نقطه ورود (Breakeven)
+    // الف. انتقال خودکار حد ضرر به نقطه ورود (Breakeven) و خروج پله‌ای ۵۰٪ (Partial TP)
     const isBuy = pos.direction === 'BUY';
     const riskDistance = Math.abs(pos.entryPrice - pos.stopLossPrice);
+
+    // ۱. بررسی Breakeven: وقتی سود شناور به ۱.۰R رسید، حد ضرر به قیمت ورود منتقل می‌شود
+    if (this.config.enableBreakeven && riskDistance > 0) {
+      const currentFavorableDistance = isBuy ? candle.high - pos.entryPrice : pos.entryPrice - candle.low;
+      if (currentFavorableDistance >= 1.0 * riskDistance) {
+        const canMoveToBE = isBuy ? pos.stopLossPrice < pos.entryPrice : pos.stopLossPrice > pos.entryPrice;
+        if (canMoveToBE) {
+          pos.stopLossPrice = pos.entryPrice;
+        }
+      }
+    }
+
+    // ۲. خروج پله‌ای ۵۰٪ در ۱.۲R و انتقال همزمان حد ضرر به نقطه ورود
     const partialTarget = isBuy ? pos.entryPrice + 1.2 * riskDistance : pos.entryPrice - 1.2 * riskDistance;
     const canPartialClose = this.config.enablePartialTp && !pos.isPartialClosed && riskDistance > 0 && pos.volumeLots >= 0.02;
 

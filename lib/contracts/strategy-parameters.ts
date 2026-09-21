@@ -8,7 +8,63 @@ export type StrategyFamily = TradingStyleType;
 export type DirectionMode = 'LONG_ONLY' | 'SHORT_ONLY' | 'BOTH';
 export type StopLossMode = 'ATR' | 'STRUCTURE' | 'FIXED_PIPS';
 export type OrderExecutionType = 'MARKET' | 'LIMIT';
-export type SessionFilter = 'ALL' | 'LONDON' | 'NEW_YORK' | 'ASIAN';
+export type SessionFilter =
+  | 'ALL'
+  | 'ASIAN'
+  | 'LONDON'
+  | 'NEW_YORK'
+  | 'LONDON_NEW_YORK_OVERLAP'
+  | 'CUSTOM';
+
+export type TimezoneOption =
+  | 'UTC'
+  | 'Europe/London'
+  | 'America/New_York'
+  | 'Australia/Sydney'
+  | 'BROKER_FIXED';
+
+export type AccountCurrency = 'USD' | 'AUD';
+
+export interface AccountConfiguration {
+  initialCapital: number; // 100 to 10,000,000
+  accountCurrency: AccountCurrency;
+  leverage: 1 | 10 | 30 | 50 | 100;
+  maxDailyLossPercent?: number; // 0 to 20%
+  maxTotalDrawdownPercent?: number; // 0 to 50%
+  maxConcurrentPositions: number; // 1 to 20
+  minLot: number; // e.g. 0.01
+  lotStep: number; // e.g. 0.01
+  maxLot: number; // e.g. 10.0 or 100.0
+}
+
+export type DateRangeMode =
+  | 'FULL'
+  | 'CUSTOM'
+  | 'FIRST_25'
+  | 'MIDDLE_50'
+  | 'LAST_25'
+  | 'ROLLING_3M'
+  | 'ROLLING_6M'
+  | 'ROLLING_12M';
+
+export interface DateRangeFilterConfig {
+  mode: DateRangeMode;
+  customStartDate?: string; // YYYY-MM-DD
+  customEndDate?: string; // YYYY-MM-DD
+  requiredWarmupBars?: number; // e.g. 210
+}
+
+export interface SessionTimezoneConfig {
+  session: SessionFilter;
+  timezone: TimezoneOption;
+  brokerOffsetMinutes?: number; // For BROKER_FIXED, e.g. +120
+  customStartTime?: string; // "HH:mm", e.g. "08:00"
+  customEndTime?: string; // "HH:mm", e.g. "17:00"
+  selectedWeekdays: number[]; // 1 = Mon, 2 = Tue, 3 = Wed, 4 = Thu, 5 = Fri
+  useRolloverBlackout: boolean;
+  excludeEdgeMinutes?: number; // e.g. 15 to skip first/last 15m of session
+}
+
 export type StrategyPreset = 'CONSERVATIVE' | 'BALANCED' | 'AGGRESSIVE';
 
 export interface CommonStrategyParameters {

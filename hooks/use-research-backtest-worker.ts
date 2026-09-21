@@ -3,10 +3,17 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Candle, SymbolId, Timeframe } from '@/lib/contracts/market';
 import type { TradingStyleType } from '@/lib/contracts/regimes';
-import type { StrategyParameters } from '@/lib/contracts/strategy-parameters';
+import type {
+  AccountConfiguration,
+  DateRangeFilterConfig,
+  SessionTimezoneConfig,
+  StrategyParameters,
+} from '@/lib/contracts/strategy-parameters';
 import type { EndOfDataPolicy, PositionLedgerEntry } from '@/lib/core/ports';
 import type { PerformanceMetrics } from '@/lib/core/research-lab';
 import { ResearchLab } from '@/lib/core/research-lab';
+
+export const LARGE_DATASET_THRESHOLD = 10000;
 
 export interface ResearchBacktestProgress {
   runId: string;
@@ -15,17 +22,49 @@ export interface ResearchBacktestProgress {
   percent: number;
 }
 
+export interface ResearchBacktestWorkerOptions {
+  initialCash?: number;
+  accountConfig?: AccountConfiguration;
+  dateRangeConfig?: DateRangeFilterConfig;
+  sessionConfig?: SessionTimezoneConfig;
+  commissionPerLot?: number;
+  defaultSpreadPips?: number;
+  additionalSlippagePips?: number;
+  style?: TradingStyleType | 'ALL';
+  timeframe?: Timeframe;
+  riskPercent?: number;
+  strategyParameters?: StrategyParameters;
+  endOfDataPolicy?: EndOfDataPolicy;
+}
+
 export function useResearchBacktestWorker() {
   const workerRef = useRef<Worker | null>(null);
   const activeRunIdRef = useRef<string | null>(null);
+  const pendingRejectRef = useRef<((reason: Error) => void) | null>(null);
   const [isRunning, setIsRunning] = useState(false);
   const [progress, setProgress] = useState<ResearchBacktestProgress | null>(null);
 
   const cancel = useCallback(() => {
+    const runId = activeRunIdRef.current;
     if (workerRef.current) {
-      workerRef.current.terminate();
+      try {
+        if (runId) {
+          workerRef.current.postMessage({ type: 'CANCEL', runId });
+        }
+        workerRef.current.terminate();
+      } catch {
+        // ignore
+      }
       workerRef.current = null;
     }
+
+    if (pendingRejectRef.current) {
+      const abortErr = new Error('عملیات بک‌تست لغو شد.');
+      abortErr.name = 'AbortError';
+      pendingRejectRef.current(abortErr);
+      pendingRejectRef.current = null;
+    }
+
     activeRunIdRef.current = null;
     setIsRunning(false);
     setProgress(null);
@@ -37,36 +76,46 @@ export function useResearchBacktestWorker() {
     (
       candles: Candle[],
       symbol: SymbolId,
-      options: {
-        initialCash?: number;
-        commissionPerLot?: number;
-        defaultSpreadPips?: number;
-        additionalSlippagePips?: number;
-        style?: TradingStyleType | 'ALL';
-        timeframe?: Timeframe;
-        riskPercent?: number;
-        strategyParameters?: StrategyParameters;
-        endOfDataPolicy?: EndOfDataPolicy;
-      }
+      options: ResearchBacktestWorkerOptions
     ): Promise<{ metrics: PerformanceMetrics; trades: PositionLedgerEntry[]; runId: string }> => {
+      // لغو هرگونه اجرای فعال قبلی
       cancel();
+
       const runId = `RUN-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
       activeRunIdRef.current = runId;
       setIsRunning(true);
       setProgress({ runId, processedBars: 0, totalBars: candles.length, percent: 0 });
 
       return new Promise((resolve, reject) => {
-        // فال‌بک امن در صورت عدم دسترسی به Worker (محیط‌های تست، نود یا SSR)
+        pendingRejectRef.current = reject;
+
+        const isLargeDataset = candles.length > LARGE_DATASET_THRESHOLD;
+
+        // در محیط‌های فاقد Worker (تست، Node یا SSR)
         if (typeof window === 'undefined' || typeof Worker === 'undefined') {
+          if (isLargeDataset) {
+            setIsRunning(false);
+            setProgress(null);
+            pendingRejectRef.current = null;
+            reject(
+              new Error(
+                `پردازش دیتاست‌های بزرگ (بیش از ${LARGE_DATASET_THRESHOLD.toLocaleString('fa-IR')} کندل) بدون Web Worker و بر روی ترد اصلی ممنوع است.`
+              )
+            );
+            return;
+          }
+
           try {
             const res = ResearchLab.runBacktest(candles, symbol, options);
             setIsRunning(false);
             setProgress(null);
+            pendingRejectRef.current = null;
             resolve({ ...res, runId });
           } catch (err) {
             setIsRunning(false);
             setProgress(null);
-            reject(err);
+            pendingRejectRef.current = null;
+            reject(err instanceof Error ? err : new Error(String(err)));
           }
           return;
         }
@@ -88,7 +137,7 @@ export function useResearchBacktestWorker() {
             }>
           ) => {
             const data = event.data;
-            // بررسی تطابق runId جهت جلوگیری از بازنویسی نتیجه توسط تسک قدیمی
+            // گارد تطابق runId جهت جلوگیری از اثرگذاری تسک‌های لغوشده یا قدیمی
             if (data.runId !== activeRunIdRef.current) return;
 
             if (data.type === 'STARTED' || data.type === 'PROGRESS') {
@@ -100,6 +149,7 @@ export function useResearchBacktestWorker() {
               worker.terminate();
               workerRef.current = null;
               activeRunIdRef.current = null;
+              pendingRejectRef.current = null;
               setIsRunning(false);
               setProgress(null);
               resolve({ ...data.result, runId });
@@ -107,6 +157,7 @@ export function useResearchBacktestWorker() {
               worker.terminate();
               workerRef.current = null;
               activeRunIdRef.current = null;
+              pendingRejectRef.current = null;
               setIsRunning(false);
               setProgress(null);
               reject(new Error(data.message || 'خطا در اجرای بکتست پس‌زمینه.'));
@@ -118,6 +169,7 @@ export function useResearchBacktestWorker() {
               worker.terminate();
               workerRef.current = null;
               activeRunIdRef.current = null;
+              pendingRejectRef.current = null;
               setIsRunning(false);
               setProgress(null);
               reject(new Error('اجرای محاسبات در Web Worker ناموفق بود.'));
@@ -132,16 +184,30 @@ export function useResearchBacktestWorker() {
             options,
           });
         } catch (workerInitErr) {
-          // فال‌بک در صورت عدم امکان ساخت شیء Worker
+          if (isLargeDataset) {
+            setIsRunning(false);
+            setProgress(null);
+            pendingRejectRef.current = null;
+            reject(
+              new Error(
+                `امکان اجرای وب‌ورکر فراهم نشد و فال‌بک ترد اصلی برای دیتاست‌های بزرگ (بیش از ${LARGE_DATASET_THRESHOLD.toLocaleString('fa-IR')} کندل) مسدود است.`
+              )
+            );
+            return;
+          }
+
+          // فال‌بک محدود صرفاً برای دیتاست‌های کوچک
           try {
             const res = ResearchLab.runBacktest(candles, symbol, options);
             setIsRunning(false);
             setProgress(null);
+            pendingRejectRef.current = null;
             resolve({ ...res, runId });
           } catch (err) {
             setIsRunning(false);
             setProgress(null);
-            reject(err);
+            pendingRejectRef.current = null;
+            reject(err instanceof Error ? err : new Error(String(err)));
           }
         }
       });
