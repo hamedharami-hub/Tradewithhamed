@@ -987,6 +987,17 @@ export default function ResearchPage() {
                     <HelpTooltip
                       titleFa="تمپلیت‌های سودآور چیستند؟"
                       explanationFa="استراتژی‌های کاملی که تمام پارامترها، سشن‌ها، شیوه حد ضرر و ترکیب ماژولار آن‌ها بر روی داده‌های تاریخی ۱ سال اخیر (۲۰۲۴) بهینه‌سازی شده و بازدهی اثبات‌شده با دروداون کنترل‌شده داشته‌اند."
+                      visualDiagramFa={`┌──────────────────────────────────────────────────────────┐
+│  📊 ساختار تمپلیت آزموده ۱ ساله (مثال: طلا SMC نیویورک)  │
+├──────────────────────────────────────────────────────────┤
+│  [روند روزانه D1] ──► صعودی قوی (فیلتر رژیم EMA)         │
+│          ▼                                               │
+│  [سشن معاملاتی]   ──► نیویورک (۱۳:۰۰ تا ۱۷:۰۰ UTC)       │
+│          ▼                                               │
+│  [الگوی ورود]     ──► هانت نقدینگی و پرایس‌اکشن S0       │
+│          ▼                                               │
+│  [خروج و مدیریت] ──► استاپ پویا ATR + ریسک‌فری در ۱R    │
+└──────────────────────────────────────────────────────────┘`}
                       practicalTipFa="با کلیک روی هر تمپلیت، تمام پارامترها، سشن، تایم‌فریم و نماد به صورت خودکار بارگذاری و تنظیم می‌شوند."
                       impactOnPropFirmFa="این تمپلیت‌ها افت سرمایه زیر ۶٪ دارند و مخصوص قبولی در چالش‌های پراپ‌فرم کالیبره شده‌اند."
                     />
@@ -1156,7 +1167,15 @@ export default function ResearchPage() {
                       <HelpTooltip
                         titleFa="جهت مجاز معاملات (Direction Mode)"
                         explanationFa="تعیین می‌کند که الگوریتم اجازه دارد در هر دو جهت خرید (Long) و فروش (Short) پوزیشن باز کند یا تنها در یک جهت خاص فعالیت نماید."
+                        visualDiagramFa={`[خرید و فروش دوطرفه BOTH]
+  ▲ روند صعودی ──► فقط اردر Long
+  ▼ روند نزولی ──► فقط اردر Short
+
+[فقط خرید LONG ONLY]
+  ▲ روند صعودی ──► ورود به معامله
+  ▼ روند نزولی ──► عدم ورود (بی‌تفاوتی به سیگنال سل)`}
                         practicalTipFa="در بازارهای با روند صعودی قدرتمند، فعال‌سازی Long Only می‌تواند از ضررهای ضد روند جلوگیری کند."
+                        impactOnPropFirmFa="معامله‌گران حرفه‌ای در روزهای با اخبار به شدت یک‌طرفه با قفل جهت از دروداون جلوگیری می‌کنند."
                       />
                     </div>
                     <select
@@ -1185,7 +1204,19 @@ export default function ResearchPage() {
                         <HelpTooltip
                           titleFa="نوع اجرای سفارش (Order Execution Type)"
                           explanationFa="سفارش لیمیت در پولبک و قیمت بهتر وارد می‌شود اما ممکن است جا بماند. سفارش مارکت فوراً در کلوز کندل وارد می‌شود اما ریسک اسلیپیج دارد. سفارش استاپ هنگام شکست پرایس وارد بازار می‌شود."
+                          visualDiagramFa={`LIMIT (پولبک):
+  قیمت فعلی ────┐
+               └──► نقطه سفارش لیمیت (قیمت ارزان‌تر)
+
+MARKET (لحظه‌ای):
+  سیگنال صادر شد ──► ورود فوری در اولین تیک در دسترس
+
+STOP (شکست سطح):
+  مقاومت ──────[====]──────
+                       ▲
+  سفارش استاپ ─────────┘ (ورود به محض شکست به بالا)`}
                           practicalTipFa="برای استراتژی‌های شکست از Stop و برای بازگشت به میانگین از Limit استفاده کنید."
+                          impactOnPropFirmFa="در حساب‌های پراپ که اسپرد شناور دارند، سفارش لیمیت با تضمین قیمت ورود از اسلیپیج منفی جلوگیری می‌کند."
                         />
                       </div>
                       <span className="text-[9px] text-emerald-400 font-bold bg-emerald-500/10 px-1 py-0.5 rounded border border-emerald-500/30">
@@ -1218,6 +1249,15 @@ export default function ResearchPage() {
                           <HelpTooltip
                             titleFa="شیوه محاسبه حد ضرر (Stop Loss Mode)"
                             explanationFa="تعیین مبنای قرارگیری استاپ: پویا بر اساس نوسان ATR، پشت پیوت‌های ساختار بازار، یا فاصله عددی پیپ ثابت."
+                            visualDiagramFa={`[مدل ATR پویا]
+  سقف کندل  ───┬───
+               │  فاصله = 1.5 × ATR (تنظیم خودکار با نوسان)
+  نقطه ورود ───●───
+  حد ضرر    ───┴─── (در روزهای نوسانی بزرگ‌تر، در روزهای آرام کوچک‌تر)
+
+[مدل ساختار قیمت STRUCTURE]
+  پیوت کف قبلی ───▲───
+                    └─► حد ضرر درست زیر سایه کف (نه عدد رند)`}
                             practicalTipFa="مدل ATR خود را با نوسان روز بازار هماهنگ می‌کند و مانع از استاپ خوردن با نویزهای موقت می‌شود."
                             impactOnPropFirmFa="برای پراپ فرم‌ها، مدل ATR یا ساختار باعث بقای بسیار بالاتر نسبت به پیپ ثابت است."
                           />
@@ -1515,23 +1555,35 @@ export default function ResearchPage() {
                   {/* چک‌باکس‌ها و کنترل‌های بریک‌ایون و خروج پله‌ای */}
                   <div className="p-3.5 bg-[#141926] border border-[#232c40] rounded-2xl space-y-3 text-xs">
                     <div className="flex flex-wrap items-center gap-6">
-                      <label className="flex items-center gap-2 cursor-pointer text-zinc-200">
-                        <input
-                          type="checkbox"
-                          checked={strategyParams.common.enableBreakeven}
-                          onChange={(e) =>
-                            setStrategyParams({
-                              ...strategyParams,
-                              common: {
-                                ...strategyParams.common,
-                                enableBreakeven: e.target.checked,
-                              },
-                            })
-                          }
-                          className="rounded border-[#2d3a54] bg-[#1b2234] text-purple-600 focus:ring-0"
+                      <div className="flex items-center gap-1.5">
+                        <label className="flex items-center gap-2 cursor-pointer text-zinc-200">
+                          <input
+                            type="checkbox"
+                            checked={strategyParams.common.enableBreakeven}
+                            onChange={(e) =>
+                              setStrategyParams({
+                                ...strategyParams,
+                                common: {
+                                  ...strategyParams.common,
+                                  enableBreakeven: e.target.checked,
+                                },
+                              })
+                            }
+                            className="rounded border-[#2d3a54] bg-[#1b2234] text-purple-600 focus:ring-0"
+                          />
+                          <span className="font-bold">ریسک‌فری خودکار (Breakeven)</span>
+                        </label>
+                        <HelpTooltip
+                          titleFa="مکانیزم ریسک‌فری خودکار (Breakeven)"
+                          explanationFa="به محض اینکه قیمت به اندازه مشخصی سود رفت (مثلاً ۱R)، حد ضرر دقیقاً به نقطه ورود معامله انتقال می‌یابد تا هیچ معامله سودآوری با ضرر بسته نشود."
+                          visualDiagramFa={`تارگت ۲R ───────────────○
+تریگر ۱R ───●───► (حرکت خودکار SL به نقطه ورود)
+ورود     ───────────────▲ (ریسک معامله صفر شد)
+استاپ اولیه ────────────✕`}
+                          practicalTipFa="تنظیم تریگر روی ۱R استاندارد است؛ تریگرهای خیلی کوچک باعث خروج زودهنگام با نویز بازار می‌شوند."
+                          impactOnPropFirmFa="حیاتی‌ترین ابزار برای حفظ حساب در چالش‌های پراپ و جلوگیری از رسیدن به سقف ۵٪ زیان روزانه."
                         />
-                        <span className="font-bold">ریسک‌فری خودکار (Breakeven)</span>
-                      </label>
+                      </div>
 
                       {strategyParams.common.enableBreakeven && (
                         <div className="flex items-center gap-3 text-zinc-400">
@@ -1577,23 +1629,35 @@ export default function ResearchPage() {
                     </div>
 
                     <div className="flex flex-wrap items-center gap-6 pt-2 border-t border-[#1f2738]">
-                      <label className="flex items-center gap-2 cursor-pointer text-zinc-200">
-                        <input
-                          type="checkbox"
-                          checked={strategyParams.common.enablePartialTakeProfit}
-                          onChange={(e) =>
-                            setStrategyParams({
-                              ...strategyParams,
-                              common: {
-                                ...strategyParams.common,
-                                enablePartialTakeProfit: e.target.checked,
-                              },
-                            })
-                          }
-                          className="rounded border-[#2d3a54] bg-[#1b2234] text-purple-600 focus:ring-0"
+                      <div className="flex items-center gap-1.5">
+                        <label className="flex items-center gap-2 cursor-pointer text-zinc-200">
+                          <input
+                            type="checkbox"
+                            checked={strategyParams.common.enablePartialTakeProfit}
+                            onChange={(e) =>
+                              setStrategyParams({
+                                ...strategyParams,
+                                common: {
+                                  ...strategyParams.common,
+                                  enablePartialTakeProfit: e.target.checked,
+                                },
+                              })
+                            }
+                            className="rounded border-[#2d3a54] bg-[#1b2234] text-purple-600 focus:ring-0"
+                          />
+                          <span className="font-bold">سیو سود پله‌ای (Partial Take Profit)</span>
+                        </label>
+                        <HelpTooltip
+                          titleFa="سیو سود پله‌ای (Partial Close)"
+                          explanationFa="امکان نقد کردن درصدی از حجم پوزیشن در یک تارگت میانی، در حالی که مابقی حجم برای رسیدن به تارگت نهایی در بازار باز می‌ماند."
+                          visualDiagramFa={`تارگت نهایی ۲R ─────────○ (بستن ۵۰٪ باقی‌مانده)
+تارگت میانی ۱.۲R ───────● (نقد کردن ۵۰٪ حجم و واریز به بالانس)
+نقطه ورود      ─────────▲
+حد ضرر         ─────────▼`}
+                          practicalTipFa="بستن ۵۰٪ حجم در نسبت ۱:۱ تا ۱.۲ باعث می‌شود استرس روانی معامله‌گر به صفر برسد."
+                          impactOnPropFirmFa="باعث رشد هموار و پله‌ای اکوئیتی و جلوگیری از افت‌های شارپ حساب می‌شود."
                         />
-                        <span className="font-bold">سیو سود پله‌ای (Partial Take Profit)</span>
-                      </label>
+                      </div>
 
                       {strategyParams.common.enablePartialTakeProfit && (
                         <div className="flex items-center gap-3 text-zinc-400">
@@ -2174,6 +2238,17 @@ export default function ResearchPage() {
                       <HelpTooltip
                         titleFa="ترکیب ماژولار استراتژی چیست؟"
                         explanationFa="این بخش به شما اجازه می‌دهد اجزای استراتژی را مثل پازل بسازید: فیلتر روند از یک سبک، تریگر ورود از سبک دیگر، فیلتر حجم سشن برای تایید، و مدیریت خروج پویا."
+                        visualDiagramFa={`┌────────────────────────────────────────────────────────┐
+│             ساختار ماژولار پازلی معامله                │
+├────────────────────────────────────────────────────────┤
+│ [۱. فیلتر روند]  ──► آیا جهت بازار صعودی است؟           │
+│         │ (بله)                                        │
+│ [۲. ماشه ورود]   ──► هانت نقدینگی و پرایس‌اکشن S0       │
+│         │ (تایید)                                      │
+│ [۳. تاییدیه حجم] ──► آیا حجم سشن نیویورک بالاست؟       │
+│         │ (بله)                                        │
+│ [۴. صدور اردر]   ──► ورود با ریسک‌فری و خروج پویا       │
+└────────────────────────────────────────────────────────┘`}
                         practicalTipFa="مثال قدرتمند: ترکیب فیلتر روند EMA با تریگر اردربلاک SMC و خروج پویا بر مبنای ATR."
                         impactOnPropFirmFa="ترکیب فیلتر روند با تاییدیه سشن، شانس قبولی چالش‌های پراپ را تا ۴۰٪ ارتقا می‌دهد."
                       />
@@ -2221,6 +2296,10 @@ export default function ResearchPage() {
                             <HelpTooltip
                               titleFa="ماژول فیلتر روند و رژیم"
                               explanationFa="تعیین می‌کند که معاملات همسو با جهت بازار کلان باشند و در بازارهای رنج و پرنویز، اردرهای پرریسک متوقف گردند."
+                              visualDiagramFa={`روند صعودی: EMA20 > EMA50 ──► اجازه اردرهای خرید
+روند نزولی: EMA20 < EMA50 ──► اجازه اردرهای فروش
+بازار خنثی: ADX < 20      ──► توقف معاملات پرریسک`}
+                              practicalTipFa="فعال بودن این فیلتر وین‌ریت را تا ۱۵٪ بالا می‌برد."
                             />
                           </div>
                           <select
@@ -2250,6 +2329,9 @@ export default function ResearchPage() {
                             <HelpTooltip
                               titleFa="ماژول ماشه ورود"
                               explanationFa="الگوی دقیق قیمتی که سیگنال ورود صادر می‌کند. آیا به محض شکست کانال باشد، یا سوییپ نقدینگی اسمارت مانی، یا برگشت از اشباع میانگین؟"
+                              visualDiagramFa={`DONCHIAN: شکست سقف ۲۰ کندل ──► BUY
+SMC: سوییپ کف قبلی + کلوز صعودی ──► BUY
+MEAN REVERSION: لمس باند انحراف Z-Score ──► ورود معکوس`}
                             />
                           </div>
                           <select
@@ -2280,6 +2362,8 @@ export default function ResearchPage() {
                             <HelpTooltip
                               titleFa="ماژول تاییدیه دوم"
                               explanationFa="یک لایه اعتبارسنجی مستقل برای اطمینان از اینکه حجم نقدینگی کافی وجود دارد و ورود در خلاء نقدینگی صورت نمی‌گیرد."
+                              visualDiagramFa={`سشن فعال: حجم معاملات > میانگین ──► تایید
+سشن غیرفعال: نقدینگی اندک ──► رد اردر برای جلوگیری از اسلیپیج`}
                             />
                           </div>
                           <select
@@ -2309,6 +2393,8 @@ export default function ResearchPage() {
                             <HelpTooltip
                               titleFa="ماژول مدیریت ریسک و خروج"
                               explanationFa="نحوه محاسبه استاپ و تارگت معامله. آیا با ATR نوسان‌پذیر باشد یا پشت سطوح ساختار بازار؟"
+                              visualDiagramFa={`ATR: استاپ با نوسان روز حرکت می‌کند
+STRUCTURE: استاپ پشت آخرین سوپاپ قیمت قرار می‌گیرد`}
                             />
                           </div>
                           <select
@@ -2349,6 +2435,13 @@ export default function ResearchPage() {
                               <HelpTooltip
                                 titleFa="حق وتوی فیلتر روند"
                                 explanationFa="اگر فعال باشد، در صورت عدم تایید فیلتر رژیم یا روند، حتی با وجود تاییدیه سایر ماژول‌ها، ورود به طور ۱۰۰٪ مسدود می‌شود."
+                                visualDiagramFa={`سیگنال تریگر SMC: خرید [✓]
+حجم سشن نیویورک: عالی [✓]
+فیلتر روند کلان: نزولی [✗]
+────────────────────────────────
+نتیجه با حق وتو: معامله فوراً مسدود شد (عدم ورود)`}
+                                practicalTipFa="حق وتو از ورود در روندهای مخالف پرقدرت که منجر به استاپ‌های پیاپی می‌شوند جلوگیری می‌کند."
+                                impactOnPropFirmFa="معامله‌گران موفق پراپ، همیشه از حق وتوی روند برای نجات سرمایه استفاده می‌کنند."
                               />
                             </div>
                             <label className="flex items-center gap-2 cursor-pointer pt-1 text-zinc-300">
@@ -2512,7 +2605,18 @@ export default function ResearchPage() {
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
                   {/* سرمایه اولیه و پریست‌ها */}
                   <div className="space-y-1.5">
-                    <span className="text-zinc-400 text-[11px] block">سرمایه اولیه ({currencySymbol}):</span>
+                    <div className="flex items-center justify-between">
+                      <span className="text-zinc-400 text-[11px] block">سرمایه اولیه ({currencySymbol}):</span>
+                      <HelpTooltip
+                        titleFa="سرمایه اولیه حساب (Initial Capital)"
+                        explanationFa="مبلغ بالانس مبنا برای شروع آزمایش. تمام محاسبات مارجین درگیر، دروداون دلاری، و حجم هر لات بر اساس این عدد پایه‌ریزی می‌شود."
+                        visualDiagramFa={`[سرمایه اولیه: $100,000]
+  │── ریسک ۱٪ بر هر معامله = $1,000 حد ضرر
+  └── سقف زیان ۵٪ روزانه = $5,000 توقف اضطراری`}
+                        practicalTipFa="برای آزمایش واقع‌بینانه، سرمایه‌ای معادل اندازه اکانت چالشی که قصد خریدش را دارید انتخاب کنید (مثلاً ۲۵k یا ۱۰۰k)."
+                        impactOnPropFirmFa="عدم تطابق سرمایه تست با حساب واقعی، باعث محاسبه اشتباه ارزش هر پیپ و سوختن قوانین پراپ می‌شود."
+                      />
+                    </div>
                     <input
                       type="number"
                       min="100"
@@ -2541,7 +2645,18 @@ export default function ResearchPage() {
 
                   {/* اهرم حساب (Leverage) */}
                   <div className="space-y-1.5">
-                    <span className="text-zinc-400 text-[11px] block">اهرم معاملاتی (Leverage):</span>
+                    <div className="flex items-center justify-between">
+                      <span className="text-zinc-400 text-[11px] block">اهرم معاملاتی (Leverage):</span>
+                      <HelpTooltip
+                        titleFa="اهرم معاملاتی حساب (Leverage)"
+                        explanationFa="ضریبی که قدرت خرید شما را افزایش می‌دهد و تعیین می‌کند چه مقدار از موجودی شما به عنوان وجه تضمین (Margin) قفل شود."
+                        visualDiagramFa={`اهرم 1:100 ──► مارجین مورد نیاز برای ۱ لات یورو/دلار = $1,000
+اهرم 1:30  ──► مارجین مورد نیاز برای ۱ لات یورو/دلار = $3,333
+اهرم 1:1   ──► مارجین مورد نیاز = $100,000 (بدون اعتبار)`}
+                        practicalTipFa="اکثر پراپ‌فرم‌های معتبر برای جفت‌ارزها اهرم ۱:۱۰۰ و برای طلا و شاخص‌ها ۱:۳۰ تا ۱:۵۰ ارائه می‌دهند."
+                        impactOnPropFirmFa="اگر اهرم کم باشد و استراتژی چند پوزیشن همزمان باز کند، با خطای کمبود مارجین (Margin Call) پوزیشن‌های بعدی باز نخواهند شد."
+                      />
+                    </div>
                     <div className="flex items-center gap-1">
                       {([1, 10, 30, 50, 100] as const).map((lev) => (
                         <button
@@ -2843,7 +2958,21 @@ export default function ResearchPage() {
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
                   <div className="space-y-1">
-                    <span className="text-zinc-400 text-[11px] block">سقف زیان روزانه (Max Daily Loss):</span>
+                    <div className="flex items-center justify-between">
+                      <span className="text-zinc-400 text-[11px] block">سقف زیان روزانه (Max Daily Loss):</span>
+                      <HelpTooltip
+                        titleFa="سقف افت مجاز در یک روز (Max Daily Loss)"
+                        explanationFa="حداکثر درصد ضرری که حساب در یک روز معاملاتی مجاز است تحمل کند. با رسیدن به این حد، ربات کلیه معاملات را متوقف کرده و تا روز بعد هیچ اردر جدیدی نمی‌گیرد."
+                        visualDiagramFa={`[شروع روز: بالانس $100,000]
+  ▼ معامله اول: -$2,000
+  ▼ معامله دوم: -$3,000
+  ─────────────────────────────
+  مجموع ضرر روز = -$5,000 (5%)
+  قفل اضطراری ──► توقف فوری کلیه اردرها (حفظ اکانت)`}
+                        practicalTipFa="در اکثر چالش‌های پراپ (مثل FTMO)، سقف مجاز روزانه ۵٪ است. برای حاشیه امنیت، در تست‌ها آن را روی ۳.۵٪ تا ۴٪ بگذارید."
+                        impactOnPropFirmFa="علت رد شدن بیش از ۸۰٪ داوطلبان پراپ، نقض همین قانون افت روزانه است."
+                      />
+                    </div>
                     <div className="flex items-center gap-2">
                       <input
                         type="number"
@@ -2859,7 +2988,19 @@ export default function ResearchPage() {
                   </div>
 
                   <div className="space-y-1">
-                    <span className="text-zinc-400 text-[11px] block">سقف افت کل سرمایه (Max DD Limit):</span>
+                    <div className="flex items-center justify-between">
+                      <span className="text-zinc-400 text-[11px] block">سقف افت کل سرمایه (Max DD Limit):</span>
+                      <HelpTooltip
+                        titleFa="سقف افت کل سرمایه (Max Total Drawdown Limit)"
+                        explanationFa="بزرگ‌ترین افت مجاز حساب از بالاترین بالانس اولیه یا اکوئیتی قله تا کف دره در کل طول بکتست."
+                        visualDiagramFa={`قله حساب: $108,000 ───▲───
+                           │
+دره حساب: $98,000  ───▼─── (افت -$10,000 معادل 9.2%)
+سقف مجاز: 10%      ─────── (هنوز در محدوده ایمن)`}
+                        practicalTipFa="برای پاس کردن چالش‌های پراپ، استراتژی باید حداکثر دروداون زیر ۶٪ تا ۸٪ داشته باشد."
+                        impactOnPropFirmFa="عدول حتی یک سنت از سقف دروداون کل (۱۰٪)، به معنای نقض قانون و سوختن اکانت است."
+                      />
+                    </div>
                     <div className="flex items-center gap-2">
                       <input
                         type="number"
@@ -2917,7 +3058,18 @@ export default function ResearchPage() {
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 text-xs">
                     <div className="space-y-1">
-                      <span className="text-zinc-400 text-[11px] block">مدل اسلیپیج اجرا:</span>
+                      <div className="flex items-center justify-between">
+                        <span className="text-zinc-400 text-[11px] block">مدل اسلیپیج اجرا:</span>
+                        <HelpTooltip
+                          titleFa="مدل لغزش نرخ و اسلیپیج (Slippage Model)"
+                          explanationFa="در بازار واقعی، اردرها دقیقاً در قیمت درخواستی پر نمی‌شوند. این مدل اسلیپیج را بر اساس نوسان و حجم کندل به بکتست اعمال می‌کند تا نتایج بیش از حد خوش‌بینانه نباشد."
+                          visualDiagramFa={`قیمت سفارش مارکت: 2350.20
+اسلیپیج در کندل آرام: 0.1 پیپ  ──► قیمت اجرا: 2350.21
+اسلیپیج در کندل خبری: 1.8 پیپ  ──► قیمت اجرا: 2350.38`}
+                          practicalTipFa="گزینه VOLATILITY_SCALED واقع‌بینانه‌ترین تخمین را از حساب‌های زنده و پراپ ارائه می‌دهد."
+                          impactOnPropFirmFa="عدم در نظر گرفتن اسلیپیج در بکتست، دلیل اصلی سوددهی روی کاغذ و شکست در محیط لایو است."
+                        />
+                      </div>
                       <select
                         value={strategyParams.executionFriction?.slippageModelType || 'VOLATILITY_SCALED'}
                         onChange={(e) =>
@@ -2980,7 +3132,16 @@ export default function ResearchPage() {
                     </div>
 
                     <div className="space-y-1">
-                      <span className="text-zinc-400 text-[11px] block">مدل اسپرد:</span>
+                      <div className="flex items-center justify-between">
+                        <span className="text-zinc-400 text-[11px] block">مدل اسپرد:</span>
+                        <HelpTooltip
+                          titleFa="شبیه‌ساز اسپرد پویا (Spread Model)"
+                          explanationFa="اسپرد بروکر ثابت نیست. در تغییر سشن‌ها و زمان انتشار اخبار مهم، اسپرد باز می‌شود. این مدل این افزایش فاصله خرید و فروش را شبیه‌سازی می‌کند."
+                          visualDiagramFa={`سشن عادی: Ask - Bid = 0.8 پیپ
+زمان انتشار خبر CPI: Ask - Bid = 3.5 پیپ (افزایش ناگهانی اسپرد)`}
+                          practicalTipFa="برای اسکلپرهای طلا، انتخاب DYNAMIC_SESSION الزامی است چون اسپرد طلا شب‌ها تا ۲ برابر باز می‌شود."
+                        />
+                      </div>
                       <select
                         value={strategyParams.executionFriction?.spreadModelType || 'FIXED'}
                         onChange={(e) =>
@@ -3001,7 +3162,22 @@ export default function ResearchPage() {
                     </div>
 
                     <div className="space-y-1">
-                      <span className="text-zinc-400 text-[11px] block">رفع ابهام برخورد همزمان SL/TP:</span>
+                      <div className="flex items-center justify-between">
+                        <span className="text-zinc-400 text-[11px] block">رفع ابهام برخورد همزمان SL/TP:</span>
+                        <HelpTooltip
+                          titleFa="رفع ابهام درون‌کندلی (Intrabar Ambiguity Policy)"
+                          explanationFa="اگر در یک کندل بزرگ، سقف آن به حد سود و کف آن به حد ضرر خورده باشد، موتور تست باید تصمیم بگیرد کدام یک زودتر لمس شده است."
+                          visualDiagramFa={`سقف کندل ───○ تارگت TP
+  │
+  │ (کدام اول رخ داده است؟)
+  │
+کف کندل  ───✕ استاپ SL
+─────────────────────────────────
+حالت PESSIMISTIC ──► فرض بر این است که اول استاپ خورده (ضد سوگیری)`}
+                          practicalTipFa="همیشه حالت PESSIMISTIC را انتخاب کنید تا خیالتان راحت باشد بکتست هیچ سود بادآورده‌ای به شما نشان نداده است."
+                          impactOnPropFirmFa="تنها استراتژی‌هایی که در حالت PESSIMISTIC سودآورند شانس قبولی واقعی در پراپ دارند."
+                        />
+                      </div>
                       <select
                         value={strategyParams.executionFriction?.intrabarAmbiguityPolicy || 'PESSIMISTIC'}
                         onChange={(e) =>
@@ -3208,6 +3384,11 @@ export default function ResearchPage() {
                     <HelpTooltip
                       titleFa="سود/زیان خالص کل (Net Profit)"
                       explanationFa="مجموع بازدهی دلاری و درصدی استراتژی پس از کسر تمام اسپردها، لغزش نرخ (اسلیپیج) و کمیسیون‌های معاملاتی."
+                      visualDiagramFa={`سود ناخالص معاملات:   +$14,250
+مجموع زیان معاملات:   -$6,100
+هزینه اسپرد و کمیسیون: -$1,200
+───────────────────────────────
+سود خالص نهایی:       +$6,950 (+6.9%)`}
                       impactOnPropFirmFa="معیار اصلی احراز سود هدف (مثلاً ۱۰٪ در فاز اول یا ۵٪ در فاز دوم چالش)."
                     />
                   </div>
@@ -3231,6 +3412,10 @@ export default function ResearchPage() {
                     <HelpTooltip
                       titleFa="اکوئیتی نهایی حساب"
                       explanationFa="مانده کل سرمایه در انتهای بازه آزمایشی با احتساب سود یا زیان تمام پوزیشن‌های بسته شده."
+                      visualDiagramFa={`سرمایه آغازین: $100,000
+سود خالص:       +$8,400
+───────────────────────────
+اکوئیتی پایانی: $108,400`}
                     />
                   </div>
                   <span className="text-base font-bold text-zinc-100 font-mono mt-1 block">
@@ -3250,6 +3435,10 @@ export default function ResearchPage() {
                     <HelpTooltip
                       titleFa="حداکثر افت سرمایه (Max Drawdown)"
                       explanationFa="بزرگ‌ترین افت حساب از بالاترین قله ثروت تا عمیق‌ترین دره در طول فعالیت استراتژی."
+                      visualDiagramFa={`قله حساب (Peak):   $105,000 ───▲
+                                │  افت -$4,200 (معادل 4%)
+کف دره (Trough):   $100,800 ───▼
+قله جدید:          $109,000 ───▲`}
                       practicalTipFa="اگر دروداون بیش از ۸٪ باشد، ریسک شکست استراتژی در چالش‌های پراپ بسیار بالا خواهد بود."
                       impactOnPropFirmFa="قانون حیاتی و خط قرمز پراپ‌فرم‌ها؛ عبور از سقف مجاز (مثلاً ۱۰٪) منجر به رد فوری حساب می‌شود."
                     />
@@ -3266,6 +3455,9 @@ export default function ResearchPage() {
                     <HelpTooltip
                       titleFa="تعداد معاملات و نرخ برد (Win Rate)"
                       explanationFa="تعداد کل پوزیشن‌های اجرا شده و درصد معاملاتی که با سود مثبت بسته شده‌اند."
+                      visualDiagramFa={`کل معاملات: ۵۰ معامله
+معاملات با سود: ۳۰ معامله (۶۰٪ Win Rate)
+معاملات با زیان: ۲۰ معامله (۴۰٪ Loss Rate)`}
                       practicalTipFa="در سبک‌های با R:R بالاتر از ۲، حتی با وین‌ریت ۴۰٪ هم حساب به شدت سودآور است."
                     />
                   </div>
@@ -3281,6 +3473,10 @@ export default function ResearchPage() {
                     <HelpTooltip
                       titleFa="فاکتور سود (Profit Factor)"
                       explanationFa="نسبت کل دلارهای سود ساخته شده به کل دلارهای از دست رفته در ضررها. عدد بالای ۱.۵ نشان‌دهنده استراتژی مستحکم و بالای ۲ بسیار ایده‌آل است."
+                      visualDiagramFa={`کل دلارهای برنده: $12,000
+کل دلارهای بازنده:  $6,000
+───────────────────────────────
+فاکتور سود = 12000 ÷ 6000 = 2.0 (عالی)`}
                       practicalTipFa="فاکتور سود زیر ۱.۲ در حساب‌های زنده به دلیل اسلیپیج به راحتی به زیان تبدیل می‌شود."
                     />
                   </div>
@@ -3300,6 +3496,11 @@ export default function ResearchPage() {
                     <HelpTooltip
                       titleFa="کالبدشکافی تفکیکی معاملات"
                       explanationFa="این بخش تمام پوزیشن‌های بسته شده را تجزیه می‌کند تا بدانید سودها با چه میانگینی و در چه اهدافی بسته شده‌اند، زیان‌ها چقدر بوده‌اند و معاملات قبل از خروج تا چه حد در سود یا ضرر شناور بوده‌اند."
+                      visualDiagramFa={`[خروج در تارگت TP]: ۲۵ معامله (میانگین +2.1R)
+[خروج در استاپ SL]:  ۱۵ معامله (میانگین -1.0R)
+[خروج سر‌به‌سر BE]:   ۱۰ معامله (۰.۰R ریسک صفر)
+─────────────────────────────────────────────────
+نسبت بازدهی (Payoff Ratio) = 2.1 ÷ 1.0 = 2.1`}
                       practicalTipFa="اگر میانگین زیان از ۱R فراتر رفته، نشان‌دهنده اسلیپیج منفی یا عدم رعایت حد ضرر است."
                       impactOnPropFirmFa="در آزمون‌های پراپ، ثبات میانگین سود به میانگین زیان (Payoff Ratio بالاتر از ۱.۵) تضمین‌کننده بقای حساب است."
                     />
@@ -3486,6 +3687,15 @@ export default function ResearchPage() {
                   <div className="flex items-center gap-2 font-bold text-purple-300">
                     <Layers className="w-4 h-4 text-purple-400" />
                     <span>اعتبارسنجی برون‌نمونه‌ای پیش‌رو (Purged Walk-Forward Cross-Validation):</span>
+                    <HelpTooltip
+                      titleFa="اعتبارسنجی پیش‌رو (Walk-Forward) چیست؟"
+                      explanationFa="تقسیم داده‌ها به بازه‌های زمانی مختلف و تست استراتژی بر روی داده‌هایی که الگوریتم هرگز ندیده است (Out-of-Sample). این متد، قطعی‌ترین آزمون ضد بیش‌برازش (Overfitting) در علم مالی است."
+                      visualDiagramFa={`فولد ۱: [بهینه‌سازی درون‌نمونه]──[قرنطینه]──►[تست زنده برون‌نمونه OOS]
+فولد ۲: ────► [بهینه‌سازی]────[قرنطینه]──►[تست برون‌نمونه OOS]
+فولد ۳: ──────────► [بهینه‌سازی]──[قرنطینه]──►[تست OOS]`}
+                      practicalTipFa="اگر نسبت WFE بالای ۵۰٪ باشد، استراتژی مستحکم (ROBUST) است و در آینده نیز سودآور خواهد ماند."
+                      impactOnPropFirmFa="استراتژی‌هایی که بیش‌برازش شده‌اند در تست معمولی عالی به نظر می‌رسند اما در چالش پراپ فوراً می‌سوزند."
+                    />
                   </div>
                   <div className="flex items-center gap-2">
                     <button
@@ -3648,41 +3858,35 @@ export default function ResearchPage() {
 
                     {/* جدول فولدها */}
                     <div className="overflow-x-auto rounded-xl border border-[#1e263c]">
-                      <table className="w-full text-[11px] text-zinc-300">
-                        <thead>
-                          <tr className="border-b border-[#1e263c] bg-[#0d1120]">
-                            <th className="px-3 py-1.5 text-right text-zinc-500">فولد</th>
-                            <th className="px-3 py-1.5 text-center text-zinc-500">آموزش (Train)</th>
-                            <th className="px-3 py-1.5 text-center text-zinc-500">حائل (Purge)</th>
-                            <th className="px-3 py-1.5 text-center text-zinc-500">آزمون (OOS)</th>
-                            <th className="px-3 py-1.5 text-center text-zinc-500">سود درون‌نمونه</th>
-                            <th className="px-3 py-1.5 text-center text-zinc-500">سود برون‌نمونه</th>
-                            <th className="px-3 py-1.5 text-center text-zinc-500">کارایی فولد</th>
-                            <th className="px-3 py-1.5 text-center text-zinc-500">وضعیت</th>
+                      <table className="w-full text-right text-xs">
+                        <thead className="bg-[#161d2d] text-zinc-400 text-[10px]">
+                          <tr>
+                            <th className="p-2">فولد</th>
+                            <th className="p-2">بازه درون‌نمونه (IS)</th>
+                            <th className="p-2">بازه برون‌نمونه (OOS)</th>
+                            <th className="p-2">سود OOS</th>
+                            <th className="p-2">افت OOS</th>
+                            <th className="p-2">کارایی فولد</th>
+                            <th className="p-2">نتیجه فولد</th>
                           </tr>
                         </thead>
-                        <tbody>
-                          {walkForwardReport.folds.map(f => (
-                            <tr key={f.foldIndex} className="border-b border-[#181f30]">
-                              <td className="px-3 py-1.5 text-right font-mono text-purple-300 font-bold">پنجره #{f.foldIndex}</td>
-                              <td className="px-3 py-1.5 text-center font-mono text-zinc-400">{f.trainCandlesCount} کندل</td>
-                              <td className="px-3 py-1.5 text-center font-mono text-amber-400">{f.purgeCandlesCount} کندل</td>
-                              <td className="px-3 py-1.5 text-center font-mono text-cyan-400">{f.testCandlesCount} کندل</td>
-                              <td className={`px-3 py-1.5 text-center font-mono ${f.trainMetrics.netProfit >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-                                ${f.trainMetrics.netProfit.toFixed(0)}
+                        <tbody className="divide-y divide-[#1e263c] font-mono text-[11px]">
+                          {walkForwardReport.folds.map((f) => (
+                            <tr key={f.foldIndex} className="hover:bg-[#151b29]">
+                              <td className="p-2 text-zinc-300 font-sans">فولد {f.foldIndex + 1}</td>
+                              <td className="p-2 text-zinc-400 text-[10px]">{formatDateIso(f.trainStartTime)} تا {formatDateIso(f.trainEndTime)}</td>
+                              <td className="p-2 text-purple-300 text-[10px]">{formatDateIso(f.testStartTime)} تا {formatDateIso(f.testEndTime)}</td>
+                              <td className={`p-2 font-bold ${f.testMetrics.netProfit >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                                ${f.testMetrics.netProfit.toFixed(1)}
                               </td>
-                              <td className={`px-3 py-1.5 text-center font-mono font-bold ${f.testMetrics.netProfit >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-                                ${f.testMetrics.netProfit.toFixed(0)}
-                              </td>
-                              <td className="px-3 py-1.5 text-center font-mono">
-                                {(f.foldEfficiencyRatio * 100).toFixed(0)}٪
-                              </td>
-                              <td className="px-3 py-1.5 text-center">
-                                {f.isFoldPassed ? (
-                                  <span className="text-emerald-400">✓ قبول</span>
-                                ) : (
-                                  <span className="text-rose-400">✗ افت</span>
-                                )}
+                              <td className="p-2 text-amber-400">{f.testMetrics.maxDrawdownPercent.toFixed(1)}%</td>
+                              <td className="p-2 text-zinc-300">{(f.foldEfficiencyRatio * 100).toFixed(0)}٪</td>
+                              <td className="p-2">
+                                <span className={`px-1.5 py-0.5 rounded text-[9px] font-sans font-bold ${
+                                  f.isFoldPassed ? 'bg-emerald-500/20 text-emerald-300' : 'bg-rose-500/20 text-rose-300'
+                                }`}>
+                                  {f.isFoldPassed ? 'موفق ✓' : 'ناموفق ✕'}
+                                </span>
                               </td>
                             </tr>
                           ))}
@@ -3699,6 +3903,16 @@ export default function ResearchPage() {
                   <div className="flex items-center gap-2 font-bold text-cyan-300">
                     <Activity className="w-4 h-4 text-cyan-400" />
                     <span>شبیه‌سازی مونت‌کارلو و محاسبه ریسک ورشکستگی (Monte-Carlo & Risk of Ruin):</span>
+                    <HelpTooltip
+                      titleFa="شبیه‌سازی تصادفی مونت‌کارلو (Monte Carlo)"
+                      explanationFa="معاملات انجام شده را صدها بار به ترتیب تصادفی بر می‌زند تا بررسی کند اگر بدشانس‌ترین حالت ممکن رخ دهد و تمام ضررها پشت سر هم بیایند، احتمال سوختن اکانت چقدر است."
+                      visualDiagramFa={`مسیر خوش‌بینانه:   برد ──► برد ──► ضرر ──► اکوئیتی رو به بالا ↗
+مسیر بدشانس‌ترین: ضرر ──► ضرر ──► ضرر ──► تست مقاومت دروداون ↘
+────────────────────────────────────────────────────────────────
+ریسک ورشکستگی (Risk of Ruin) = 0.2% (بسیار عالی و ایمن)`}
+                      practicalTipFa="اگر ریسک ورشکستگی بالای ۱٪ باشد، حجم لات خود را نصف کنید تا حساب در بحران‌ها زنده بماند."
+                      impactOnPropFirmFa="تنها راه ریاضی برای اطمینان از اینکه قبولی در چالش ناشی از شانس نبوده است."
+                    />
                   </div>
                   <div className="flex items-center gap-2">
                     <button
