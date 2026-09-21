@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { EnvironmentNavBar } from '@/components/navigation/environment-nav-bar';
 import { MultiStyleBacktestModal } from '@/components/trading/multi-style-backtest-modal';
 import { DataProvenance } from '@/lib/contracts/provenance';
@@ -18,6 +18,7 @@ import {
 import { EndOfDataPolicy } from '@/lib/core/ports';
 import { DataWorkbench, ValidationReport } from '@/lib/core/data-workbench';
 import { PerformanceMetrics } from '@/lib/core/research-lab';
+import { AdvancedExecutionStressConfig, ResearchRun, ResearchRunStatus } from '@/lib/contracts/research-run';
 import { GOLD_CANDLES_FIXTURE_5M } from '@/lib/replay/fixtures/gold-candles';
 import { getBundledDataset } from '@/lib/research/bundled-historical-datasets';
 import { useResearchBacktestWorker } from '@/hooks/use-research-backtest-worker';
@@ -40,6 +41,10 @@ import {
   Clock,
   DollarSign,
   ShieldAlert,
+  GitCompare,
+  Download,
+  Plus,
+  Trash2,
 } from 'lucide-react';
 
 const AVAILABLE_SYMBOLS: SymbolId[] = ['XAUUSD', 'EURUSD', 'GBPUSD', 'USDJPY'];
@@ -117,6 +122,24 @@ export default function ResearchPage() {
   const [backtestResult, setBacktestResult] = useState<PerformanceMetrics | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [initialTime] = useState(() => Date.now());
+
+  // ─── آزمایشگاه سناریو (Scenario Lab) Package 2 ──────────────────────────
+  const [scenarioLabOpen, setScenarioLabOpen] = useState(false);
+  const [stressSpreadMultiplier, setStressSpreadMultiplier] = useState<number>(1);
+  const [stressSlippageAdd, setStressSlippageAdd] = useState<number>(0);
+  const [stressSkipFillsPercent, setStressSkipFillsPercent] = useState<number>(0);
+  const [stressGapShock, setStressGapShock] = useState<number>(1);
+  const [scenarioSeed, setScenarioSeed] = useState<number>(1337);
+  const [scenarioRuns, setScenarioRuns] = useState<Array<{
+    id: string;
+    name: string;
+    status: ResearchRunStatus;
+    stressConfig: AdvancedExecutionStressConfig;
+    seed: number;
+    metrics?: PerformanceMetrics;
+    error?: string;
+  }>>([]);
+  const [scenarioLabExportJson, setScenarioLabExportJson] = useState<string | null>(null);
 
   // هوک اختصاصی اجرای بکتست خارج از نخ اصلی
   const { run: runWorkerBacktest, cancel: cancelWorkerBacktest, isRunning, progress } =
@@ -1865,26 +1888,329 @@ export default function ResearchPage() {
           )}
         </div>
 
-        {/* حالت پیشرفته: آزمایشگاه مونت‌کارلو و بهینه‌سازی پارامترها */}
+        {/* حالت پیشرفته: آزمایشگاه سناریو مقایسه‌ای (Scenario Comparison Lab) */}
         {viewMode === 'ADVANCED' && (
-          <div className="bg-[#121624] border border-purple-500/30 rounded-2xl p-4 space-y-3">
+          <div className="bg-[#121624] border border-purple-500/30 rounded-2xl p-4 space-y-4">
+            {/* سرتیتر */}
             <div className="flex items-center justify-between border-b border-[#1e263c] pb-2">
               <span className="text-xs font-bold text-purple-300 flex items-center gap-2">
-                <Zap className="w-4 h-4" />
-                <span>حالت پیشرفته: تحلیل پیش‌رونده (Walk-Forward) و شبیه‌سازی مونت‌کارلو</span>
+                <GitCompare className="w-4 h-4" />
+                <span>آزمایشگاه سناریو مقایسه‌ای (Scenario Lab)</span>
               </span>
-              <span className="text-[11px] text-zinc-500 font-mono">Walk-Forward & Monte-Carlo</span>
+              <button
+                onClick={() => setScenarioLabOpen(v => !v)}
+                className="text-[11px] text-zinc-400 hover:text-purple-300 transition-colors"
+              >
+                {scenarioLabOpen ? '▲ بستن تنظیمات' : '▼ باز کردن تنظیمات'}
+              </button>
             </div>
-            <p className="text-xs text-zinc-400 leading-relaxed">
-              ابزارهای تحلیلی چندپنجره‌ای و آزمون تنش شبیه‌سازی برای سنجش استواری آماری استراتژی.
-            </p>
-            <button
-              onClick={() => setIsBacktestModalOpen(true)}
-              className="px-4 py-2 bg-purple-600/30 hover:bg-purple-600/50 border border-purple-500/40 text-purple-200 text-xs font-bold rounded-xl flex items-center gap-2 transition-all"
-            >
-              <Sliders className="w-3.5 h-3.5" />
-              <span>باز کردن پنل تحلیل پیشرفته چندپنجره‌ای</span>
-            </button>
+
+            {/* پنل تنظیمات تنش */}
+            {scenarioLabOpen && (
+              <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
+                {/* اسپرد */}
+                <div className="space-y-1">
+                  <label className="text-[11px] text-zinc-400">ضریب اسپرد</label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="range" min={0.5} max={3} step={0.1}
+                      value={stressSpreadMultiplier}
+                      onChange={e => setStressSpreadMultiplier(Number(e.target.value))}
+                      className="flex-1 accent-purple-500"
+                    />
+                    <span className="text-xs font-mono text-purple-300 w-8 text-right">
+                      {stressSpreadMultiplier.toFixed(1)}x
+                    </span>
+                  </div>
+                </div>
+
+                {/* اسلیپیج */}
+                <div className="space-y-1">
+                  <label className="text-[11px] text-zinc-400">اسلیپیج اضافی (پیپ)</label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="range" min={0} max={3} step={0.1}
+                      value={stressSlippageAdd}
+                      onChange={e => setStressSlippageAdd(Number(e.target.value))}
+                      className="flex-1 accent-purple-500"
+                    />
+                    <span className="text-xs font-mono text-purple-300 w-8 text-right">
+                      {stressSlippageAdd.toFixed(1)}
+                    </span>
+                  </div>
+                </div>
+
+                {/* اجرا نشدن تصادفی */}
+                <div className="space-y-1">
+                  <label className="text-[11px] text-zinc-400">لغو تصادفی سفارش (%)</label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="range" min={0} max={50} step={1}
+                      value={stressSkipFillsPercent}
+                      onChange={e => setStressSkipFillsPercent(Number(e.target.value))}
+                      className="flex-1 accent-purple-500"
+                    />
+                    <span className="text-xs font-mono text-purple-300 w-8 text-right">
+                      {stressSkipFillsPercent}%
+                    </span>
+                  </div>
+                </div>
+
+                {/* گپ شوک */}
+                <div className="space-y-1">
+                  <label className="text-[11px] text-zinc-400">ضریب گپ شوک</label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="range" min={1} max={5} step={0.5}
+                      value={stressGapShock}
+                      onChange={e => setStressGapShock(Number(e.target.value))}
+                      className="flex-1 accent-purple-500"
+                    />
+                    <span className="text-xs font-mono text-purple-300 w-8 text-right">
+                      {stressGapShock.toFixed(1)}x
+                    </span>
+                  </div>
+                </div>
+
+                {/* سید */}
+                <div className="space-y-1">
+                  <label className="text-[11px] text-zinc-400">سید تکرارپذیری</label>
+                  <input
+                    type="number" min={1} max={9999999}
+                    value={scenarioSeed}
+                    onChange={e => setScenarioSeed(Math.max(1, parseInt(e.target.value) || 1337))}
+                    className="w-full bg-[#0d1120] border border-[#2a3450] text-purple-200 text-xs rounded-lg px-2 py-1 font-mono"
+                  />
+                </div>
+
+                {/* دکمه اضافه کردن سناریو */}
+                <div className="flex items-end">
+                  <button
+                    onClick={() => {
+                      if (candles.length === 0) return;
+                      const stressConfig: AdvancedExecutionStressConfig = {
+                        spreadMultiplier: stressSpreadMultiplier,
+                        slippageAdditionPips: stressSlippageAdd,
+                        randomSkippedFillsPercent: stressSkipFillsPercent,
+                        gapShockMultiplier: stressGapShock,
+                      };
+                      const newId = `scenario-${Date.now()}`;
+                      const labelParts: string[] = [];
+                      if (stressSpreadMultiplier !== 1) labelParts.push(`اسپرد×${stressSpreadMultiplier}`);
+                      if (stressSlippageAdd > 0) labelParts.push(`اسلیپیج+${stressSlippageAdd}`);
+                      if (stressSkipFillsPercent > 0) labelParts.push(`لغو${stressSkipFillsPercent}%`);
+                      if (stressGapShock !== 1) labelParts.push(`گپ×${stressGapShock}`);
+                      const name = labelParts.length > 0 ? labelParts.join(' | ') : 'پایه';
+                      if (scenarioRuns.length >= 30) {
+                        alert('حداکثر ۳۰ سناریو مجاز است.');
+                        return;
+                      }
+                      setScenarioRuns(prev => [
+                        ...prev,
+                        { id: newId, name, status: 'PENDING', stressConfig, seed: scenarioSeed },
+                      ]);
+                    }}
+                    disabled={candles.length === 0}
+                    className="w-full px-3 py-2 bg-purple-600/30 hover:bg-purple-600/50 disabled:opacity-40 border border-purple-500/40 text-purple-200 text-xs font-bold rounded-xl flex items-center justify-center gap-2 transition-all"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>افزودن سناریو ({scenarioRuns.length}/30)</span>
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* صف سناریوها و جدول مقایسه */}
+            {scenarioRuns.length > 0 && (
+              <div className="space-y-3">
+                {/* ردیف عملیات */}
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-zinc-400">{scenarioRuns.length} سناریو آماده مقایسه</span>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={async () => {
+                        // اجرای سناریوها به صورت موازی (ماکسیمم ۲ همزمان)
+                        const { ResearchLab } = await import('@/lib/core/research-lab');
+                        const queue = [...scenarioRuns.filter(r => r.status === 'PENDING')];
+
+                        for (const scenario of queue) {
+                          setScenarioRuns(prev =>
+                            prev.map(r => r.id === scenario.id ? { ...r, status: 'RUNNING' } : r)
+                          );
+                          try {
+                            const result = ResearchLab.runBacktest(candles, symbol, {
+                              initialCash: initialCapital,
+                              stressConfig: scenario.stressConfig,
+                              randomSeed: scenario.seed,
+                              defaultSpreadPips: spreadPips,
+                              commissionPerLot,
+                              additionalSlippagePips,
+                            });
+                            setScenarioRuns(prev =>
+                              prev.map(r =>
+                                r.id === scenario.id
+                                  ? { ...r, status: 'COMPLETED', metrics: result.metrics }
+                                  : r
+                              )
+                            );
+                          } catch (err) {
+                            setScenarioRuns(prev =>
+                              prev.map(r =>
+                                r.id === scenario.id
+                                  ? { ...r, status: 'FAILED', error: String(err) }
+                                  : r
+                              )
+                            );
+                          }
+                        }
+                      }}
+                      disabled={candles.length === 0 || scenarioRuns.every(r => r.status !== 'PENDING')}
+                      className="px-3 py-1.5 bg-green-600/30 hover:bg-green-600/50 disabled:opacity-40 border border-green-500/40 text-green-300 text-xs font-bold rounded-xl flex items-center gap-1.5 transition-all"
+                    >
+                      <Play className="w-3 h-3" />
+                      اجرای همه
+                    </button>
+                    <button
+                      onClick={() => {
+                        const rows = scenarioRuns.map(r => ({
+                          name: r.name,
+                          seed: r.seed,
+                          status: r.status,
+                          netProfit: r.metrics?.netProfit ?? null,
+                          winRate: r.metrics?.winRatePercent ?? null,
+                          totalTrades: r.metrics?.totalTrades ?? null,
+                          maxDrawdown: r.metrics?.maxDrawdownPercent ?? null,
+                          profitFactor: r.metrics?.profitFactor ?? null,
+                        }));
+                        const json = JSON.stringify(
+                          { exportedAt: new Date().toISOString(), runs: rows },
+                          null, 2
+                        );
+                        const blob = new Blob([json], { type: 'application/json' });
+                        const url = URL.createObjectURL(blob);
+                        const a = document.createElement('a');
+                        a.href = url;
+                        a.download = `scenario-lab-${Date.now()}.json`;
+                        a.click();
+                        URL.revokeObjectURL(url);
+                      }}
+                      disabled={scenarioRuns.every(r => r.status !== 'COMPLETED')}
+                      className="px-3 py-1.5 bg-blue-600/30 hover:bg-blue-600/50 disabled:opacity-40 border border-blue-500/40 text-blue-300 text-xs font-bold rounded-xl flex items-center gap-1.5 transition-all"
+                    >
+                      <Download className="w-3 h-3" />
+                      صادرات JSON
+                    </button>
+                    <button
+                      onClick={() => setScenarioRuns([])}
+                      className="px-3 py-1.5 bg-red-600/20 hover:bg-red-600/40 border border-red-500/30 text-red-400 text-xs rounded-xl flex items-center gap-1.5 transition-all"
+                    >
+                      <Trash2 className="w-3 h-3" />
+                      پاک کردن
+                    </button>
+                  </div>
+                </div>
+
+                {/* جدول مقایسه نتایج */}
+                <div className="overflow-x-auto rounded-xl border border-[#1e263c]">
+                  <table className="w-full text-[11px] text-zinc-300">
+                    <thead>
+                      <tr className="border-b border-[#1e263c] bg-[#0d1120]">
+                        <th className="px-3 py-2 text-right text-zinc-500 font-medium">نام سناریو</th>
+                        <th className="px-3 py-2 text-center text-zinc-500 font-medium">وضعیت</th>
+                        <th className="px-3 py-2 text-center text-zinc-500 font-medium">معاملات</th>
+                        <th className="px-3 py-2 text-center text-zinc-500 font-medium">نرخ برد</th>
+                        <th className="px-3 py-2 text-center text-zinc-500 font-medium">P/F</th>
+                        <th className="px-3 py-2 text-center text-zinc-500 font-medium">سود خالص</th>
+                        <th className="px-3 py-2 text-center text-zinc-500 font-medium">حداکثر DD%</th>
+                        <th className="px-3 py-2 text-center text-zinc-500 font-medium"></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {scenarioRuns.map((run) => (
+                        <tr key={run.id} className="border-b border-[#1a2035] hover:bg-[#141926]/50 transition-colors">
+                          <td className="px-3 py-2 text-right max-w-[160px] truncate font-medium"
+                            title={run.name}>{run.name}</td>
+                          <td className="px-3 py-2 text-center">
+                            {run.status === 'PENDING' && (
+                              <span className="text-zinc-500">⏳ در انتظار</span>
+                            )}
+                            {run.status === 'RUNNING' && (
+                              <span className="text-yellow-400 animate-pulse">⚙️ در حال اجرا</span>
+                            )}
+                            {run.status === 'COMPLETED' && (
+                              <span className="text-green-400">✓ تکمیل</span>
+                            )}
+                            {run.status === 'FAILED' && (
+                              <span className="text-red-400" title={run.error}>✗ خطا</span>
+                            )}
+                          </td>
+                          <td className="px-3 py-2 text-center font-mono">
+                            {run.metrics?.totalTrades ?? '—'}
+                          </td>
+                          <td className="px-3 py-2 text-center font-mono">
+                            {run.metrics ? `${run.metrics.winRatePercent.toFixed(1)}%` : '—'}
+                          </td>
+                          <td className="px-3 py-2 text-center font-mono">
+                            {run.metrics ? run.metrics.profitFactor.toFixed(2) : '—'}
+                          </td>
+                          <td className={`px-3 py-2 text-center font-mono font-bold ${
+                            run.metrics
+                              ? run.metrics.netProfit >= 0 ? 'text-green-400' : 'text-red-400'
+                              : ''
+                          }`}>
+                            {run.metrics
+                              ? `${run.metrics.netProfit >= 0 ? '+' : ''}${run.metrics.netProfit.toFixed(0)}`
+                              : '—'}
+                          </td>
+                          <td className={`px-3 py-2 text-center font-mono ${
+                            run.metrics
+                              ? run.metrics.maxDrawdownPercent > 20 ? 'text-red-400' :
+                                run.metrics.maxDrawdownPercent > 10 ? 'text-yellow-400' : 'text-green-400'
+                              : ''
+                          }`}>
+                            {run.metrics ? `${run.metrics.maxDrawdownPercent.toFixed(1)}%` : '—'}
+                          </td>
+                          <td className="px-3 py-2 text-center">
+                            <button
+                              onClick={() =>
+                                setScenarioRuns(prev => prev.filter(r => r.id !== run.id))
+                              }
+                              className="text-zinc-600 hover:text-red-400 transition-colors"
+                            >
+                              <Trash2 className="w-3 h-3" />
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* هشدار: محیط کاملاً آفلاین */}
+                <div className="text-[10px] text-zinc-600 flex items-center gap-1.5 border-t border-[#1e263c] pt-2">
+                  <ShieldAlert className="w-3 h-3 text-zinc-500" />
+                  محیط Scenario Lab کاملاً آفلاین است – هیچ سفارش واقعی ارسال نمی‌شود.
+                </div>
+              </div>
+            )}
+
+            {/* اگر داده نیست */}
+            {candles.length === 0 && (
+              <p className="text-xs text-zinc-600 text-center py-2">
+                برای استفاده از Scenario Lab ابتدا داده بارگذاری کنید.
+              </p>
+            )}
+
+            {/* دکمه Walk-Forward پیشرفته */}
+            <div className="border-t border-[#1e263c] pt-3">
+              <button
+                onClick={() => setIsBacktestModalOpen(true)}
+                className="px-4 py-2 bg-purple-600/20 hover:bg-purple-600/40 border border-purple-500/30 text-purple-300 text-xs font-bold rounded-xl flex items-center gap-2 transition-all"
+              >
+                <Sliders className="w-3.5 h-3.5" />
+                <span>پنل Walk-Forward چندپنجره‌ای</span>
+              </button>
+            </div>
           </div>
         )}
       </div>

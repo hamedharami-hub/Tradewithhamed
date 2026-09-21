@@ -14,6 +14,8 @@ import {
   getDefaultStrategyParameters,
 } from '../contracts/strategy-parameters';
 import { SessionTimezoneEngine } from './session-timezone';
+import { SeededRNG } from './seeded-rng';
+import { AdvancedExecutionStressConfig } from '../contracts/research-run';
 
 function timeframeToMs(timeframe: Timeframe): number {
   const durations: Record<Timeframe, number> = {
@@ -142,6 +144,8 @@ export class ResearchLab {
       strategyParameters?: StrategyParameters;
       endOfDataPolicy?: EndOfDataPolicy;
       onProgress?: (processed: number, total: number) => void;
+      stressConfig?: AdvancedExecutionStressConfig;
+      randomSeed?: number;
     } = {}
   ): {
     metrics: PerformanceMetrics;
@@ -239,7 +243,8 @@ export class ResearchLab {
       accountNamespace: 'BACKTEST-RUN',
       initialCash,
       commissionPerLot: options.commissionPerLot ?? SYMBOL_SPECS[symbol].commissionPerLot,
-      defaultSpreadPips: options.defaultSpreadPips ?? SYMBOL_SPECS[symbol].typicalSpreadPips,
+      defaultSpreadPips: (options.stressConfig?.spreadMultiplier ?? 1)
+        * (options.defaultSpreadPips ?? SYMBOL_SPECS[symbol].typicalSpreadPips),
       ambiguityPolicy: 'PESSIMISTIC',
       endOfDataPolicy,
       enableBreakeven: strategyParameters?.common.enableBreakeven,
@@ -247,8 +252,13 @@ export class ResearchLab {
       slippageModel: {
         baseSlippagePips: 0.2,
         volatilityMultiplier: 0.1,
-        additionalSlippagePips,
+        additionalSlippagePips: additionalSlippagePips
+          + (options.stressConfig?.slippageAdditionPips ?? 0),
       },
+      randomSkippedFillsPercent: options.stressConfig?.randomSkippedFillsPercent ?? 0,
+      gapShockMultiplier: options.stressConfig?.gapShockMultiplier ?? 1,
+      randomSeed: options.randomSeed ?? options.stressConfig?.randomSkippedFillsPercent
+        ? (options.randomSeed ?? 1337) : undefined,
     });
 
     const equityCurve: PerformanceMetrics['equityCurve'] = [
@@ -702,10 +712,12 @@ export class ResearchLab {
   }
 
   // ۴. شبیه‌سازی مونت‌کارلو (Monte Carlo Resampling)
+  // با پشتیبانی از سید قطعی برای تکرارپذیری کامل (Seeded Deterministic)
   public static runMonteCarlo(
     trades: PositionLedgerEntry[],
     initialCash = 10000,
-    iterations = 100
+    iterations = 100,
+    seed?: number
   ): MonteCarloSimulationResult {
     if (trades.length === 0) {
       return {
@@ -716,6 +728,10 @@ export class ResearchLab {
         riskOfRuinPercent: 0,
       };
     }
+
+    // اگر سید ارائه شده باشد، از RNG قطعی استفاده می‌کنیم
+    const rng = seed !== undefined ? new SeededRNG(seed) : null;
+    const random = rng ? () => rng.next() : () => Math.random();
 
     const profits = trades.filter(t => !t.isOpen).map(t => t.realizedPnl);
     const simMaxDrawdowns: number[] = [];
@@ -729,7 +745,7 @@ export class ResearchLab {
       let maxDDPercent = 0;
 
       for (let i = 0; i < profits.length; i++) {
-        const randIdx = Math.floor(Math.random() * profits.length);
+        const randIdx = Math.floor(random() * profits.length);
         equity += profits[randIdx];
         if (equity > peak) peak = equity;
         const dd = ((peak - equity) / peak) * 100;

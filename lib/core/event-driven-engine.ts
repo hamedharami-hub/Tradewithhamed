@@ -82,6 +82,9 @@ export interface EngineConfig {
   enablePartialTp?: boolean;
   ambiguityPolicy: IntrabarAmbiguityPolicy;
   endOfDataPolicy?: EndOfDataPolicy;
+  randomSkippedFillsPercent?: number;
+  randomSeed?: number;
+  gapShockMultiplier?: number;
   slippageModel: {
     baseSlippagePips: number;
     volatilityMultiplier: number;
@@ -97,6 +100,7 @@ export class EventDrivenExecutionEngine implements IExecutionPort {
   private pendingOrders: OrderIntentPayload[] = [];
   private orderAgeMap: Map<string, number> = new Map(); // شمارش کندل‌های سپری شده برای انقضا
   private eventSequence = 0;
+  private rng?: import('./seeded-rng').SeededRNG;
 
   constructor(
     config: Partial<EngineConfig> = {},
@@ -116,12 +120,20 @@ export class EventDrivenExecutionEngine implements IExecutionPort {
       enablePartialTp: config.enablePartialTp ?? false,
       ambiguityPolicy: config.ambiguityPolicy || 'PESSIMISTIC',
       endOfDataPolicy: config.endOfDataPolicy || 'CLOSE_AT_LAST_CLOSE',
+      randomSkippedFillsPercent: config.randomSkippedFillsPercent ?? 0,
+      randomSeed: config.randomSeed ?? 1337,
+      gapShockMultiplier: config.gapShockMultiplier ?? 1.0,
       slippageModel: {
         baseSlippagePips: config.slippageModel?.baseSlippagePips ?? 0.2,
         volatilityMultiplier: config.slippageModel?.volatilityMultiplier ?? 0.1,
         additionalSlippagePips: config.slippageModel?.additionalSlippagePips ?? 0,
       },
     };
+
+    if (this.config.randomSkippedFillsPercent && this.config.randomSkippedFillsPercent > 0) {
+      const { SeededRNG } = require('./seeded-rng');
+      this.rng = new SeededRNG(this.config.randomSeed);
+    }
 
     this.clock = clock || new VirtualClock(0);
     this.eventStore = eventStore || new InMemoryEventStore();
@@ -344,16 +356,28 @@ export class EventDrivenExecutionEngine implements IExecutionPort {
         const canFillSell = order.direction === 'SELL' && candle.high >= order.entryPrice;
 
         if (canFillBuy || canFillSell) {
+          // تنش پر نشدن سفارش‌های لیمیت با احتمال تصادفی سیددار
+          if (
+            this.config.randomSkippedFillsPercent &&
+            this.config.randomSkippedFillsPercent > 0 &&
+            this.rng
+          ) {
+            if (this.rng.next() * 100 < this.config.randomSkippedFillsPercent) {
+              activePending.push(order);
+              continue;
+            }
+          }
           fillPrice = order.entryPrice;
         }
       } else if (order.orderType === 'MARKET') {
+        const gapShock = this.config.gapShockMultiplier ?? 1.0;
         const totalSlippagePips =
-          this.config.slippageModel.baseSlippagePips +
-          (this.config.slippageModel.additionalSlippagePips || 0);
+          (this.config.slippageModel.baseSlippagePips +
+          (this.config.slippageModel.additionalSlippagePips || 0)) * gapShock;
         const adverseEntrySlippage = totalSlippagePips * pipVal;
         fillPrice = order.direction === 'BUY'
-          ? candle.open + spreadPoints * 0.5 + adverseEntrySlippage
-          : candle.open - spreadPoints * 0.5 - adverseEntrySlippage;
+          ? candle.open + spreadPoints * 0.5 * gapShock + adverseEntrySlippage
+          : candle.open - spreadPoints * 0.5 * gapShock - adverseEntrySlippage;
       }
 
       if (fillPrice !== null) {
