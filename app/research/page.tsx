@@ -26,6 +26,8 @@ import { getBundledDataset } from '@/lib/research/bundled-historical-datasets';
 import { useResearchBacktestWorker } from '@/hooks/use-research-backtest-worker';
 import type { PurgedWalkForwardReport, PurgedWalkForwardConfig, ParameterOptimizationReport } from '@/lib/contracts/parameter-optimization';
 import type { MonteCarloSimulationReport, StressMatrixReport } from '@/lib/contracts/monte-carlo-stress';
+import type { StrategyPropPassport, PropFirmEvaluationVerdict } from '@/lib/contracts/prop-firm-passport';
+import { PROP_FIRM_PRESETS, type PropFirmId } from '@/lib/contracts/prop-firms';
 import {
   FlaskConical,
   Database,
@@ -49,6 +51,8 @@ import {
   Download,
   Plus,
   Trash2,
+  Award,
+  ShieldCheck,
 } from 'lucide-react';
 
 const AVAILABLE_SYMBOLS: SymbolId[] = ['XAUUSD', 'EURUSD', 'GBPUSD', 'USDJPY'];
@@ -162,6 +166,12 @@ export default function ResearchPage() {
   const [mcErrorMessage, setMcErrorMessage] = useState<string | null>(null);
   const [stressMatrixReport, setStressMatrixReport] = useState<StressMatrixReport | null>(null);
   const [isStressMatrixRunning, setIsStressMatrixRunning] = useState<boolean>(false);
+
+  // ─── پاسپورت ارزیابی چالش‌های پراپ‌فرم (Package F) ─────────────────────────
+  const [selectedPropFirm, setSelectedPropFirm] = useState<PropFirmId>('FTMO_NORMAL');
+  const [targetAccountSize, setTargetAccountSize] = useState<number>(100000);
+  const [propPassport, setPropPassport] = useState<StrategyPropPassport | null>(null);
+  const [isPassportAuditing, setIsPassportAuditing] = useState<boolean>(false);
 
   // هوک اختصاصی اجرای بکتست خارج از نخ اصلی
   const { run: runWorkerBacktest, cancel: cancelWorkerBacktest, isRunning, progress } =
@@ -3339,6 +3349,148 @@ export default function ResearchPage() {
                         <span className="font-bold text-purple-300 font-mono text-xs mt-0.5 block">
                           {stressMatrixReport.profitableScenariosCount} از {stressMatrixReport.totalScenariosEvaluated}
                         </span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* کارت ممیزی چالش پراپ‌فرم و صدور پاسپورت تأییدیه استراتژی (Package F: Prop Firm Passport) */}
+              <div className="bg-[#141926] p-4 rounded-2xl border border-amber-500/30 space-y-3 text-xs">
+                <div className="flex items-center justify-between border-b border-[#1f2738] pb-2 flex-wrap gap-2">
+                  <div className="flex items-center gap-2 font-bold text-amber-300">
+                    <Award className="w-4 h-4 text-amber-400" />
+                    <span>ممیزی چالش پراپ‌فرم و صدور پاسپورت تاییدیه (Prop Firm Strategy Passport):</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      disabled={isPassportAuditing || backtestResult.totalTrades < 3}
+                      onClick={async () => {
+                        setIsPassportAuditing(true);
+                        try {
+                          const { PropFirmChallengeAuditor } = await import('@/lib/core/prop-firm-auditor');
+                          const passport = PropFirmChallengeAuditor.auditChallenge(
+                            backtestResult,
+                            {
+                              propFirmId: selectedPropFirm,
+                              targetAccountSizeDollar: targetAccountSize,
+                              phase: 'PHASE_1',
+                            },
+                            {
+                              strategyName: TRADING_STYLES_CONFIG[strategy]?.nameFa || strategy,
+                              style: strategy,
+                              symbol,
+                              timeframe: selectedTimeframe,
+                              walkForwardReport,
+                              monteCarloReport: mcReport,
+                            }
+                          );
+                          setPropPassport(passport);
+                        } catch (err) {
+                          console.error(err);
+                        } finally {
+                          setIsPassportAuditing(false);
+                        }
+                      }}
+                      className="px-3 py-1.5 bg-amber-600/30 hover:bg-amber-600/50 disabled:opacity-40 border border-amber-500/40 text-amber-200 text-xs font-bold rounded-xl flex items-center gap-1.5 transition-all"
+                    >
+                      <ShieldCheck className="w-3.5 h-3.5" />
+                      <span>{isPassportAuditing ? 'در حال ممیزی...' : 'ممیزی و صدور پاسپورت'}</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* انتخابگر پراپ‌فرم و موجودی */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 bg-[#0f1422] p-3 rounded-xl border border-[#1e263c]">
+                  <div className="space-y-1">
+                    <label className="text-[11px] text-zinc-400">قوانین شرکت پراپ‌فرم هدف:</label>
+                    <select
+                      value={selectedPropFirm}
+                      onChange={e => setSelectedPropFirm(e.target.value as PropFirmId)}
+                      className="w-full bg-[#171d2c] border border-[#28334a] rounded-xl px-2.5 py-1.5 text-zinc-100 text-xs"
+                    >
+                      {Object.values(PROP_FIRM_PRESETS).map(p => (
+                        <option key={p.id} value={p.id}>
+                          {p.nameFa}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-[11px] text-zinc-400">موجودی اکانت ارزیابی:</label>
+                    <select
+                      value={targetAccountSize}
+                      onChange={e => setTargetAccountSize(Number(e.target.value))}
+                      className="w-full bg-[#171d2c] border border-[#28334a] rounded-xl px-2.5 py-1.5 text-zinc-100 text-xs font-mono"
+                    >
+                      <option value={10000}>$10,000 (حساب آزمایشی پایه)</option>
+                      <option value={50000}>$50,000 (حساب میان‌رده)</option>
+                      <option value={100000}>$100,000 (استاندارد سازمانی)</option>
+                      <option value={200000}>$200,000 (اکانت حرفه‌ای)</option>
+                    </select>
+                  </div>
+                </div>
+
+                {/* پاسپورت صادر شده */}
+                {propPassport && (
+                  <div className="space-y-3 pt-1">
+                    <div className="bg-gradient-to-br from-[#1c1810] to-[#121622] p-3.5 rounded-2xl border border-amber-500/40 space-y-2.5">
+                      <div className="flex items-center justify-between border-b border-[#30281b] pb-2 flex-wrap gap-2">
+                        <div className="flex items-center gap-2">
+                          <span className="font-mono font-bold text-amber-300 text-xs bg-amber-950/80 px-2 py-0.5 rounded border border-amber-800">
+                            {propPassport.sha256Signature}
+                          </span>
+                          <span className="text-zinc-300 font-bold">{propPassport.strategyName}</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className={`px-2 py-0.5 rounded text-[11px] font-bold ${
+                            propPassport.verdict === 'APPROVED' ? 'bg-emerald-950 text-emerald-300 border border-emerald-700' :
+                            propPassport.verdict === 'CONDITIONAL' ? 'bg-amber-950 text-amber-300 border border-amber-700' : 'bg-rose-950 text-rose-300 border border-rose-700'
+                          }`}>
+                            {propPassport.verdict === 'APPROVED' ? '✓ پاسپورت تأیید شد (APPROVED)' :
+                             propPassport.verdict === 'CONDITIONAL' ? '⚠ قبولی مشروط (CONDITIONAL)' : '✗ مردود در چالش (REJECTED)'}
+                          </span>
+                          <span className="font-mono text-zinc-400 text-[10px]">نمره انطباق: {propPassport.overallScorePercent}٪</span>
+                        </div>
+                      </div>
+
+                      <p className="text-[11px] text-zinc-300 leading-relaxed">
+                        {propPassport.summaryFa}
+                      </p>
+
+                      {/* جدول ممیزی تک‌تک قوانین */}
+                      <div className="overflow-x-auto rounded-xl border border-[#2b2416]">
+                        <table className="w-full text-[11px] text-zinc-300">
+                          <thead>
+                            <tr className="border-b border-[#2b2416] bg-[#0c0f17]">
+                              <th className="px-3 py-1.5 text-right text-zinc-500">قانون چالش</th>
+                              <th className="px-3 py-1.5 text-center text-zinc-500">شرط الزامی</th>
+                              <th className="px-3 py-1.5 text-center text-zinc-500">عملکرد مشاهده‌شده</th>
+                              <th className="px-3 py-1.5 text-center text-zinc-500">وضعیت</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {propPassport.ruleChecks.map(r => (
+                              <tr key={r.ruleKey} className="border-b border-[#1c1810]">
+                                <td className="px-3 py-1.5 text-right font-medium text-zinc-300">
+                                  {r.titleFa}
+                                  {r.isFatal && <span className="text-[9px] text-rose-400 mr-1">(حیاتی)</span>}
+                                </td>
+                                <td className="px-3 py-1.5 text-center font-mono text-zinc-400">{r.requiredConstraint}</td>
+                                <td className="px-3 py-1.5 text-center font-mono text-zinc-200">{r.actualObserved}</td>
+                                <td className="px-3 py-1.5 text-center">
+                                  {r.passed ? (
+                                    <span className="text-emerald-400 font-bold">✓ قبولی</span>
+                                  ) : (
+                                    <span className="text-rose-400 font-bold">✗ عدم انطباق</span>
+                                  )}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
                       </div>
                     </div>
                   </div>

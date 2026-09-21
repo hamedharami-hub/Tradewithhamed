@@ -1133,6 +1133,23 @@ export class ResearchLab {
     return StressMatrixEngine.evaluateMatrix(candles, symbol, baseParams, options);
   }
 
+  // ۶.۱. ممیزی جامع قوانین چالش‌های پراپ‌فرم و صدور پاسپورت تأییدیه (Package F)
+  public static auditPropFirmChallenge(
+    metrics: PerformanceMetrics,
+    config: import('../contracts/prop-firm-passport').PropFirmChallengeAuditConfig,
+    meta: {
+      strategyName: string;
+      style: TradingStyleType;
+      symbol: SymbolId;
+      timeframe: Timeframe;
+      walkForwardReport?: import('../contracts/parameter-optimization').PurgedWalkForwardReport | null;
+      monteCarloReport?: import('../contracts/monte-carlo-stress').MonteCarloSimulationReport | null;
+    }
+  ): import('../contracts/prop-firm-passport').StrategyPropPassport {
+    const { PropFirmChallengeAuditor } = require('./prop-firm-auditor');
+    return PropFirmChallengeAuditor.auditChallenge(metrics, config, meta);
+  }
+
   // ۵. تست تنش و تاب‌آوری (Stress Testing)
   public static runStressTests(
     candles: Candle[],
