@@ -80,6 +80,10 @@ export interface ResearchDiagnostics {
   ambiguousExitCount?: number;
   higherTimeframeSource?: string;
   higherTimeframeCandlesUsed?: number;
+  incompleteHtfBucketsRejected?: number;
+  duplicateTimestampsFound?: number;
+  outOfGridTimestampsFound?: number;
+  gapBucketsFound?: number;
   alignmentFailures?: number;
   nonRecommendedConfiguration?: boolean;
   zeroTradeRationale?: string;
@@ -289,6 +293,14 @@ export class ResearchLab {
     let alignmentFailures = 0;
 
     let tAggDuration = 0;
+    const aggDiagnostics: import('./timeframe-aggregator').AggregationDiagnostics = {
+      totalBuckets: 0,
+      completeBuckets: 0,
+      incompleteHtfBucketsRejected: 0,
+      duplicateTimestampsFound: 0,
+      outOfGridTimestampsFound: 0,
+      gapBucketsFound: 0,
+    };
 
     if (isMtfFilterActive) {
       // اعتبارسنجی زوج تایم‌فریم
@@ -301,9 +313,9 @@ export class ResearchLab {
         htfCandlesToUse = options.htfCandles;
         reportedHtfSource = 'NATIVE_DATASET';
       } else {
-        // تجمیع قطعی از روی کندل‌های بسته تایم‌فریم اجرا
+        // تجمیع قطعی از روی کندل‌های بسته تایم‌فریم اجرا با اعتبارسنجی شبکه زمانی و گپ‌ها
         const tAgg0 = performance.now();
-        htfCandlesToUse = aggregateCandles(sanitizedCandles, htfTimeframe, false);
+        htfCandlesToUse = aggregateCandles(sanitizedCandles, htfTimeframe, false, timeframe, aggDiagnostics);
         tAggDuration = performance.now() - tAgg0;
         reportedHtfSource = 'AGGREGATED_FROM_EXECUTION';
       }
@@ -771,6 +783,10 @@ export class ResearchLab {
       ambiguousExitCount: engine.diagnostics.ambiguousExitCount,
       higherTimeframeSource: reportedHtfSource,
       higherTimeframeCandlesUsed: htfCandlesToUse.length,
+      incompleteHtfBucketsRejected: aggDiagnostics.incompleteHtfBucketsRejected,
+      duplicateTimestampsFound: aggDiagnostics.duplicateTimestampsFound,
+      outOfGridTimestampsFound: aggDiagnostics.outOfGridTimestampsFound,
+      gapBucketsFound: aggDiagnostics.gapBucketsFound,
       alignmentFailures,
       nonRecommendedConfiguration,
       zeroTradeRationale,
