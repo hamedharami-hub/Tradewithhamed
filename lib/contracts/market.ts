@@ -97,3 +97,45 @@ export const SYMBOL_SPECS: Record<SymbolId, SymbolMetadata> = {
     typicalSpreadPips: 50.0,
   },
 };
+
+export const TIMEFRAME_MS: Record<Timeframe, number> = {
+  '1M': 60_000,
+  '5M': 300_000,
+  '15M': 900_000,
+  '1H': 3_600_000,
+  '4H': 14_400_000,
+  D1: 86_400_000,
+  W1: 7 * 86_400_000,
+};
+
+/**
+ * تبدیل تایم‌فریم به مدت‌زمان میلی‌ثانیه بر مبنای قرارداد استاندارد
+ */
+export function timeframeToMs(timeframe: Timeframe): number {
+  return TIMEFRAME_MS[timeframe] || 300_000;
+}
+
+/**
+ * زمان قطعی بسته شدن کندل بر مبنای قرارداد: timestamp بازشدن کندل است
+ * بنابراین داده‌های کندل فقط در زمان closeTimestamp در دسترس هستند.
+ */
+export function getCandleCloseTimestamp(candleOrTimestamp: Candle | number, timeframe: Timeframe): number {
+  const ts = typeof candleOrTimestamp === 'number' ? candleOrTimestamp : candleOrTimestamp.timestamp;
+  return ts + timeframeToMs(timeframe);
+}
+
+/**
+ * تعداد ارقام اعشار مجاز قیمت برای هر نماد بر اساس مشخصات ابزار
+ */
+export function getPricePrecision(symbol: SymbolId): number {
+  if (symbol === 'XAUUSD' || symbol === 'BTCUSD') return 2;
+  if (symbol === 'USDJPY') return 3;
+  return 5;
+}
+
+/**
+ * گرد کردن قیمت به دقت استاندارد نماد
+ */
+export function roundSymbolPrice(value: number, symbol: SymbolId): number {
+  return Number(value.toFixed(getPricePrecision(symbol)));
+}

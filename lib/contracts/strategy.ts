@@ -43,4 +43,10 @@ export interface StrategyCandidate {
   };
   rationale: string;
   status: CandidateStatus;
+
+  // فیلدهای زمانی صریح ضد نگاه به آینده (Package 4A.1)
+  signalTimestamp?: number;          // زمان تشکیل سیگنال (timestamp بازشدن کندل سیگنال)
+  evidenceAvailableAt?: number;      // زمانی که شواهد تایید و کندل بسته شده (availableAt)
+  decisionAt?: number;               // زمانی که الگوریتم ارزیابی را انجام داده (evaluatedAt)
+  eligibleFromTimestamp?: number;    // اولین زمان مجاز برای ارسال و اجرای سفارش (کندل بعدی بازشدن)
 }
