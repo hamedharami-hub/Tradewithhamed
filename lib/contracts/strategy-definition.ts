@@ -1,7 +1,7 @@
 // lib/contracts/strategy-definition.ts
-// قرارداد مرجع و نسخه‌دار تعریف استراتژی، قواعد قابل‌ترکیب و ردیابی تصمیم (Package 4A Canonical Source of Truth)
+// قرارداد مرجع و نسخه‌دار تعریف استراتژی، قواعد قابل‌ترکیب و ردیابی تصمیم (Package 4A.1 Canonical Source of Truth)
 
-import type { SymbolId, Timeframe } from './market';
+import type { SymbolId, Timeframe, Candle } from './market';
 import type { InstrumentType, VolumeType } from './dataset-contract';
 import type { StrategyCandidate } from './strategy';
 
@@ -41,6 +41,35 @@ export type DataCapability =
   | 'SESSION_CALENDAR'
   | 'ECONOMIC_CALENDAR';
 
+export type ExecutionOrderType = 'MARKET_NEXT_OPEN' | 'LIMIT_AT_LEVEL' | 'STOP_AT_LEVEL';
+export type StopLossMode = 'ATR_BUFFER' | 'FIXED_PIPS' | 'SWING_STRUCTURE';
+export type TimeframeBinding = 'EXECUTION' | 'CONTEXT_PRIMARY' | 'CONTEXT_SECONDARY' | Timeframe;
+
+export interface HtfContextData {
+  timeframe: Timeframe;
+  candle: Candle;
+  closeTimestamp: number;
+  isNative: boolean;
+  availableAt: number;
+}
+
+export interface RuleEvaluationContext {
+  runId: string;
+  symbol: SymbolId;
+  timeframe: Timeframe;
+  direction: 'BUY' | 'SELL';
+  definitionId: string;
+  definitionVersion: string;
+  definitionHash: string;
+  evaluatedAt: number;
+  availableCapabilities: DataCapability[];
+  volumeType?: VolumeType;
+  datasetFingerprint: string;
+  candles: Candle[];
+  currentIndex: number;
+  htfContext?: HtfContextData;
+}
+
 export interface RuleDefinition<P = Record<string, unknown>> {
   ruleId: string;
   ruleVersion: string;
@@ -54,11 +83,12 @@ export interface RuleDefinition<P = Record<string, unknown>> {
   supportedInstrumentTypes?: InstrumentType[];
   supportedTimeframes?: Timeframe[];
   requiredCapabilities: DataCapability[];
-  warmupRequirements: number; // minimum bars needed
+  warmupRequirements: number; // پایه کندل‌های حداقلی
+  computeWarmupBars?: (params: P) => number; // محاسبه دقیق وارم‌آپ از پارامترها (Package 4A.1)
   availabilityPolicy: 'IMMEDIATE' | 'NEXT_BAR_OPEN' | 'CONFIRMATION_BARS';
   evaluatorId: string;
   outputSchema?: Record<string, string>;
-  incompatibilities?: string[]; // other rule IDs
+  incompatibilities?: string[]; // سایر rule IDها
   lifecycle: 'EXPERIMENTAL' | 'ACTIVE' | 'DEPRECATED';
   deprecationReasonFa?: string;
 }
@@ -68,6 +98,7 @@ export interface RuleInstance<P = Record<string, unknown>> {
   ruleId: string;
   ruleVersion: string;
   parameters: P;
+  timeframeBinding?: TimeframeBinding;
   enabled?: boolean;
   notesFa?: string;
 }
@@ -82,8 +113,8 @@ export interface SequenceStepRule {
 export interface CompositeRuleGroup {
   groupId: string;
   operator: LogicalOperator;
-  atLeastNCount?: number; // required if operator === 'AT_LEAST_N'
-  maxBarsWindow?: number; // required if operator === 'SEQUENCE_WITHIN_BARS'
+  atLeastNCount?: number; // الزامی برای AT_LEAST_N
+  maxBarsWindow?: number; // الزامی برای SEQUENCE_WITHIN_BARS
   rules?: RuleInstance[];
   nestedGroups?: CompositeRuleGroup[];
   sequenceSteps?: SequenceStepRule[];
@@ -117,7 +148,10 @@ export interface StrategyDefinition {
     author: string;
     createdAt: number;
     updatedAt: number;
-    deterministicHash: string;
+    deterministicHash: string; // سازگاری معکوس
+    integrityHash?: string;     // SHA-256 یکپارچه و ضد دستکاری (Package 4A.1)
+    deterministicFingerprint?: string; // FNV-1a برای کشف سریع تفاوت‌ها
+    hashAlgorithm?: 'SHA-256' | 'FNV-1A';
     notesFa?: string;
   };
 
@@ -149,10 +183,15 @@ export interface RuleEvaluationResult {
 }
 
 export interface SequenceStateEntry {
+  runId: string;
   sequenceGroupId: string;
   symbol: SymbolId;
+  timeframe: Timeframe;
   direction: 'BUY' | 'SELL';
   definitionId: string;
+  definitionVersion: string;
+  definitionHash: string;
+  datasetFingerprint: string;
   currentStepIndex: number;
   totalSteps: number;
   startedAtTimestamp?: number;
@@ -176,16 +215,23 @@ export interface GroupEvaluationResult {
 }
 
 export interface StrategyEvaluationResult {
+  runId: string;
   definitionId: string;
   definitionVersion: string;
   definitionHash: string;
+  datasetFingerprint: string;
+  direction: 'BUY' | 'SELL';
+  signalTimestamp: number;
   evaluatedAt: number;
+  eligibleFromTimestamp: number;
   overallStatus: RuleEvaluationStatus;
 
   contextStatus?: RuleEvaluationStatus;
   setupStatus?: RuleEvaluationStatus;
   triggerStatus: RuleEvaluationStatus;
+  entryStatus?: RuleEvaluationStatus;
   riskStatus: RuleEvaluationStatus;
+  managementStatus?: RuleEvaluationStatus;
   exitStatus?: RuleEvaluationStatus;
 
   ruleEvaluations: RuleEvaluationResult[];

@@ -4,15 +4,19 @@
 // انطباق قابلیت‌های داده، مهاجرت ۵ سبک و ۶ استراتژی، و تولید تریس تصمیم
 
 import type { Candle } from '../../contracts/market';
-import { StrategyDefinitionSerializer } from '../strategy-definition-serializer';
-import { CompositeRuleEvaluator } from '../composite-rule-evaluator';
+import { getCandleCloseTimestamp } from '../../contracts/market';
+import { StrategyDefinitionSerializer, StrategyDefinitionError } from '../strategy-definition-serializer';
+import { CompositeRuleEvaluator, SequenceStateStore } from '../composite-rule-evaluator';
 import { RuleRegistry } from '../rule-registry';
 import { SmcPrimitives } from '../smc-primitives';
 import { TechnicalPrimitives } from '../technical-primitives';
 import { StrategyDefinitionEvaluator } from '../strategy-definition-evaluator';
 import { StrategyLegacyAdapters } from '../strategy-legacy-adapters';
 import { buildDecisionTraceFromEvaluation } from '../../contracts/decision-trace';
-import type { StrategyDefinition } from '../../contracts/strategy-definition';
+import type { StrategyDefinition, RuleEvaluationContext } from '../../contracts/strategy-definition';
+import { ContextDataResolver } from '../context-data-resolver';
+import { EventDrivenExecutionEngine } from '../event-driven-engine';
+import type { OrderIntentPayload } from '../ports';
 
 export interface TestCaseResult {
   name: string;
@@ -82,12 +86,17 @@ export function runStrategyDefinitionEngineTestSuite(): TestCaseResult[] {
     }
 
     const testCtx = {
+      runId: 'test_run_1',
       candles,
       currentIndex: 25,
       symbol: 'EURUSD' as const,
       timeframe: '5M' as const,
       direction: 'BUY' as const,
       definitionId: 'TEST_DEF',
+      definitionVersion: '1.0.0',
+      definitionHash: 'hash_test',
+      evaluatedAt: candles[25].timestamp + 300000,
+      datasetFingerprint: 'dataset_eurusd_5m',
       availableCapabilities: ['OHLC', 'CLOSED_BAR_STATUS', 'REAL_SOURCE_VOLUME'] as any[],
     };
 
@@ -244,12 +253,17 @@ export function runStrategyDefinitionEngineTestSuite(): TestCaseResult[] {
     // کندل ۱۰: قیمت بالای EMA است -> گام اول پاس می‌شود و وضعیت PENDING می‌شود
     seqCandles[10] = makeCandle(baseTs + 10 * stepMs, 1.1000, 1.1050, 1.0990, 1.1040);
     const step0Res = CompositeRuleEvaluator.evaluateGroup(sequenceGroup, {
+      runId: 'seq_run_1',
       candles: seqCandles,
       currentIndex: 10,
       symbol: 'EURUSD',
       timeframe: '5M',
       direction: 'BUY',
       definitionId: 'DEF_SEQ_TEST',
+      definitionVersion: '1.0.0',
+      definitionHash: 'hash_seq',
+      evaluatedAt: seqCandles[10].timestamp + 300000,
+      datasetFingerprint: 'dataset_eurusd_5m',
       availableCapabilities: ['OHLC', 'CLOSED_BAR_STATUS'],
     });
 
@@ -257,12 +271,17 @@ export function runStrategyDefinitionEngineTestSuite(): TestCaseResult[] {
 
     // بررسی ایزوله بودن وضعیت برای نماد دیگر: GBPUSD نباید از پیشرفت EURUSD تاثیر بگیرد!
     const gbpRes = CompositeRuleEvaluator.evaluateGroup(sequenceGroup, {
+      runId: 'seq_run_1',
       candles: seqCandles,
       currentIndex: 10,
       symbol: 'GBPUSD',
       timeframe: '5M',
       direction: 'BUY',
       definitionId: 'DEF_SEQ_TEST',
+      definitionVersion: '1.0.0',
+      definitionHash: 'hash_seq',
+      evaluatedAt: seqCandles[10].timestamp + 300000,
+      datasetFingerprint: 'dataset_gbpusd_5m',
       availableCapabilities: ['OHLC', 'CLOSED_BAR_STATUS'],
     });
     // روی GBPUSD گام اول همزمان سنجیده می‌شود اما وضعیت آن ایزوله در مخزن کلید GBPUSD است
@@ -272,12 +291,17 @@ export function runStrategyDefinitionEngineTestSuite(): TestCaseResult[] {
     // کندل ۱۲: قیمت پایین EMA می‌آید -> گام دوم پاس شده و کل توالی COMPLETE و status: PASS می‌شود
     seqCandles[12] = makeCandle(baseTs + 12 * stepMs, 1.1040, 1.1045, 1.0950, 1.0960);
     const step1Res = CompositeRuleEvaluator.evaluateGroup(sequenceGroup, {
+      runId: 'seq_run_1',
       candles: seqCandles,
       currentIndex: 12,
       symbol: 'EURUSD',
       timeframe: '5M',
       direction: 'BUY',
       definitionId: 'DEF_SEQ_TEST',
+      definitionVersion: '1.0.0',
+      definitionHash: 'hash_seq',
+      evaluatedAt: seqCandles[12].timestamp + 300000,
+      datasetFingerprint: 'dataset_eurusd_5m',
       availableCapabilities: ['OHLC', 'CLOSED_BAR_STATUS'],
     });
 
@@ -513,6 +537,525 @@ export function runStrategyDefinitionEngineTestSuite(): TestCaseResult[] {
   } catch (error) {
     results.push({
       name: '7.1 End-to-End Evaluation, Candidate Synthesis, and DecisionTrace Generation',
+      passed: false,
+      details: (error as Error).message,
+    });
+  }
+
+  // ==========================================================================
+  // بخش ۸: مدیریت چرخه حیات و ایزولاسیون کامل SequenceStateStore
+  // ==========================================================================
+  try {
+    SequenceStateStore.clearAll();
+    SequenceStateStore.createRun('RUN_ALPHA');
+    SequenceStateStore.createRun('RUN_BETA');
+
+    const keyAlpha = SequenceStateStore.getCompositeKey(
+      'RUN_ALPHA', 'DEF_1', '1.0.0', 'HASH1', 'FP1', 'EURUSD', '5M', 'BUY', 'GRP_SEQ'
+    );
+    const keyBeta = SequenceStateStore.getCompositeKey(
+      'RUN_BETA', 'DEF_1', '1.0.0', 'HASH1', 'FP1', 'EURUSD', '5M', 'BUY', 'GRP_SEQ'
+    );
+
+    SequenceStateStore.setState('RUN_ALPHA', keyAlpha, {
+      runId: 'RUN_ALPHA',
+      sequenceGroupId: 'GRP_SEQ',
+      symbol: 'EURUSD',
+      timeframe: '5M',
+      direction: 'BUY',
+      definitionId: 'DEF_1',
+      definitionVersion: '1.0.0',
+      definitionHash: 'HASH1',
+      datasetFingerprint: 'FP1',
+      currentStepIndex: 2,
+      totalSteps: 3,
+      isExpired: false,
+      isInvalidated: false,
+      isComplete: false,
+      history: [],
+    });
+
+    const stateInAlpha = SequenceStateStore.getState('RUN_ALPHA', keyAlpha);
+    const stateInBetaBefore = SequenceStateStore.getState('RUN_BETA', keyBeta);
+
+    SequenceStateStore.resetRun('RUN_ALPHA');
+    const stateInAlphaAfterReset = SequenceStateStore.getState('RUN_ALPHA', keyAlpha);
+
+    SequenceStateStore.disposeRun('RUN_ALPHA');
+    const runCountAfterDispose = SequenceStateStore.getRunCount();
+
+    const passed = stateInAlpha?.currentStepIndex === 2 &&
+      stateInBetaBefore === undefined &&
+      stateInAlphaAfterReset === undefined &&
+      runCountAfterDispose === 1;
+
+    results.push({
+      name: '8.1 SequenceStateStore Lifecycle, Key Isolation, and Run Disposal',
+      passed,
+      details: `AlphaStep: ${stateInAlpha?.currentStepIndex}, BetaIsolated: ${stateInBetaBefore === undefined}, Reset: ${stateInAlphaAfterReset === undefined}, RemainingRuns: ${runCountAfterDispose}`,
+    });
+  } catch (error) {
+    results.push({
+      name: '8.1 SequenceStateStore Lifecycle, Key Isolation, and Run Disposal',
+      passed: false,
+      details: (error as Error).message,
+    });
+  }
+
+  // ==========================================================================
+  // بخش ۹: آزمون اکید ضد نگاه به آینده و مصونیت در برابر جهش کندل‌های آینده
+  // ==========================================================================
+  try {
+    const def = StrategyLegacyAdapters.createResearchVariantDefinition('S0_SWEEP_ONLY');
+    const candles: Candle[] = [];
+    const baseTs = 1700000000000;
+    const stepMs = 300000;
+
+    for (let i = 0; i < 30; i++) {
+      candles.push(makeCandle(baseTs + i * stepMs, 1.2500, 1.2510, 1.2490, 1.2500));
+    }
+    // ایجاد سووینگ و سوییپ در کندل‌های گذشته
+    candles[8] = makeCandle(baseTs + 8 * stepMs, 1.2500, 1.2505, 1.2450, 1.2490);
+    candles[9] = makeCandle(baseTs + 9 * stepMs, 1.2490, 1.2510, 1.2480, 1.2500);
+    candles[10] = makeCandle(baseTs + 10 * stepMs, 1.2500, 1.2520, 1.2495, 1.2515);
+    candles[18] = makeCandle(baseTs + 18 * stepMs, 1.2500, 1.2505, 1.2440, 1.2470);
+
+    // ارزیابی اول در کندل ۱۸
+    const eval1 = StrategyDefinitionEvaluator.evaluate(def, candles, 'EURUSD', '5M', 18);
+
+    // بررسی اصل زمانی availableAt <= evaluatedAt در تمام قوانین ارزیابی‌شده
+    let allTimingValid = true;
+    for (const rule of eval1.ruleEvaluations) {
+      if (rule.availableAt > rule.evaluatedAt) {
+        allTimingValid = false;
+        break;
+      }
+    }
+
+    // جهش شدید در کندل‌های آینده (کندل‌های ۱۹ تا ۲۹)
+    for (let i = 19; i < 30; i++) {
+      candles[i] = makeCandle(baseTs + i * stepMs, 999.0, 1000.0, 0.001, 500.0);
+    }
+
+    // ارزیابی دوم مجدداً در کندل ۱۸
+    const eval2 = StrategyDefinitionEvaluator.evaluate(def, candles, 'EURUSD', '5M', 18);
+
+    const futureMutationImmunity = eval1.overallStatus === eval2.overallStatus &&
+      eval1.candidate?.id === eval2.candidate?.id &&
+      eval1.candidate?.entryPrice === eval2.candidate?.entryPrice &&
+      eval1.candidate?.stopLossPrice === eval2.candidate?.stopLossPrice;
+
+    results.push({
+      name: '9.1 Strict Anti-Lookahead Timing and Future Candle Mutation Immunity',
+      passed: allTimingValid && futureMutationImmunity && eval1.overallStatus === 'PASS',
+      details: `TimingStrict (availableAt <= evaluatedAt): ${allTimingValid}, FutureImmunity: ${futureMutationImmunity}`,
+    });
+  } catch (error) {
+    results.push({
+      name: '9.1 Strict Anti-Lookahead Timing and Future Candle Mutation Immunity',
+      passed: false,
+      details: (error as Error).message,
+    });
+  }
+
+  // ==========================================================================
+  // بخش ۱۰: مرزهای دقیق وارم‌آپ پارامتریک دینامیک (Dynamic Warmup Boundary)
+  // ==========================================================================
+  try {
+    const donchianRule = {
+      instanceId: 'inst_donchian_warmup',
+      ruleId: 'TECH_DONCHIAN_BREAKOUT',
+      ruleVersion: '1.0.0',
+      parameters: { period: 20, requiredBreakout: 'UP' },
+      enabled: true,
+    };
+
+    // قاعده Donchian 20 دقیقاً به ۲۱ کندل نیاز دارد (۲ دوره قبل + کندل جاری)
+    const baseTs = 1700000000000;
+    const testCandles: Candle[] = [];
+    for (let i = 0; i < 25; i++) {
+      testCandles.push(makeCandle(baseTs + i * 60000, 1.1, 1.12, 1.08, 1.11));
+    }
+
+    // ۱. ارزیابی در ایندکس ۱۹ (تعداد کندل‌های موجود: ۲۰ کندل -> ۱ کندل کمتر از وارم‌آپ)
+    const ctxUnder: RuleEvaluationContext = {
+      runId: 'RUN_TEST_WARMUP',
+      symbol: 'EURUSD',
+      timeframe: '5M',
+      direction: 'BUY',
+      definitionId: 'DEF_TEST',
+      definitionVersion: '1.0.0',
+      definitionHash: 'HASH',
+      evaluatedAt: getCandleCloseTimestamp(testCandles[19], '5M'),
+      availableCapabilities: ['OHLC', 'CLOSED_BAR_STATUS'],
+      datasetFingerprint: 'FP',
+      candles: testCandles,
+      currentIndex: 19,
+    };
+    const resUnder = RuleRegistry.evaluateInstance(donchianRule, ctxUnder);
+    const underHandled = resUnder.status === 'NOT_AVAILABLE' && resUnder.reasonCodes.includes('WARMUP_INSUFFICIENT');
+
+    // ۲. ارزیابی در ایندکس ۲۰ (تعداد کندل‌های موجود: ۲۱ کندل -> دقیقاً برابر با وارم‌آپ)
+    const ctxExact: RuleEvaluationContext = {
+      ...ctxUnder,
+      currentIndex: 20,
+      evaluatedAt: getCandleCloseTimestamp(testCandles[20], '5M'),
+    };
+    const resExact = RuleRegistry.evaluateInstance(donchianRule, ctxExact);
+    const exactHandled = resExact.status !== 'NOT_AVAILABLE';
+
+    results.push({
+      name: '10.1 Dynamic Warmup Calculation and Exact Boundary Conditions',
+      passed: underHandled && exactHandled,
+      details: `20 Bars: ${resUnder.status} (${resUnder.reasonCodes[0]}), 21 Bars: ${resExact.status}`,
+    });
+  } catch (error) {
+    results.push({
+      name: '10.1 Dynamic Warmup Calculation and Exact Boundary Conditions',
+      passed: false,
+      details: (error as Error).message,
+    });
+  }
+
+  // ==========================================================================
+  // بخش ۱۱: الزام اکید نوع حجم واقعی و رد حجم‌های ساختگی یا غایب
+  // ==========================================================================
+  try {
+    const testVolRuleId = 'TEST_RULE_REAL_VOLUME';
+    if (!RuleRegistry.getDefinition(testVolRuleId, '1.0.0')) {
+      RuleRegistry.registerRule(
+        {
+          ruleId: testVolRuleId,
+          ruleVersion: '1.0.0',
+          category: 'TRIGGER',
+          nameFa: 'قاعده تست نیازمند حجم واقعی',
+          nameEn: 'Test Real Volume Rule',
+          descriptionFa: 'بررسی لزوم حجم واقعی منبع',
+          parameterSchema: {},
+          defaultParameters: {},
+          requiredCapabilities: ['OHLC', 'CLOSED_BAR_STATUS', 'REAL_SOURCE_VOLUME'],
+          warmupRequirements: 1,
+          computeWarmupBars: () => 1,
+          availabilityPolicy: 'IMMEDIATE',
+          evaluatorId: 'eval-test-real-vol',
+          lifecycle: 'ACTIVE',
+        },
+        (_inst, ctx) => ({
+          ruleId: testVolRuleId,
+          ruleVersion: '1.0.0',
+          instanceId: _inst.instanceId,
+          category: 'TRIGGER',
+          status: 'PASS',
+          eventTime: ctx.candles[ctx.currentIndex].timestamp,
+          observedAt: ctx.evaluatedAt,
+          availableAt: ctx.evaluatedAt,
+          evaluatedAt: ctx.evaluatedAt,
+          inputFingerprint: '',
+          parameterHash: '',
+          evidenceRefs: {},
+          actualValues: {},
+          thresholdValues: {},
+          reasonCodes: ['REAL_VOLUME_CONFIRMED'],
+          diagnosticMessageFa: 'حجم واقعی با موفقیت ارزیابی شد.',
+        })
+      );
+    }
+
+    const dummyRule = {
+      instanceId: 'inst_real_vol',
+      ruleId: testVolRuleId,
+      ruleVersion: '1.0.0',
+      parameters: {},
+      enabled: true,
+    };
+
+    const baseTs = 1700000000000;
+    const volCandles: Candle[] = [];
+    for (let i = 0; i < 20; i++) {
+      volCandles.push(makeCandle(baseTs + i * 60000, 1.1, 1.15, 1.05, 1.14, 1000));
+    }
+
+    const baseCtx: RuleEvaluationContext = {
+      runId: 'RUN_VOL',
+      symbol: 'EURUSD',
+      timeframe: '5M',
+      direction: 'BUY',
+      definitionId: 'DEF_VOL',
+      definitionVersion: '1.0.0',
+      definitionHash: 'HASH',
+      evaluatedAt: getCandleCloseTimestamp(volCandles[15], '5M'),
+      availableCapabilities: ['OHLC', 'CLOSED_BAR_STATUS', 'REAL_SOURCE_VOLUME'],
+      datasetFingerprint: 'FP',
+      candles: volCandles,
+      currentIndex: 15,
+    };
+
+    // با حجم واقعی: پذیرفته می‌شود
+    const resReal = RuleRegistry.evaluateInstance(dummyRule, { ...baseCtx, volumeType: 'REAL_SOURCE_VOLUME' });
+    // با حجم ساختگی SYNTHETIC: رد می‌شود
+    const resSynthetic = RuleRegistry.evaluateInstance(dummyRule, { ...baseCtx, volumeType: 'SYNTHETIC' });
+    // با حجم غایب MISSING: رد می‌شود
+    const resMissing = RuleRegistry.evaluateInstance(dummyRule, { ...baseCtx, volumeType: 'MISSING' });
+
+    const passed = resReal.status === 'PASS' &&
+      resSynthetic.status === 'NOT_AVAILABLE' &&
+      resSynthetic.reasonCodes.includes('DATA_CAPABILITY_MISSING') &&
+      resMissing.status === 'NOT_AVAILABLE' &&
+      resMissing.reasonCodes.includes('DATA_CAPABILITY_MISSING');
+
+    results.push({
+      name: '11.1 Strict Real Volume Enforcement and Synthetic/Missing Rejection',
+      passed,
+      details: `RealVol: ${resReal.status}, Synthetic: ${resSynthetic.status}, Missing: ${resMissing.status}`,
+    });
+  } catch (error) {
+    results.push({
+      name: '11.1 Strict Real Volume Enforcement and Synthetic/Missing Rejection',
+      passed: false,
+      details: (error as Error).message,
+    });
+  }
+
+  // ==========================================================================
+  // بخش ۱۲: انبارگردانی کامل رجیستری قواعد و پوشش وارم‌آپ دینامیک
+  // ==========================================================================
+  try {
+    const inventory = RuleRegistry.getRuleInventory();
+    const deferredCount = inventory.deferred.length;
+
+    // بررسی حداقل ۲۷ قاعده فعال و ۴ قاعده معوق الزامی
+    const hasAtLeast27Active = inventory.registeredActive.length >= 27;
+    const has4Deferred = deferredCount === 4;
+
+    const deferredIds = inventory.deferred.map(d => d.ruleId);
+    const expectedDeferred = ['SMC_MITIGATION', 'SMC_INVALIDATION', 'TECH_ICHIMOKU_TENKAN_KIJUN', 'TECH_ICHIMOKU_KIJUN_PULLBACK'];
+    const allExpectedDeferredMatch = expectedDeferred.every(id => deferredIds.includes(id));
+
+    // بررسی این که همه قواعد فعال دارای وارم‌آپ معتبر هستند
+    let allActiveWarmupValid = true;
+    for (const item of inventory.registeredActive) {
+      const [rId, rVer] = item.split('@');
+      const def = RuleRegistry.getDefinition(rId, rVer);
+      if (!def || def.warmupRequirements < 1) {
+        allActiveWarmupValid = false;
+        break;
+      }
+    }
+
+    results.push({
+      name: '12.1 Rule Registry Complete Inventory and Dynamic Warmup Method Coverage',
+      passed: hasAtLeast27Active && has4Deferred && allExpectedDeferredMatch && allActiveWarmupValid,
+      details: `ActiveRules: ${inventory.registeredActive.length}>=27, DeferredRules: ${deferredCount}/4, WarmupCoverageValid: ${allActiveWarmupValid}`,
+    });
+  } catch (error) {
+    results.push({
+      name: '12.1 Rule Registry Complete Inventory and Dynamic Warmup Method Coverage',
+      passed: false,
+      details: (error as Error).message,
+    });
+  }
+
+  // ==========================================================================
+  // بخش ۱۳: ماتریس تطبیق سبک‌های Core و استراتژی‌های تحقیقاتی
+  // ==========================================================================
+  try {
+    const matrix = StrategyLegacyAdapters.getMigrationMatrix();
+    const totalEntries = matrix.length;
+    const allFullEquivalence = matrix.every(e => e.equivalenceStatus === 'FULL');
+    const coreStylesCount = matrix.filter(e => e.category === 'CORE_STYLE').length;
+    const researchCount = matrix.filter(e => e.category === 'RESEARCH_VARIANT').length;
+
+    const passed = totalEntries === 11 && allFullEquivalence && coreStylesCount === 5 && researchCount === 6;
+
+    results.push({
+      name: '13.1 Strategy Legacy Migration Matrix and Canonical Equivalency Status',
+      passed,
+      details: `Total: ${totalEntries}/11, FullEquivalence: ${allFullEquivalence}, Core: ${coreStylesCount}, Research: ${researchCount}`,
+    });
+  } catch (error) {
+    results.push({
+      name: '13.1 Strategy Legacy Migration Matrix and Canonical Equivalency Status',
+      passed: false,
+      details: (error as Error).message,
+    });
+  }
+
+  // ==========================================================================
+  // بخش ۱۴: اعتبارسنجی عمیق سریالایزر و رد انواع غیرمجاز و قواعد ثبت‌نشده
+  // ==========================================================================
+  try {
+    const validDef = StrategyLegacyAdapters.createResearchVariantDefinition('S0_SWEEP_ONLY');
+
+    // ۱. رد ارجاع دایره‌ای (Circular Reference)
+    let circularRejected = false;
+    try {
+      const circ: any = { ...validDef, metadata: { ...validDef.metadata } };
+      circ.metadata.self = circ;
+      StrategyDefinitionSerializer.serialize(circ);
+    } catch (e) {
+      const errCode = (e as StrategyDefinitionError).code;
+      circularRejected = errCode === 'CIRCULAR_REFERENCE' || errCode === 'CYCLICAL_REFERENCE_DETECTED';
+    }
+
+    // ۲. رد مقادیر غیرمجاز عددی (NaN / Infinity)
+    let nanRejected = false;
+    try {
+      const nanDef: any = JSON.parse(JSON.stringify(validDef));
+      nanDef.trigger.rules[0].parameters.minPenetrationPips = NaN;
+      StrategyDefinitionSerializer.serialize(nanDef);
+    } catch (e) {
+      nanRejected = (e as StrategyDefinitionError).code === 'INVALID_NUMERIC_VALUE';
+    }
+
+    // ۳. رد قاعده ثبت‌نشده در استراتژی معتبر (VALID)
+    let unregisteredRuleRejected = false;
+    try {
+      const unregDef: any = JSON.parse(JSON.stringify(validDef));
+      unregDef.trigger.rules[0].ruleId = 'FAKE_NON_EXISTENT_RULE';
+      StrategyDefinitionSerializer.serialize(unregDef);
+    } catch (e) {
+      unregisteredRuleRejected = (e as StrategyDefinitionError).code === 'RULE_NOT_FOUND_IN_REGISTRY';
+    }
+
+    const passed = circularRejected && nanRejected && unregisteredRuleRejected;
+
+    results.push({
+      name: '14.1 Serializer Deep Validation Rejection of Illegal Types and Unregistered Rules',
+      passed,
+      details: `CircularRejected: ${circularRejected}, NaNRejected: ${nanRejected}, UnregisteredRuleRejected: ${unregisteredRuleRejected}`,
+    });
+  } catch (error) {
+    results.push({
+      name: '14.1 Serializer Deep Validation Rejection of Illegal Types and Unregistered Rules',
+      passed: false,
+      details: (error as Error).message,
+    });
+  }
+
+  // ==========================================================================
+  // بخش ۱۵: موتور تراز داده‌های چند تایم‌فریمی (ContextDataResolver)
+  // ==========================================================================
+  try {
+    const baseTs = 1700000000000;
+    const htfStepMs = 900000; // 15M = 900,000 ms
+
+    const htfCandles: Candle[] = [];
+    for (let i = 0; i < 5; i++) {
+      htfCandles.push(makeCandle(baseTs + i * htfStepMs, 1.25, 1.26, 1.24, 1.255));
+    }
+
+    // کندل اجرایی 5M که در انتهای اولین کندل 15M بسته می‌شود
+    // کندل 15M اول: بازشدن baseTs، بسته شدن baseTs + 900,000
+    // کندل 5M سوم: بازشدن baseTs + 600,000، بسته شدن baseTs + 900,000
+    const execCandleAt15mClose = makeCandle(baseTs + 600000, 1.252, 1.256, 1.251, 1.255);
+    const resolvedHtf = ContextDataResolver.resolveHtfContext({
+      execCandle: execCandleAt15mClose,
+      execTimeframe: '5M',
+      htfCandles,
+      htfTimeframe: '15M',
+    });
+
+    // کندل اجرایی 5M در دقیقه ۵ (هنوز کندل 15M اول بسته نشده است!)
+    const execCandleEarly = makeCandle(baseTs, 1.25, 1.252, 1.249, 1.251);
+    const resolvedEarly = ContextDataResolver.resolveHtfContext({
+      execCandle: execCandleEarly,
+      execTimeframe: '5M',
+      htfCandles,
+      htfTimeframe: '15M',
+    });
+
+    const passed = resolvedHtf !== null &&
+      resolvedHtf.closeTimestamp === baseTs + 900000 &&
+      resolvedHtf.availableAt <= baseTs + 900000 &&
+      resolvedEarly === null;
+
+    results.push({
+      name: '15.1 Multi-Timeframe Context Resolver (Anti-Lookahead and Coverage)',
+      passed,
+      details: `ResolvedAtClose: ${resolvedHtf !== null}, EarlyRejected (No Lookahead): ${resolvedEarly === null}`,
+    });
+  } catch (error) {
+    results.push({
+      name: '15.1 Multi-Timeframe Context Resolver (Anti-Lookahead and Coverage)',
+      passed: false,
+      details: (error as Error).message,
+    });
+  }
+
+  // ==========================================================================
+  // بخش ۱۶: اتصال نهایی به EventDrivenExecutionEngine و اجرای واقع‌گرایانه
+  // ==========================================================================
+  try {
+    const def = StrategyLegacyAdapters.createResearchVariantDefinition('S0_SWEEP_ONLY');
+    const baseTs = 1700000000000;
+    const stepMs = 300000;
+    const simCandles: Candle[] = [];
+
+    for (let i = 0; i < 25; i++) {
+      simCandles.push(makeCandle(baseTs + i * stepMs, 1.2500, 1.2510, 1.2490, 1.2500));
+    }
+    simCandles[8] = makeCandle(baseTs + 8 * stepMs, 1.2500, 1.2505, 1.2450, 1.2490);
+    simCandles[9] = makeCandle(baseTs + 9 * stepMs, 1.2490, 1.2510, 1.2480, 1.2500);
+    simCandles[10] = makeCandle(baseTs + 10 * stepMs, 1.2500, 1.2520, 1.2495, 1.2515);
+    simCandles[18] = makeCandle(baseTs + 18 * stepMs, 1.2500, 1.2505, 1.2440, 1.2470);
+
+    const evalRes = StrategyDefinitionEvaluator.evaluate(def, simCandles, 'EURUSD', '5M', 18);
+    const candidate = evalRes.candidate;
+
+    if (!candidate) {
+      throw new Error('کاندیدای استراتژی در کندل ۱۸ تولید نشد.');
+    }
+
+    const engine = new EventDrivenExecutionEngine({
+      environment: 'BACKTEST',
+      accountNamespace: 'INTEGRATION_TEST',
+      initialCash: 10000,
+      commissionPerLot: 6.0,
+      defaultSpreadPips: 1.0,
+      ambiguityPolicy: 'PESSIMISTIC',
+    });
+
+    const orderIntent: OrderIntentPayload = {
+      intentId: `INT-${candidate.id}`,
+      environment: 'BACKTEST',
+      accountNamespace: 'INTEGRATION_TEST',
+      candidateId: candidate.id,
+      symbol: candidate.symbol,
+      orderType: 'MARKET',
+      direction: candidate.direction,
+      volumeLots: 0.1,
+      entryPrice: candidate.entryPrice,
+      stopLossPrice: candidate.stopLossPrice,
+      takeProfitPrice: candidate.takeProfitPrice,
+      expiryTimestamp: candidate.expiresAtTimestamp,
+      reasonCode: 'CANDIDATE_EXECUTION',
+      createdTimestamp: candidate.eligibleFromTimestamp ?? candidate.createdAtTimestamp,
+      idempotencyKey: `IDEMP-${candidate.id}`,
+    };
+
+    // ارسال سفارش
+    const submitEvent = engine.submitOrder(orderIntent);
+    const orderSubmitted = submitEvent.status === 'PENDING' || submitEvent.status === 'FILLED';
+
+    // پردازش کندل بعدی (کندل ۱۹) که در آن سفارش مارکت اجرا می‌شود
+    simCandles[19] = makeCandle(baseTs + 19 * stepMs, 1.2472, 1.2490, 1.2468, 1.2485);
+    engine.processCandle(simCandles[19], 'EURUSD');
+
+    const ledger = engine.getLedger();
+    const openPositions = ledger.positions.filter(p => p.isOpen);
+    const positionOpened = openPositions.length === 1;
+    const filledPosition = openPositions[0];
+
+    const passed = orderSubmitted && positionOpened && filledPosition?.direction === candidate.direction;
+
+    results.push({
+      name: '16.1 EventDrivenExecutionEngine Integration with Strategy Candidate',
+      passed,
+      details: `Submitted: ${orderSubmitted}, PositionOpened: ${positionOpened}, PosDirection: ${filledPosition?.direction}, EntryPrice: ${filledPosition?.entryPrice}`,
+    });
+  } catch (error) {
+    results.push({
+      name: '16.1 EventDrivenExecutionEngine Integration with Strategy Candidate',
       passed: false,
       details: (error as Error).message,
     });

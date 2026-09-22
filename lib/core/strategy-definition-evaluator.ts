@@ -1,9 +1,10 @@
 // lib/core/strategy-definition-evaluator.ts
-// موتور جامع ارزیابی تعریف استراتژی (Package 4A Strategy Definition Evaluator)
+// موتور جامع ارزیابی تعریف استراتژی (Package 4A.1 Strategy Definition Evaluator)
 // تبدیل قطعی StrategyDefinition + کندل‌ها به StrategyEvaluationResult و StrategyCandidate
-// ارزیابی ضد نگاه به آینده بدون eval، با ردیابی کامل تمام شروط
+// ارزیابی ضد نگاه به آینده بدون eval، با ردیابی کامل شروط، زمان‌بندی دقیق و RuleRegistry حقیقی
 
 import type { Candle, SymbolId, Timeframe } from '../contracts/market';
+import { getCandleCloseTimestamp, roundSymbolPrice, timeframeToMs } from '../contracts/market';
 import type { VolumeType } from '../contracts/dataset-contract';
 import type { StrategyCandidate, RuleProvenance } from '../contracts/strategy';
 import type {
@@ -14,46 +15,88 @@ import type {
   SequenceStateEntry,
   DataCapability,
   RuleEvaluationStatus,
+  RuleEvaluationContext,
+  HtfContextData,
 } from '../contracts/strategy-definition';
-import { CompositeRuleEvaluator, EvaluationContext } from './composite-rule-evaluator';
-import { calculateWilderATR } from './atr';
+import { CompositeRuleEvaluator } from './composite-rule-evaluator';
+import { RuleRegistry } from './rule-registry';
+import { ContextDataResolver } from './context-data-resolver';
 
-function pricePrecision(symbol: SymbolId): number {
-  return symbol === 'XAUUSD' || symbol === 'BTCUSD' ? 2 : 5;
-}
-
-function roundPrice(value: number, symbol: SymbolId): number {
-  return Number(value.toFixed(pricePrecision(symbol)));
-}
-
-function timeframeToMs(timeframe: Timeframe): number {
-  const durations: Record<Timeframe, number> = {
-    '1M': 60_000,
-    '5M': 5 * 60_000,
-    '15M': 15 * 60_000,
-    '1H': 60 * 60_000,
-    '4H': 4 * 60 * 60_000,
-    D1: 24 * 60 * 60_000,
-    W1: 7 * 24 * 60 * 60_000,
-  };
-  return durations[timeframe] || 300_000;
+export interface StrategyEvaluationOptions {
+  definition: StrategyDefinition;
+  candles: Candle[];
+  symbol: SymbolId;
+  timeframe: Timeframe;
+  currentIndex?: number;
+  availableCapabilities?: DataCapability[];
+  currentVolumeType?: VolumeType;
+  runId?: string;
+  datasetFingerprint?: string;
+  htfCandles?: readonly Candle[];
+  htfTimeframe?: Timeframe;
 }
 
 export class StrategyDefinitionEvaluator {
   /**
-   * ارزیابی یک تعریف استراتژی بر روی یک کندل مشخص
+   * ارزیابی یک تعریف استراتژی بر روی یک کندل مشخص با پشتیبانی از هر دو امضای فراخوانی
    */
   public static evaluate(
-    definition: StrategyDefinition,
-    candles: Candle[],
-    symbol: SymbolId,
-    timeframe: Timeframe,
-    currentIndex: number = candles.length - 1,
-    availableCapabilities: DataCapability[] = ['OHLC', 'CLOSED_BAR_STATUS', 'REAL_SOURCE_VOLUME'],
-    currentVolumeType: VolumeType = 'REAL_SOURCE_VOLUME'
+    definitionOrOptions: StrategyDefinition | StrategyEvaluationOptions,
+    candlesArg?: Candle[],
+    symbolArg?: SymbolId,
+    timeframeArg?: Timeframe,
+    currentIndexArg?: number,
+    availableCapabilitiesArg?: DataCapability[],
+    currentVolumeTypeArg?: VolumeType,
+    extraOptions?: {
+      runId?: string;
+      datasetFingerprint?: string;
+      htfCandles?: readonly Candle[];
+      htfTimeframe?: Timeframe;
+    }
   ): StrategyEvaluationResult {
+    let definition: StrategyDefinition;
+    let candles: Candle[];
+    let symbol: SymbolId;
+    let timeframe: Timeframe;
+    let currentIndex: number;
+    let availableCapabilities: DataCapability[];
+    let currentVolumeType: VolumeType;
+    let runId: string;
+    let datasetFingerprint: string;
+    let htfCandles: readonly Candle[] | undefined;
+    let htfTimeframe: Timeframe | undefined;
+
+    if ('definition' in definitionOrOptions) {
+      const opts = definitionOrOptions as StrategyEvaluationOptions;
+      definition = opts.definition;
+      candles = opts.candles;
+      symbol = opts.symbol;
+      timeframe = opts.timeframe;
+      currentIndex = opts.currentIndex ?? candles.length - 1;
+      availableCapabilities = opts.availableCapabilities ?? ['OHLC', 'CLOSED_BAR_STATUS', 'REAL_SOURCE_VOLUME'];
+      currentVolumeType = opts.currentVolumeType ?? 'REAL_SOURCE_VOLUME';
+      runId = opts.runId ?? `run_${Date.now()}`;
+      datasetFingerprint = opts.datasetFingerprint ?? `${symbol}_${timeframe}`;
+      htfCandles = opts.htfCandles;
+      htfTimeframe = opts.htfTimeframe;
+    } else {
+      definition = definitionOrOptions;
+      candles = candlesArg!;
+      symbol = symbolArg!;
+      timeframe = timeframeArg!;
+      currentIndex = currentIndexArg ?? candles.length - 1;
+      availableCapabilities = availableCapabilitiesArg ?? ['OHLC', 'CLOSED_BAR_STATUS', 'REAL_SOURCE_VOLUME'];
+      currentVolumeType = currentVolumeTypeArg ?? 'REAL_SOURCE_VOLUME';
+      runId = extraOptions?.runId ?? `run_${Date.now()}`;
+      datasetFingerprint = extraOptions?.datasetFingerprint ?? `${symbol}_${timeframe}`;
+      htfCandles = extraOptions?.htfCandles;
+      htfTimeframe = extraOptions?.htfTimeframe;
+    }
+
     const currentCandle = candles[currentIndex];
     const timestamp = currentCandle?.timestamp || 0;
+    const evaluatedAt = currentCandle ? getCandleCloseTimestamp(currentCandle, timeframe) : timestamp;
 
     const dataCapabilityWarnings: string[] = [];
     const rejectionReasons: string[] = [];
@@ -69,10 +112,15 @@ export class StrategyDefinitionEvaluator {
         `دیتاست فاقد قابلیت‌های الزامی استراتژی است: ${missingCaps.join(', ')}`
       );
       return {
+        runId,
         definitionId: definition.definitionId,
         definitionVersion: definition.definitionVersion,
-        definitionHash: definition.metadata.deterministicHash,
-        evaluatedAt: timestamp,
+        definitionHash: definition.metadata.integrityHash || definition.metadata.deterministicHash,
+        datasetFingerprint,
+        direction: 'BUY',
+        signalTimestamp: timestamp,
+        evaluatedAt,
+        eligibleFromTimestamp: evaluatedAt,
         overallStatus: 'NOT_AVAILABLE',
         triggerStatus: 'NOT_AVAILABLE',
         riskStatus: 'NOT_AVAILABLE',
@@ -88,10 +136,15 @@ export class StrategyDefinitionEvaluator {
 
     if (!currentCandle || !currentCandle.isClosed) {
       return {
+        runId,
         definitionId: definition.definitionId,
         definitionVersion: definition.definitionVersion,
-        definitionHash: definition.metadata.deterministicHash,
-        evaluatedAt: timestamp,
+        definitionHash: definition.metadata.integrityHash || definition.metadata.deterministicHash,
+        datasetFingerprint,
+        direction: 'BUY',
+        signalTimestamp: timestamp,
+        evaluatedAt,
+        eligibleFromTimestamp: evaluatedAt,
         overallStatus: 'FAIL',
         triggerStatus: 'FAIL',
         riskStatus: 'FAIL',
@@ -105,7 +158,21 @@ export class StrategyDefinitionEvaluator {
       };
     }
 
-    // بررسی هر دو جهت BUY و SELL (یا جهتی که در پارامترهای تریگر مشخص شده)
+    // استخراج کانتکست چند تایم‌فریمی در صورت وجود
+    let resolvedHtfContext: HtfContextData | undefined = undefined;
+    if (htfCandles && htfTimeframe) {
+      const htf = ContextDataResolver.resolveHtfContext({
+        execCandle: currentCandle,
+        execTimeframe: timeframe,
+        htfCandles,
+        htfTimeframe,
+      });
+      if (htf) {
+        resolvedHtfContext = htf;
+      }
+    }
+
+    // بررسی هر دو جهت BUY و SELL
     const directionsToTest: Array<'BUY' | 'SELL'> = ['BUY', 'SELL'];
     let bestCandidate: StrategyCandidate | null = null;
     let winningDirection: 'BUY' | 'SELL' = 'BUY';
@@ -118,15 +185,21 @@ export class StrategyDefinitionEvaluator {
     let exitStatus: RuleEvaluationStatus | undefined = undefined;
 
     for (const dir of directionsToTest) {
-      const ctx: EvaluationContext = {
-        candles,
-        currentIndex,
+      const ctx: RuleEvaluationContext = {
+        runId,
         symbol,
         timeframe,
         direction: dir,
         definitionId: definition.definitionId,
+        definitionVersion: definition.definitionVersion,
+        definitionHash: definition.metadata.integrityHash || definition.metadata.deterministicHash,
+        evaluatedAt,
         availableCapabilities,
-        currentVolumeType,
+        volumeType: currentVolumeType,
+        datasetFingerprint,
+        candles,
+        currentIndex,
+        htfContext: resolvedHtfContext,
       };
 
       // ۲. ارزیابی فاز کانتکست (Context)
@@ -166,76 +239,99 @@ export class StrategyDefinitionEvaluator {
         continue;
       }
 
-      // اگر کانتکست، ستاپ و تریگر همه پاس شدند
-      contextStatus = curContextStatus;
-      setupStatus = curSetupStatus;
-      triggerStatus = curTriggerStatus;
-      winningDirection = dir;
-      overallStatus = 'PASS';
-
-      // ۵. استخراج پارامترهای ورود و ریسک برای ساخت StrategyCandidate
-      const entryParams = (definition.entry.parameters || {}) as Record<string, number | string>;
-      const riskParams = (definition.risk.parameters || {}) as Record<string, number>;
-
-      const atrs = calculateWilderATR(candles, riskParams.atrPeriod || 14);
-      const currentAtr = atrs.length > 0 ? atrs[atrs.length - 1] : symbol === 'XAUUSD' ? 1.5 : 0.0008;
-
-      const entryPrice = currentCandle.close;
-      const stopLossAtrBuffer = riskParams.stopLossAtrBuffer ?? 0.2;
-      const targetRiskReward = riskParams.targetRiskReward ?? 2.0;
-      const expiryBars = (riskParams.expiryBars ?? 12) as number;
-
-      let stopLossPrice = 0;
-      if (dir === 'BUY') {
-        stopLossPrice = (riskParams.stopLossMode === 1 && riskParams.fixedStopDistance)
-          ? entryPrice - riskParams.fixedStopDistance
-          : currentCandle.low - currentAtr * stopLossAtrBuffer;
-      } else {
-        stopLossPrice = (riskParams.stopLossMode === 1 && riskParams.fixedStopDistance)
-          ? entryPrice + riskParams.fixedStopDistance
-          : currentCandle.high + currentAtr * stopLossAtrBuffer;
-      }
-
-      const risk = dir === 'BUY' ? entryPrice - stopLossPrice : stopLossPrice - entryPrice;
-      if (risk <= 0) {
-        rejectionReasons.push(`INVALID_RISK_${dir}`);
+      // ۵. ارزیابی فاز ورود حقیقی از طریق RuleRegistry
+      const entryRes = RuleRegistry.evaluateInstance(definition.entry, ctx);
+      allRuleEvaluations.push(entryRes);
+      if (entryRes.status !== 'PASS') {
+        rejectionReasons.push(`ENTRY_FAILED_${dir}`);
         continue;
       }
 
-      const takeProfitPrice = dir === 'BUY'
-        ? entryPrice + risk * targetRiskReward
-        : entryPrice - risk * targetRiskReward;
+      // ۶. ارزیابی فاز مدیریت ریسک حقیقی از طریق RuleRegistry (بدون فالبک ساختگی)
+      const riskRes = RuleRegistry.evaluateInstance(definition.risk, ctx);
+      allRuleEvaluations.push(riskRes);
+      if (riskRes.status !== 'PASS') {
+        rejectionReasons.push(`RISK_FAILED_${dir}`);
+        continue;
+      }
 
-      const expiryMs = timestamp + expiryBars * timeframeToMs(timeframe);
+      // ۷. ارزیابی فاز خروج در صورت وجود
+      if (definition.exit) {
+        const exitRes = CompositeRuleEvaluator.evaluateGroup(definition.exit, ctx);
+        groupEvaluations[`exit_${dir}`] = exitRes;
+        this.collectGroupTrace(exitRes, allRuleEvaluations, sequenceStates, evidenceRefs);
+        exitStatus = exitRes.status;
+      }
+
+      // اگر تمام شروط پاس شدند
+      contextStatus = curContextStatus;
+      setupStatus = curSetupStatus;
+      triggerStatus = curTriggerStatus;
+      riskStatus = riskRes.status;
+      winningDirection = dir;
+      overallStatus = 'PASS';
+
+      // استخراج سطوح قیمت و مقادیر واقعی از نتایج ارزیابی ریسک و ورود
+      const riskActuals = (riskRes.actualValues || {}) as {
+        entryPrice?: number;
+        stopLossPrice?: number;
+        takeProfitPrice?: number;
+        riskDistance?: number;
+        riskRewardRatio?: number;
+        atr?: number;
+      };
+      const entryActuals = (entryRes.actualValues || {}) as {
+        limitPrice?: number;
+        stopPrice?: number;
+        estimatedEntryPrice?: number;
+        eligibleFromTimestamp?: number;
+      };
+
+      const entryPrice = entryActuals.limitPrice ?? entryActuals.stopPrice ?? riskActuals.entryPrice ?? currentCandle.close;
+      const stopLossPrice = riskActuals.stopLossPrice!;
+      const takeProfitPrice = riskActuals.takeProfitPrice!;
+      const riskRewardRatio = riskActuals.riskRewardRatio ?? 2.0;
+
+      const riskDistance = dir === 'BUY' ? entryPrice - stopLossPrice : stopLossPrice - entryPrice;
+      if (riskDistance <= 0) {
+        rejectionReasons.push(`INVALID_RISK_${dir}`);
+        overallStatus = 'FAIL';
+        continue;
+      }
+
+      const expiryBars = Number((definition.risk.parameters as { expiryBars?: number })?.expiryBars || 12);
+      const expiryMs = evaluatedAt + expiryBars * timeframeToMs(timeframe);
 
       const provenance: RuleProvenance = {
         ruleVersion: definition.definitionVersion,
-        parameterHash: definition.metadata.deterministicHash,
+        parameterHash: definition.metadata.integrityHash || definition.metadata.deterministicHash,
         resolvedParameters: {
-          stopLossAtrBuffer,
-          targetRiskReward,
+          entryPrice,
+          stopLossPrice,
+          takeProfitPrice,
+          riskRewardRatio,
           expiryBars,
-          currentAtr,
+          currentAtr: riskActuals.atr ?? 0,
         },
-        signalCandleTimestamp: timestamp,
-        evidenceAvailableAtTimestamp: timestamp,
+        signalCandleTimestamp: currentCandle.timestamp,
+        evidenceAvailableAtTimestamp: evaluatedAt,
         lifecycle: 'CONFIRMED',
       };
 
-      const rationaleText = `سیگنال ${dir} بر مبنای استراتژی ${definition.nameFa} (${definition.definitionId} v${definition.definitionVersion}) در کندل بسته ${timestamp} صادر شد.`;
+      const rationaleText = `سیگنال ${dir} بر مبنای استراتژی ${definition.nameFa} (${definition.definitionId} v${definition.definitionVersion}) در زمان بسته شدن کندل (${evaluatedAt}) صادر شد.`;
 
       bestCandidate = {
-        id: `CAND-${definition.definitionId}-${dir}-${timestamp}`,
+        id: `CAND-${definition.definitionId}-${dir}-${currentCandle.timestamp}`,
         strategyName: definition.nameEn,
         symbol,
         timeframe,
         direction: dir,
-        createdAtTimestamp: timestamp,
+        createdAtTimestamp: evaluatedAt,
         expiresAtTimestamp: expiryMs,
-        entryPrice: roundPrice(entryPrice, symbol),
-        stopLossPrice: roundPrice(stopLossPrice, symbol),
-        takeProfitPrice: roundPrice(takeProfitPrice, symbol),
-        riskRewardRatio: targetRiskReward,
+        entryPrice: roundSymbolPrice(entryPrice, symbol),
+        stopLossPrice: roundSymbolPrice(stopLossPrice, symbol),
+        takeProfitPrice: roundSymbolPrice(takeProfitPrice, symbol),
+        riskRewardRatio,
         evidenceIds: {
           sweepId: evidenceRefs.sweepId ? String(evidenceRefs.sweepId) : undefined,
           fvgId: evidenceRefs.fvgId ? String(evidenceRefs.fvgId) : undefined,
@@ -245,17 +341,27 @@ export class StrategyDefinitionEvaluator {
         rationale: rationaleText,
         ruleProvenance: provenance,
         status: 'PENDING_CONFIRMATION',
+
+        // فیلدهای ضد نگاه به آینده الزامی Package 4A.1
+        signalTimestamp: currentCandle.timestamp,
+        evidenceAvailableAt: evaluatedAt,
+        decisionAt: evaluatedAt,
+        eligibleFromTimestamp: evaluatedAt,
       };
 
-      riskStatus = 'PASS';
       break; // اولین کاندیدای معتبر استخراج شد
     }
 
     return {
+      runId,
       definitionId: definition.definitionId,
       definitionVersion: definition.definitionVersion,
-      definitionHash: definition.metadata.deterministicHash,
-      evaluatedAt: timestamp,
+      definitionHash: definition.metadata.integrityHash || definition.metadata.deterministicHash,
+      datasetFingerprint,
+      direction: bestCandidate ? bestCandidate.direction : winningDirection,
+      signalTimestamp: currentCandle.timestamp,
+      evaluatedAt,
+      eligibleFromTimestamp: evaluatedAt,
       overallStatus,
       contextStatus,
       setupStatus,

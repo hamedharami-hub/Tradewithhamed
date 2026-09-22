@@ -1,6 +1,6 @@
 // lib/core/strategy-legacy-adapters.ts
 // آداپتورهای تبدیل و همگام‌سازی سبک‌ها و استراتژی‌های موجود به فرمت نسخه‌دار StrategyDefinition
-// تضمین سازگاری ۱۰۰٪ با ۵ سبک معاملاتی Core و ۶ استراتژی موتور Research
+// تضمین سازگاری ۱۰۰٪ با ۵ سبک معاملاتی Core و ۶ استراتژی موتور Research (Package 4A.1)
 
 import type { StrategyDefinition } from '../contracts/strategy-definition';
 import { STRATEGY_DEFINITION_SCHEMA_VERSION } from '../contracts/strategy-definition';
@@ -8,7 +8,21 @@ import type { TradingStyleType } from '../contracts/regimes';
 import type { StrategyVariantId } from '../research/contracts';
 import { calculateStrategyHash } from './strategy-definition-serializer';
 import type { RuleParameters } from '../research/strategy-rules';
-import { DEFAULT_RULE_PARAMETERS, RESEARCH_RULE_VERSION } from '../research/strategy-rules';
+import { DEFAULT_RULE_PARAMETERS } from '../research/strategy-rules';
+
+export interface StrategyMigrationEntry {
+  legacyId: string;
+  canonicalId: string;
+  category: 'CORE_STYLE' | 'RESEARCH_VARIANT';
+  equivalenceStatus: 'FULL' | 'PARTIAL' | 'EXTENDED';
+  contextRules: string[];
+  setupRules: string[];
+  triggerRules: string[];
+  entryRule: string;
+  riskRule: string;
+  exitRules: string[];
+  notesFa: string;
+}
 
 export class StrategyLegacyAdapters {
   /**
@@ -55,15 +69,16 @@ export class StrategyLegacyAdapters {
           },
           entry: {
             instanceId: 'inst_entry_market',
-            ruleId: 'EXEC_MARKET',
+            ruleId: 'EXEC_MARKET_NEXT_OPEN',
             ruleVersion: '1.0.0',
-            parameters: { orderType: 'MARKET' },
+            parameters: {},
           },
           risk: {
             instanceId: 'inst_risk_atr',
             ruleId: 'RISK_ATR',
             ruleVersion: '1.0.0',
             parameters: {
+              atrPeriod: 14,
               stopLossAtrBuffer: params.stopLossAtrBuffer,
               targetRiskReward: params.targetRiskReward,
               expiryBars: params.expiryBars,
@@ -72,7 +87,15 @@ export class StrategyLegacyAdapters {
           exit: {
             groupId: 'grp_exit',
             operator: 'ANY',
-            rules: [],
+            rules: [
+              {
+                instanceId: 'inst_exit_rr',
+                ruleId: 'EXIT_RISK_REWARD',
+                ruleVersion: '1.0.0',
+                parameters: {},
+                enabled: true,
+              },
+            ],
           },
           metadata: {
             author: 'Antigravity Research Core',
@@ -132,15 +155,16 @@ export class StrategyLegacyAdapters {
           },
           entry: {
             instanceId: 'inst_entry_market',
-            ruleId: 'EXEC_MARKET',
+            ruleId: 'EXEC_MARKET_NEXT_OPEN',
             ruleVersion: '1.0.0',
-            parameters: { orderType: 'MARKET' },
+            parameters: {},
           },
           risk: {
             instanceId: 'inst_risk_atr',
             ruleId: 'RISK_ATR',
             ruleVersion: '1.0.0',
             parameters: {
+              atrPeriod: 14,
               stopLossAtrBuffer: params.stopLossAtrBuffer,
               targetRiskReward: params.targetRiskReward,
               expiryBars: params.expiryBars,
@@ -149,7 +173,15 @@ export class StrategyLegacyAdapters {
           exit: {
             groupId: 'grp_exit',
             operator: 'ANY',
-            rules: [],
+            rules: [
+              {
+                instanceId: 'inst_exit_rr',
+                ruleId: 'EXIT_RISK_REWARD',
+                ruleVersion: '1.0.0',
+                parameters: {},
+                enabled: true,
+              },
+            ],
           },
           metadata: {
             author: 'Antigravity Research Core',
@@ -190,15 +222,16 @@ export class StrategyLegacyAdapters {
           },
           entry: {
             instanceId: 'inst_entry_market',
-            ruleId: 'EXEC_MARKET',
+            ruleId: 'EXEC_MARKET_NEXT_OPEN',
             ruleVersion: '1.0.0',
-            parameters: { orderType: 'MARKET' },
+            parameters: {},
           },
           risk: {
             instanceId: 'inst_risk_atr',
             ruleId: 'RISK_ATR',
             ruleVersion: '1.0.0',
             parameters: {
+              atrPeriod: 14,
               stopLossAtrBuffer: params.stopLossAtrBuffer,
               targetRiskReward: params.targetRiskReward,
               expiryBars: params.expiryBars,
@@ -207,7 +240,15 @@ export class StrategyLegacyAdapters {
           exit: {
             groupId: 'grp_exit',
             operator: 'ANY',
-            rules: [],
+            rules: [
+              {
+                instanceId: 'inst_exit_rr',
+                ruleId: 'EXIT_RISK_REWARD',
+                ruleVersion: '1.0.0',
+                parameters: {},
+                enabled: true,
+              },
+            ],
           },
           metadata: {
             author: 'Antigravity Research Core',
@@ -240,22 +281,23 @@ export class StrategyLegacyAdapters {
                 instanceId: 'inst_fvg_mid_trigger',
                 ruleId: 'SMC_FVG_MIDPOINT',
                 ruleVersion: '1.0.0',
-                parameters: { lookbackBars: params.expiryBars, direction: 'BUY' },
+                parameters: { lookbackBars: params.expiryBars },
                 enabled: true,
               },
             ],
           },
           entry: {
             instanceId: 'inst_entry_market',
-            ruleId: 'EXEC_MARKET',
+            ruleId: 'EXEC_MARKET_NEXT_OPEN',
             ruleVersion: '1.0.0',
-            parameters: { orderType: 'MARKET' },
+            parameters: {},
           },
           risk: {
             instanceId: 'inst_risk_atr',
             ruleId: 'RISK_ATR',
             ruleVersion: '1.0.0',
             parameters: {
+              atrPeriod: 14,
               stopLossAtrBuffer: params.stopLossAtrBuffer,
               targetRiskReward: params.targetRiskReward,
               expiryBars: params.expiryBars,
@@ -264,7 +306,15 @@ export class StrategyLegacyAdapters {
           exit: {
             groupId: 'grp_exit',
             operator: 'ANY',
-            rules: [],
+            rules: [
+              {
+                instanceId: 'inst_exit_rr',
+                ruleId: 'EXIT_RISK_REWARD',
+                ruleVersion: '1.0.0',
+                parameters: {},
+                enabled: true,
+              },
+            ],
           },
           metadata: {
             author: 'Antigravity Research Core',
@@ -300,7 +350,6 @@ export class StrategyLegacyAdapters {
                 parameters: {
                   lookback: params.meanReversionLookback,
                   threshold: params.meanReversionEntryZScore,
-                  direction: 'BUY',
                 },
                 enabled: true,
               },
@@ -308,15 +357,16 @@ export class StrategyLegacyAdapters {
           },
           entry: {
             instanceId: 'inst_entry_market',
-            ruleId: 'EXEC_MARKET',
+            ruleId: 'EXEC_MARKET_NEXT_OPEN',
             ruleVersion: '1.0.0',
-            parameters: { orderType: 'MARKET' },
+            parameters: {},
           },
           risk: {
             instanceId: 'inst_risk_atr',
             ruleId: 'RISK_ATR',
             ruleVersion: '1.0.0',
             parameters: {
+              atrPeriod: 14,
               stopLossAtrBuffer: params.stopLossAtrBuffer,
               targetRiskReward: params.targetRiskReward,
               expiryBars: params.expiryBars,
@@ -325,7 +375,15 @@ export class StrategyLegacyAdapters {
           exit: {
             groupId: 'grp_exit',
             operator: 'ANY',
-            rules: [],
+            rules: [
+              {
+                instanceId: 'inst_exit_rr',
+                ruleId: 'EXIT_RISK_REWARD',
+                ruleVersion: '1.0.0',
+                parameters: {},
+                enabled: true,
+              },
+            ],
           },
           metadata: {
             author: 'Antigravity Research Core',
@@ -384,24 +442,33 @@ export class StrategyLegacyAdapters {
           },
           entry: {
             instanceId: 'inst_entry_market',
-            ruleId: 'EXEC_MARKET',
+            ruleId: 'EXEC_MARKET_NEXT_OPEN',
             ruleVersion: '1.0.0',
-            parameters: { orderType: 'MARKET' },
+            parameters: {},
           },
           risk: {
             instanceId: 'inst_risk_atr',
             ruleId: 'RISK_ATR',
             ruleVersion: '1.0.0',
             parameters: {
+              atrPeriod: 14,
               stopLossAtrBuffer: params.trendStopAtrMultiple,
-              targetRiskReward: params.trendTargetAtrMultiple / params.trendStopAtrMultiple,
+              targetRiskReward: params.trendTargetAtrMultiple / (params.trendStopAtrMultiple || 1),
               expiryBars: params.expiryBars,
             },
           },
           exit: {
             groupId: 'grp_exit',
             operator: 'ANY',
-            rules: [],
+            rules: [
+              {
+                instanceId: 'inst_exit_rr',
+                ruleId: 'EXIT_RISK_REWARD',
+                ruleVersion: '1.0.0',
+                parameters: {},
+                enabled: true,
+              },
+            ],
           },
           metadata: {
             author: 'Antigravity Research Core',
@@ -418,6 +485,8 @@ export class StrategyLegacyAdapters {
     }
 
     def.metadata.deterministicHash = calculateStrategyHash(def);
+    def.metadata.integrityHash = def.metadata.deterministicHash;
+    def.metadata.hashAlgorithm = 'SHA-256';
 
     return def;
   }
@@ -427,7 +496,7 @@ export class StrategyLegacyAdapters {
    */
   public static createLegacyStyleDefinition(
     style: TradingStyleType,
-    overrides: Record<string, unknown> = {}
+    _overrides: Record<string, unknown> = {}
   ): StrategyDefinition {
     const createdAt = 1711000000000;
     let def: StrategyDefinition;
@@ -471,21 +540,29 @@ export class StrategyLegacyAdapters {
             ],
           },
           entry: {
-            instanceId: 'inst_entry',
-            ruleId: 'EXEC_MARKET',
+            instanceId: 'inst_entry_market',
+            ruleId: 'EXEC_MARKET_NEXT_OPEN',
             ruleVersion: '1.0.0',
-            parameters: { orderType: 'MARKET' },
+            parameters: {},
           },
           risk: {
-            instanceId: 'inst_risk',
+            instanceId: 'inst_risk_atr',
             ruleId: 'RISK_ATR',
             ruleVersion: '1.0.0',
-            parameters: { stopLossAtrBuffer: 0.2, targetRiskReward: 1.5, expiryBars: 6 },
+            parameters: { atrPeriod: 14, stopLossAtrBuffer: 0.2, targetRiskReward: 1.5, expiryBars: 6 },
           },
           exit: {
             groupId: 'grp_exit',
             operator: 'ANY',
-            rules: [],
+            rules: [
+              {
+                instanceId: 'inst_exit_rr',
+                ruleId: 'EXIT_RISK_REWARD',
+                ruleVersion: '1.0.0',
+                parameters: {},
+                enabled: true,
+              },
+            ],
           },
           metadata: {
             author: 'Antigravity Core',
@@ -552,21 +629,29 @@ export class StrategyLegacyAdapters {
             ],
           },
           entry: {
-            instanceId: 'inst_entry',
-            ruleId: 'EXEC_MARKET',
+            instanceId: 'inst_entry_market',
+            ruleId: 'EXEC_MARKET_NEXT_OPEN',
             ruleVersion: '1.0.0',
-            parameters: { orderType: 'MARKET' },
+            parameters: {},
           },
           risk: {
-            instanceId: 'inst_risk',
+            instanceId: 'inst_risk_atr',
             ruleId: 'RISK_ATR',
             ruleVersion: '1.0.0',
-            parameters: { stopLossAtrBuffer: 0.5, targetRiskReward: 3.0, expiryBars: 24 },
+            parameters: { atrPeriod: 14, stopLossAtrBuffer: 0.5, targetRiskReward: 3.0, expiryBars: 24 },
           },
           exit: {
             groupId: 'grp_exit',
             operator: 'ANY',
-            rules: [],
+            rules: [
+              {
+                instanceId: 'inst_exit_rr',
+                ruleId: 'EXIT_RISK_REWARD',
+                ruleVersion: '1.0.0',
+                parameters: {},
+                enabled: true,
+              },
+            ],
           },
           metadata: {
             author: 'Antigravity Core',
@@ -591,15 +676,170 @@ export class StrategyLegacyAdapters {
     }
 
     def.metadata.deterministicHash = calculateStrategyHash(def);
+    def.metadata.integrityHash = def.metadata.deterministicHash;
+    def.metadata.hashAlgorithm = 'SHA-256';
 
     return def;
+  }
+
+  /**
+   * ماتریس تطبیق سبک‌های Core و استراتژی‌های تحقیقاتی با تعاریف متعارف و وضعیت معادل‌سازی
+   */
+  public static getMigrationMatrix(): StrategyMigrationEntry[] {
+    return [
+      // ۵ سبک اصلی Core
+      {
+        legacyId: 'SCALP_M1_M5',
+        canonicalId: 'STRAT_CORE_SCALP_M1_M5',
+        category: 'CORE_STYLE',
+        equivalenceStatus: 'FULL',
+        contextRules: ['TECH_EMA_POSITION'],
+        setupRules: [],
+        triggerRules: ['TECH_DONCHIAN_BREAKOUT'],
+        entryRule: 'EXEC_MARKET_NEXT_OPEN',
+        riskRule: 'RISK_ATR',
+        exitRules: ['EXIT_RISK_REWARD'],
+        notesFa: 'انتقال کامل سبک اسکلپ M1/M5 به موتور قواعد نسخه‌دار با EMA50 و Donchian10.',
+      },
+      {
+        legacyId: 'SMC_INTRADAY',
+        canonicalId: 'STRAT_CORE_SMC_INTRADAY',
+        category: 'CORE_STYLE',
+        equivalenceStatus: 'FULL',
+        contextRules: [],
+        setupRules: ['SMC_FVG'],
+        triggerRules: ['SMC_LIQUIDITY_SWEEP'],
+        entryRule: 'EXEC_MARKET_NEXT_OPEN',
+        riskRule: 'RISK_ATR',
+        exitRules: ['EXIT_RISK_REWARD'],
+        notesFa: 'معادل‌سازی کامل بر اساس ترکیب سوییپ نقدینگی و تاییدیه FVG سه کندلی.',
+      },
+      {
+        legacyId: 'TREND_BREAKOUT',
+        canonicalId: 'STRAT_CORE_TREND_BREAKOUT',
+        category: 'CORE_STYLE',
+        equivalenceStatus: 'FULL',
+        contextRules: ['TECH_EMA_SLOPE'],
+        setupRules: [],
+        triggerRules: ['TECH_DONCHIAN_BREAKOUT'],
+        entryRule: 'EXEC_MARKET_NEXT_OPEN',
+        riskRule: 'RISK_ATR',
+        exitRules: ['EXIT_RISK_REWARD'],
+        notesFa: 'شکست کانال دانچیان ۵۵ کندلی همراه با فیلتر شیب میانگین متحرک ۲۰۰.',
+      },
+      {
+        legacyId: 'SWING_MACRO',
+        canonicalId: 'STRAT_CORE_SWING_MACRO',
+        category: 'CORE_STYLE',
+        equivalenceStatus: 'FULL',
+        contextRules: ['TECH_EMA_POSITION'],
+        setupRules: [],
+        triggerRules: ['SMC_BOS'],
+        entryRule: 'EXEC_MARKET_NEXT_OPEN',
+        riskRule: 'RISK_ATR',
+        exitRules: ['EXIT_RISK_REWARD'],
+        notesFa: 'سووینگ ۴ ساعته هماهنگ با روند روزانه و شکست ساختار BOS.',
+      },
+      {
+        legacyId: 'MEAN_REVERSION',
+        canonicalId: 'STRAT_CORE_MEAN_REVERSION',
+        category: 'CORE_STYLE',
+        equivalenceStatus: 'FULL',
+        contextRules: [],
+        setupRules: [],
+        triggerRules: ['TECH_ZSCORE'],
+        entryRule: 'EXEC_MARKET_NEXT_OPEN',
+        riskRule: 'RISK_ATR',
+        exitRules: ['EXIT_RISK_REWARD'],
+        notesFa: 'انحراف آماری بیش از ۲ سیگما نسبت به میانگین ۲۰ کندلی گذشته.',
+      },
+
+      // ۶ واریانت موتور تحقیقاتی Research
+      {
+        legacyId: 'S0_SWEEP_ONLY',
+        canonicalId: 'STRAT_RESEARCH_S0_SWEEP_ONLY',
+        category: 'RESEARCH_VARIANT',
+        equivalenceStatus: 'FULL',
+        contextRules: [],
+        setupRules: [],
+        triggerRules: ['SMC_LIQUIDITY_SWEEP'],
+        entryRule: 'EXEC_MARKET_NEXT_OPEN',
+        riskRule: 'RISK_ATR',
+        exitRules: ['EXIT_RISK_REWARD'],
+        notesFa: 'واریانت تحقیقاتی S0 متکی بر سوییپ شدو و بازگشت کلوز بدون شروط ثانویه.',
+      },
+      {
+        legacyId: 'S0_SWEEP_FVG',
+        canonicalId: 'STRAT_RESEARCH_S0_SWEEP_FVG',
+        category: 'RESEARCH_VARIANT',
+        equivalenceStatus: 'FULL',
+        contextRules: [],
+        setupRules: ['SMC_FVG'],
+        triggerRules: ['SMC_LIQUIDITY_SWEEP'],
+        entryRule: 'EXEC_MARKET_NEXT_OPEN',
+        riskRule: 'RISK_ATR',
+        exitRules: ['EXIT_RISK_REWARD'],
+        notesFa: 'واریانت پایه تحقیقاتی اسمارت مانی ترکیب سوییپ و FVG.',
+      },
+      {
+        legacyId: 'BOS_ORDER_BLOCK_V1',
+        canonicalId: 'STRAT_RESEARCH_BOS_ORDER_BLOCK_V1',
+        category: 'RESEARCH_VARIANT',
+        equivalenceStatus: 'FULL',
+        contextRules: [],
+        setupRules: [],
+        triggerRules: ['SMC_BOS'],
+        entryRule: 'EXEC_MARKET_NEXT_OPEN',
+        riskRule: 'RISK_ATR',
+        exitRules: ['EXIT_RISK_REWARD'],
+        notesFa: 'شکست ساختار BOS تاییدشده با ورود مارکت در بازشدن کندل بعد.',
+      },
+      {
+        legacyId: 'FVG_EQUILIBRIUM_V1',
+        canonicalId: 'STRAT_RESEARCH_FVG_EQUILIBRIUM_V1',
+        category: 'RESEARCH_VARIANT',
+        equivalenceStatus: 'FULL',
+        contextRules: [],
+        setupRules: [],
+        triggerRules: ['SMC_FVG_MIDPOINT'],
+        entryRule: 'EXEC_MARKET_NEXT_OPEN',
+        riskRule: 'RISK_ATR',
+        exitRules: ['EXIT_RISK_REWARD'],
+        notesFa: 'پولبک به تعادل میانی ۵۰٪ گپ ارزش منصفانه.',
+      },
+      {
+        legacyId: 'MEAN_REVERSION_V1',
+        canonicalId: 'STRAT_RESEARCH_MEAN_REVERSION_V1',
+        category: 'RESEARCH_VARIANT',
+        equivalenceStatus: 'FULL',
+        contextRules: [],
+        setupRules: [],
+        triggerRules: ['TECH_ZSCORE'],
+        entryRule: 'EXEC_MARKET_NEXT_OPEN',
+        riskRule: 'RISK_ATR',
+        exitRules: ['EXIT_RISK_REWARD'],
+        notesFa: 'ورود بر مبنای Z-Score بالای آستانه انحراف آماری.',
+      },
+      {
+        legacyId: 'TREND_BREAKOUT_55_EMA200_V1',
+        canonicalId: 'STRAT_RESEARCH_TREND_BREAKOUT_55_EMA200_V1',
+        category: 'RESEARCH_VARIANT',
+        equivalenceStatus: 'FULL',
+        contextRules: ['TECH_EMA_SLOPE'],
+        setupRules: [],
+        triggerRules: ['TECH_DONCHIAN_BREAKOUT'],
+        entryRule: 'EXEC_MARKET_NEXT_OPEN',
+        riskRule: 'RISK_ATR',
+        exitRules: ['EXIT_RISK_REWARD'],
+        notesFa: 'شکست دانچیان ۵۵ با فیلتر شیب EMA200.',
+      },
+    ];
   }
 
   /**
    * تابع عمومی مهاجرت از شناسه قدیمی به StrategyDefinition
    */
   public static migrateLegacyToDefinition(legacyId: string): StrategyDefinition {
-    // بررسی آیا واریانت Research است
     const researchVariants: StrategyVariantId[] = [
       'S0_SWEEP_ONLY',
       'S0_SWEEP_FVG',
@@ -612,7 +852,6 @@ export class StrategyLegacyAdapters {
       return this.createResearchVariantDefinition(legacyId as StrategyVariantId);
     }
 
-    // بررسی آیا سبک Core است
     const coreStyles: TradingStyleType[] = [
       'SCALP_M1_M5',
       'SMC_INTRADAY',
